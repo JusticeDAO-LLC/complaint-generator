@@ -313,7 +313,7 @@ class TestMediatorThreePhaseIntegration:
             for candidate in status['intake_contradictions']['candidates']
         )
 
-    def test_start_three_phase_process_persists_intake_case_file(self):
+    def test_start_three_phase_process_persists_intake_case_file(self, monkeypatch):
         """Starting intake should persist a structured intake case file."""
         from mediator.mediator import Mediator
 
@@ -324,12 +324,14 @@ class TestMediatorThreePhaseIntegration:
                 return 'Mock response'
 
         mediator = Mediator([MockBackend()])
+        from tests.test_authority_dependency_pipeline import _source_record, _local_sources, _CONTEXT
+        _local_sources(monkeypatch, mediator, [_source_record('matching-local-rule', 'notice')])
         complaint_text = (
             "My employer fired me on January 20, 2026 after I complained about discrimination. "
             "I have emails and a termination letter, and I lost wages."
         )
 
-        result = mediator.start_three_phase_process(complaint_text)
+        result = mediator.start_three_phase_process(complaint_text + _CONTEXT)
         intake_case_file = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file')
 
         assert result['intake_case_file'] == intake_case_file
@@ -1194,7 +1196,7 @@ class TestMediatorThreePhaseIntegration:
         assert status['alignment_promotion_drift_summary']['pending_conversion_count'] == 2
         assert status['alignment_promotion_drift_summary']['drift_flag'] is True
 
-    def test_advance_to_evidence_phase_builds_claim_support_packets(self):
+    def test_advance_to_evidence_phase_builds_claim_support_packets(self, monkeypatch):
         """Evidence phase initialization should normalize claim-support validation into packets."""
         from mediator.mediator import Mediator
         from unittest.mock import Mock
@@ -1206,8 +1208,10 @@ class TestMediatorThreePhaseIntegration:
                 return 'Mock response'
 
         mediator = Mediator([MockBackend()])
+        from tests.test_authority_dependency_pipeline import _source_record, _local_sources, _CONTEXT
+        _local_sources(monkeypatch, mediator, [_source_record('handoff-local-rule', 'notice')])
         mediator.start_three_phase_process(
-            "I was fired after I complained about discrimination and I have a termination letter."
+            "I was fired after I complained about discrimination and I have a termination letter." + _CONTEXT
         )
         mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
         mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'denoising_converged', True)
@@ -1830,6 +1834,9 @@ class TestMediatorThreePhaseIntegration:
             'document_artifact',
             'legal_authority',
         ]
+        assert result['alignment_evidence_tasks'][0]['temporal_next_actions'][0]['next_action']
+        assert result['alignment_evidence_tasks'][0]['temporal_next_actions'][0]['affected_rule']['profile_id'] == 'retaliation_temporal_profile_v1'
+        assert result['alignment_evidence_tasks'][0]['temporal_next_actions'][0]['temporal_missingness_kind'] == 'temporal_gap'
         assert 'temporal_proof_bundle_id' in result['alignment_evidence_tasks'][0]
         assert any(
             'Establish chronology:' in item
@@ -1851,9 +1858,15 @@ class TestMediatorThreePhaseIntegration:
                 'Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.': 1,
             },
             'temporal_resolution_status_counts': {'awaiting_testimony': 1},
+            'temporal_next_action_count': 1,
+            'temporal_follow_up_target_counts': {'clarification': 1},
+            'temporal_question_objective_counts': {'anchor_capture': 1},
+            'temporal_proof_criticality_counts': {'medium': 1},
         }
         assert status['claim_support_packet_summary']['temporal_gap_task_count'] == 1
         assert status['claim_support_packet_summary']['temporal_gap_targeted_task_count'] == 1
+        assert status['claim_support_packet_summary']['temporal_next_action_count'] == 1
+        assert status['claim_support_packet_summary']['temporal_question_objective_counts'] == {'anchor_capture': 1}
         assert status['claim_support_packet_summary']['temporal_rule_status_counts'] == {'partial': 1}
         assert status['claim_support_packet_summary']['temporal_rule_blocking_reason_counts'] == {
             'Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.': 1,
@@ -2932,7 +2945,7 @@ class TestMediatorThreePhaseIntegration:
         assert calls[0]['learned_support_kind'] == 'testimony'
         assert calls[0]['suggested_support_kind'] == 'evidence'
 
-    def test_process_evidence_and_legal_denoising_include_confirmed_intake_handoff(self):
+    def test_process_evidence_and_legal_denoising_include_confirmed_intake_handoff(self, monkeypatch):
         """Evidence and formalization workflow payloads should preserve the confirmed intake handoff."""
         from mediator.mediator import Mediator
 
@@ -2943,8 +2956,10 @@ class TestMediatorThreePhaseIntegration:
                 return 'Mock response'
 
         mediator = Mediator([MockBackend()])
+        from tests.test_authority_dependency_pipeline import _source_record, _local_sources, _CONTEXT
+        _local_sources(monkeypatch, mediator, [_source_record('handoff-local-rule', 'notice')])
         mediator.start_three_phase_process(
-            'I was fired after I complained about discrimination and I have emails and a termination letter.'
+            'I was fired after I complained about discrimination and I have emails and a termination letter.' + _CONTEXT
         )
         mediator.confirm_intake_summary('summary reviewed with complainant')
         mediator.phase_manager.update_phase_data(ComplaintPhase.INTAKE, 'remaining_gaps', 0)
@@ -3392,7 +3407,10 @@ class TestMediatorThreePhaseIntegration:
 
         mediator = Mediator([MockBackend()])
 
+        selector_calls = []
+
         def selector(candidates, max_questions=10):
+            selector_calls.append([candidate.get('type') for candidate in candidates])
             evidence_first = [candidate for candidate in candidates if candidate.get('type') == 'evidence']
             remainder = [candidate for candidate in candidates if candidate.get('type') != 'evidence']
             return (evidence_first + remainder)[:max_questions]
@@ -3404,8 +3422,10 @@ class TestMediatorThreePhaseIntegration:
 
         assert result['initial_questions']
         assert result['initial_questions'][0]['type'] == 'evidence'
+        assert len(selector_calls) == 1
+        assert 'legal_context' in selector_calls[0]
 
-    def test_default_selector_attaches_reasoning_scores_to_selected_questions(self):
+    def test_default_selector_attaches_reasoning_scores_to_selected_questions(self, monkeypatch):
         """Default mediator selection should annotate chosen intake questions with reasoning signals."""
         from mediator.mediator import Mediator
 
@@ -3416,8 +3436,10 @@ class TestMediatorThreePhaseIntegration:
                 return 'Mock response'
 
         mediator = Mediator([MockBackend()])
+        from tests.test_authority_dependency_pipeline import _source_record, _local_sources, _CONTEXT
+        _local_sources(monkeypatch, mediator, [_source_record('matching-local-rule', 'notice')])
         result = mediator.start_three_phase_process(
-            "My employer discriminated against me because of my race."
+            "My employer discriminated against me because of my race." + _CONTEXT
         )
 
         assert result['initial_questions']
@@ -3461,6 +3483,15 @@ class TestMediatorThreePhaseIntegration:
             "proof_leads": [],
         }
 
+        # This ranking fixture has explicit user-provided legal context;
+        # otherwise the current intake correctly asks for it first.
+        from complaint_phases.intake_case_file import apply_explicit_legal_context
+        from integrations.ipfs_datasets.legal import intake_legal_selection
+        intake_case_file = apply_explicit_legal_context(
+            intake_case_file, jurisdiction="federal", applicable_law_date="2024-06-01"
+        )
+        selection = intake_legal_selection(intake_case_file["legal_context"], intake_case_file["candidate_claims"])
+        assert selection["ready_to_select"] is True and selection["questions"] == []
         questions = mediator.denoiser.generate_questions(kg, dg, max_questions=5, intake_case_file=intake_case_file)
 
         assert questions
@@ -3468,7 +3499,7 @@ class TestMediatorThreePhaseIntegration:
         assert questions[0]['selector_signals']['candidate_source'] == 'dependency_graph_contradiction'
         assert 'matcher_missing_requirement_count' in questions[0]['selector_signals']
 
-    def test_default_selector_marks_direct_legal_target_match_for_missing_element_question(self):
+    def test_default_selector_marks_direct_legal_target_match_for_missing_element_question(self, monkeypatch):
         """A question that targets an unresolved legal element should carry a direct-match selector signal."""
         from mediator.mediator import Mediator
 
@@ -3479,8 +3510,10 @@ class TestMediatorThreePhaseIntegration:
                 return 'Mock response'
 
         mediator = Mediator([MockBackend()])
+        from tests.test_authority_dependency_pipeline import _source_record, _local_sources, _CONTEXT
+        _local_sources(monkeypatch, mediator, [_source_record('matching-local-rule', 'notice')])
         result = mediator.start_three_phase_process(
-            "My employer discriminated against me."
+            "My employer discriminated against me." + _CONTEXT
         )
 
         matching_summary = result['intake_matching_summary']
@@ -3922,7 +3955,559 @@ class TestMediatorThreePhaseIntegration:
         assert candidates[0]['question'].startswith('What exhibit-ready documents')
         assert 'fix the response timeline' in candidates[0]['question']
         assert 'date, sender or source, label or subject line, and the fact the document proves' in candidates[0]['question']
-    
+
+    # ------------------------------------------------------------------
+    # Batch 5: Support lane labels (support lane unification)
+    # ------------------------------------------------------------------
+
+    def test_support_lane_label_testimony_only_when_only_testimony_traces(self):
+        """Packet element with only testimony support should get testimony_only label."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [
+                    {
+                        'claim_type': 'retaliation',
+                        'required_elements': [
+                            {
+                                'element_id': 'adverse_action',
+                                'label': 'Adverse action',
+                                'blocking': True,
+                                'evidence_classes': ['testimony'],
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+        mediator.get_claim_support_validation = Mock(return_value={
+            'claims': {
+                'retaliation': {
+                    'elements': [
+                        {
+                            'element_id': 'adverse_action',
+                            'element_text': 'Adverse action taken',
+                            'validation_status': 'supported',
+                            'recommended_action': '',
+                            'missing_support_kinds': [],
+                            'contradiction_candidate_count': 0,
+                            'proof_diagnostics': {},
+                            'gap_context': {
+                                'support_facts': [],
+                                'support_traces': [
+                                    {
+                                        'source_ref': 'testimony:witness-1',
+                                        'support_ref': 'testimony:witness-1',
+                                        'support_label': 'Witness account',
+                                        'support_kind': 'testimony',
+                                        'source_family': 'testimony',
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        })
+        mediator.get_claim_support_gaps = Mock(return_value={'claims': {}})
+
+        packets = mediator._build_claim_support_packets(user_id='test-user')
+        element = packets['retaliation']['elements'][0]
+
+        assert element['support_lane_label'] == 'testimony_only'
+
+    def test_support_lane_label_corroborated_when_testimony_and_artifact_present(self):
+        """Element supported by both testimony and documentary evidence should be corroborated."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [
+                    {
+                        'claim_type': 'employment_discrimination',
+                        'required_elements': [
+                            {
+                                'element_id': 'adverse_action',
+                                'label': 'Adverse action',
+                                'blocking': True,
+                                'evidence_classes': ['email', 'testimony'],
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+        mediator.get_claim_support_validation = Mock(return_value={
+            'claims': {
+                'employment_discrimination': {
+                    'elements': [
+                        {
+                            'element_id': 'adverse_action',
+                            'element_text': 'Adverse action taken',
+                            'validation_status': 'supported',
+                            'recommended_action': '',
+                            'missing_support_kinds': [],
+                            'contradiction_candidate_count': 0,
+                            'proof_diagnostics': {},
+                            'gap_context': {
+                                'support_facts': [],
+                                'support_traces': [
+                                    {
+                                        'source_ref': 'artifact:termination-letter',
+                                        'support_ref': 'artifact:termination-letter',
+                                        'support_label': 'Termination letter',
+                                        'support_kind': 'evidence',
+                                        'source_family': 'evidence',
+                                    },
+                                    {
+                                        'source_ref': 'testimony:witness-2',
+                                        'support_ref': 'testimony:witness-2',
+                                        'support_label': 'Manager testimony',
+                                        'support_kind': 'testimony',
+                                        'source_family': 'testimony',
+                                    },
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        })
+        mediator.get_claim_support_gaps = Mock(return_value={'claims': {}})
+
+        packets = mediator._build_claim_support_packets(user_id='test-user')
+        element = packets['employment_discrimination']['elements'][0]
+
+        assert element['support_lane_label'] == 'corroborated'
+
+    def test_support_lane_label_unsupported_when_no_support(self):
+        """Element with no support should get unsupported label."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [
+                    {
+                        'claim_type': 'retaliation',
+                        'required_elements': [
+                            {
+                                'element_id': 'causal_link',
+                                'label': 'Causal link',
+                                'blocking': True,
+                                'evidence_classes': ['email'],
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+        mediator.get_claim_support_validation = Mock(return_value={'claims': {}})
+        mediator.get_claim_support_gaps = Mock(return_value={
+            'claims': {
+                'retaliation': {
+                    'unresolved_elements': [
+                        {
+                            'element_id': 'causal_link',
+                            'element_text': 'Causal link between activity and action',
+                            'recommended_action': 'collect_documentary_support',
+                            'missing_support_kinds': ['evidence'],
+                        }
+                    ]
+                }
+            }
+        })
+
+        packets = mediator._build_claim_support_packets(user_id='test-user')
+        element = packets['retaliation']['elements'][0]
+
+        assert element['support_lane_label'] == 'unsupported'
+
+    def test_support_lane_label_contradicted_when_contradicted_status(self):
+        """Contradicted element should carry contradicted lane label."""
+        from mediator.mediator import Mediator
+
+        mediator = Mediator.__new__(Mediator)
+        fake_element = {
+            'support_status': 'contradicted',
+            'supporting_testimony_ids': ['t1'],
+            'supporting_artifact_ids': ['a1'],
+            'supporting_authority_ids': [],
+            'canonical_fact_ids': [],
+        }
+        assert mediator._derive_support_lane_label(fake_element) == 'contradicted'
+
+    def test_support_lane_label_uncorroborated_when_partially_supported_single_family(self):
+        """Partially supported element with only one source family should get uncorroborated label."""
+        from mediator.mediator import Mediator
+
+        mediator = Mediator.__new__(Mediator)
+        fake_element = {
+            'support_status': 'partially_supported',
+            'supporting_testimony_ids': ['t1'],
+            'supporting_artifact_ids': ['t1'],  # same ref included as artifact_ids (pre-existing behaviour)
+            'supporting_authority_ids': [],
+            'canonical_fact_ids': [],
+        }
+        assert mediator._derive_support_lane_label(fake_element) == 'uncorroborated'
+
+    def test_support_lane_label_authority_only(self):
+        """Element backed only by authority sources should get authority_only label."""
+        from mediator.mediator import Mediator
+
+        mediator = Mediator.__new__(Mediator)
+        fake_element = {
+            'support_status': 'supported',
+            'supporting_testimony_ids': [],
+            'supporting_artifact_ids': [],
+            'supporting_authority_ids': ['auth:Title-VII'],
+            'canonical_fact_ids': [],
+        }
+        assert mediator._derive_support_lane_label(fake_element) == 'authority_only'
+
+    def test_support_lane_label_exposed_in_alignment_summary(self):
+        """Alignment summary shared elements should carry support_lane_label."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        intake_case_file = {
+            'candidate_claims': [
+                {
+                    'claim_type': 'retaliation',
+                    'required_elements': [
+                        {
+                            'element_id': 'adverse_action',
+                            'label': 'Adverse action',
+                            'blocking': True,
+                            'evidence_classes': ['testimony'],
+                        }
+                    ],
+                }
+            ],
+            'proof_leads': [],
+            'open_items': [],
+            'event_ledger': [],
+            'temporal_issue_registry': [],
+            'temporal_relation_registry': [],
+        }
+        claim_support_packets = {
+            'retaliation': {
+                'claim_type': 'retaliation',
+                'overall_status': 'supported',
+                'elements': [
+                    {
+                        'element_id': 'adverse_action',
+                        'element_text': 'Adverse action taken',
+                        'support_status': 'supported',
+                        'support_quality': 'draft_ready',
+                        'support_lane_label': 'testimony_only',
+                        'supporting_testimony_ids': ['t1'],
+                        'supporting_artifact_ids': [],
+                        'supporting_authority_ids': [],
+                        'canonical_fact_ids': [],
+                        'required_fact_bundle': [],
+                        'satisfied_fact_bundle': [],
+                        'missing_fact_bundle': [],
+                        'missing_support_kinds': [],
+                    }
+                ],
+            }
+        }
+        summary = mediator._summarize_intake_evidence_alignment(intake_case_file, claim_support_packets)
+        shared = summary['claims']['retaliation']['shared_elements']
+        assert shared, 'expected shared elements in alignment summary'
+        assert shared[0]['support_lane_label'] == 'testimony_only'
+
+    def test_alignment_summary_exposes_per_claim_lane_and_quality_counts(self):
+        """Per-claim entry in alignment summary should include support_lane_label_counts and support_quality_counts."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        intake_case_file = {
+            'candidate_claims': [
+                {
+                    'claim_type': 'retaliation',
+                    'required_elements': [
+                        {
+                            'element_id': 'adverse_action',
+                            'label': 'Adverse action',
+                            'blocking': True,
+                            'evidence_classes': ['testimony'],
+                        },
+                        {
+                            'element_id': 'protected_activity',
+                            'label': 'Protected activity',
+                            'blocking': True,
+                            'evidence_classes': ['testimony'],
+                        },
+                    ],
+                }
+            ],
+            'proof_leads': [],
+            'open_items': [],
+            'event_ledger': [],
+            'temporal_issue_registry': [],
+            'temporal_relation_registry': [],
+        }
+        claim_support_packets = {
+            'retaliation': {
+                'claim_type': 'retaliation',
+                'overall_status': 'partially_supported',
+                'elements': [
+                    {
+                        'element_id': 'adverse_action',
+                        'element_text': 'Adverse action taken',
+                        'support_status': 'supported',
+                        'support_quality': 'credible',
+                        'support_lane_label': 'testimony_only',
+                        'supporting_testimony_ids': ['t1'],
+                        'supporting_artifact_ids': [],
+                        'supporting_authority_ids': [],
+                        'canonical_fact_ids': [],
+                        'required_fact_bundle': [],
+                        'satisfied_fact_bundle': [],
+                        'missing_fact_bundle': [],
+                        'missing_support_kinds': [],
+                    },
+                    {
+                        'element_id': 'protected_activity',
+                        'element_text': 'Protected activity',
+                        'support_status': 'supported',
+                        'support_quality': 'draft_ready',
+                        'support_lane_label': 'corroborated',
+                        'supporting_testimony_ids': ['t2'],
+                        'supporting_artifact_ids': ['a1'],
+                        'supporting_authority_ids': [],
+                        'canonical_fact_ids': [],
+                        'required_fact_bundle': [],
+                        'satisfied_fact_bundle': [],
+                        'missing_fact_bundle': [],
+                        'missing_support_kinds': [],
+                    },
+                ],
+            }
+        }
+        summary = mediator._summarize_intake_evidence_alignment(intake_case_file, claim_support_packets)
+        claim_entry = summary['claims']['retaliation']
+        assert claim_entry['support_lane_label_counts'] == {
+            'testimony_only': 1,
+            'corroborated': 1,
+        }
+        assert claim_entry['support_quality_counts'] == {
+            'credible': 1,
+            'draft_ready': 1,
+        }
+
+    # ------------------------------------------------------------------
+    # Batch 6: Proof-readiness gates (evidence_readiness)
+    # ------------------------------------------------------------------
+
+    def test_get_evidence_readiness_returns_no_claim_support_data_when_no_packets(self):
+        """get_evidence_readiness should return a 'no_claim_support_data' blocker when no packets exist."""
+        from complaint_phases.phase_manager import PhaseManager
+
+        pm = PhaseManager()
+        readiness = pm.get_evidence_readiness()
+
+        assert readiness['ready'] is False
+        assert 'no_claim_support_data' in readiness['formalization_blockers']
+        assert readiness['proof_readiness_score'] == 0.0
+        assert readiness['blocker_count'] >= 1
+
+    def test_get_evidence_readiness_exposes_proof_readiness_score(self):
+        """get_evidence_readiness should surface proof_readiness_score, credible_support_ratio,
+        and draft_ready_element_ratio from the packet summary."""
+        from mediator.mediator import Mediator
+        from unittest.mock import Mock
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        mediator.phase_manager.update_phase_data(
+            ComplaintPhase.INTAKE,
+            'intake_case_file',
+            {
+                'candidate_claims': [
+                    {
+                        'claim_type': 'employment_discrimination',
+                        'required_elements': [
+                            {
+                                'element_id': 'adverse_action',
+                                'label': 'Adverse action',
+                                'blocking': True,
+                                'evidence_classes': ['email'],
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+        mediator.get_claim_support_validation = Mock(return_value={
+            'claims': {
+                'employment_discrimination': {
+                    'elements': [
+                        {
+                            'element_id': 'adverse_action',
+                            'element_text': 'Adverse action',
+                            'validation_status': 'supported',
+                            'recommended_action': '',
+                            'missing_support_kinds': [],
+                            'contradiction_candidate_count': 0,
+                            'proof_diagnostics': {},
+                            'gap_context': {
+                                'support_facts': [
+                                    {
+                                        'fact_id': 'fact-aa-1',
+                                        'text': 'Employee was terminated.',
+                                        'support_kind': 'evidence',
+                                        'source_family': 'evidence',
+                                    }
+                                ],
+                                'support_traces': [
+                                    {
+                                        'source_ref': 'artifact:termination-email',
+                                        'support_ref': 'artifact:termination-email',
+                                        'support_label': 'Termination email',
+                                        'support_kind': 'evidence',
+                                        'source_family': 'evidence',
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                }
+            }
+        })
+        mediator.get_claim_support_gaps = Mock(return_value={'claims': {}})
+
+        # Build packets and store them in the evidence phase
+        packets = mediator._build_claim_support_packets(user_id='test-user')
+        mediator.phase_manager.current_phase = ComplaintPhase.EVIDENCE
+        mediator.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packets', packets)
+        mediator.phase_manager.update_phase_data(ComplaintPhase.EVIDENCE, 'alignment_evidence_tasks', [])
+
+        readiness = mediator.phase_manager.get_evidence_readiness()
+
+        assert 'proof_readiness_score' in readiness
+        assert 'credible_support_ratio' in readiness
+        assert 'draft_ready_element_ratio' in readiness
+        assert 'formalization_blockers' in readiness
+        assert 'blocker_count' in readiness
+        assert isinstance(readiness['proof_readiness_score'], float)
+        assert isinstance(readiness['formalization_blockers'], list)
+
+    def test_get_evidence_readiness_flags_below_threshold_blocker(self):
+        """Proof-readiness score below threshold should add below_proof_readiness_threshold blocker."""
+        from complaint_phases.phase_manager import PhaseManager, ComplaintPhase
+
+        pm = PhaseManager()
+        # Manually inject a summary result with a low score via raw evidence data
+        pm.phase_data[ComplaintPhase.EVIDENCE]['claim_support_packets'] = {
+            'retaliation': {
+                'claim_type': 'retaliation',
+                'overall_status': 'missing',
+                'elements': [
+                    {
+                        'element_id': 'adverse_action',
+                        'element_text': 'Adverse action',
+                        'support_status': 'unsupported',
+                        'support_quality': 'unsupported',
+                        'canonical_fact_ids': [],
+                        'supporting_artifact_ids': [],
+                        'supporting_testimony_ids': [],
+                        'supporting_authority_ids': [],
+                        'contrary_fact_ids': [],
+                        'missing_support_kinds': [],
+                        'preferred_evidence_classes': [],
+                        'required_fact_bundle': [],
+                        'satisfied_fact_bundle': [],
+                        'missing_fact_bundle': ['what adverse action occurred'],
+                        'parse_quality_flags': [],
+                        'recommended_next_step': '',
+                        'contradiction_count': 0,
+                        'temporal_rule_profile_id': '',
+                        'temporal_rule_status': '',
+                        'temporal_rule_blocking_reasons': [],
+                        'temporal_rule_follow_ups': [],
+                    }
+                ],
+            }
+        }
+
+        readiness = pm.get_evidence_readiness()
+
+        assert readiness['ready'] is False
+        assert 'below_proof_readiness_threshold' in readiness['formalization_blockers']
+        assert readiness['proof_readiness_score'] < pm._PROOF_READINESS_FORMALIZATION_THRESHOLD
+
+    def test_evidence_readiness_exposed_in_three_phase_status(self):
+        """get_three_phase_status should include an evidence_readiness key with formalization_blockers."""
+        from mediator.mediator import Mediator
+
+        class MockBackend:
+            id = 'mock_backend'
+
+            def __call__(self, prompt):
+                return 'Mock response'
+
+        mediator = Mediator([MockBackend()])
+        status = mediator.get_three_phase_status()
+
+        assert 'evidence_readiness' in status
+        readiness = status['evidence_readiness']
+        assert 'proof_readiness_score' in readiness
+        assert 'formalization_blockers' in readiness
+        assert 'blocker_count' in readiness
+        assert 'credible_support_ratio' in readiness
+        assert 'draft_ready_element_ratio' in readiness
+
     def test_graph_serialization(self):
         """Test that graphs can be serialized for storage."""
         kg_builder = KnowledgeGraphBuilder()

@@ -1,0 +1,37 @@
+{
+  "skill_asset_id": "complaint-mike-llm-patch",
+  "version": "1.0.0",
+  "name": "Mike LLM router compatibility stamp",
+  "description": "Compatibility-only stamp on each Mike handoff payload. It records workspace router ownership and does not intercept Mike LLM calls. Grounded drafting goes through the complaint-generator MCP connector tools. Integrated into build_mike_handoff() and called automatically on every handoff construction.",
+  "capability": "mike_llm_router_patch",
+  "adapter": "integrations/mike/llm_patch.py",
+  "entry_point": "apply_mike_llm_router_patch",
+  "required_for_grounding_modes": ["legal_corpus_only", "strict_legal_containment"],
+  "patch_version": "mike-llm-router-patch-v1",
+  "enforcement_boundary": "workspace_mcp_server",
+  "generation_adapter": "integrations.ipfs_datasets.llm.generate_text_with_metadata",
+  "router_owned_by": "complaint_generator",
+  "mike_role": "editing_surface_only",
+  "policy_fields_enforced": [
+    "router_policy.centralized_policy.*",
+    "router_policy.narrow_adapter_boundary.*",
+    "non_negotiable_constraints.must_route_generation_through_workspace_llm_router"
+  ],
+  "inputs": {
+    "handoff_payload": {
+      "type": "object",
+      "description": "The Mike handoff payload dict to be patched in-place."
+    }
+  },
+  "outputs": {
+    "handoff_payload": {
+      "type": "object",
+      "description": "The same payload dict after mutation, with router_policy and non_negotiable_constraints set."
+    }
+  },
+  "editor_integration": {
+    "panel": "generation_status",
+    "displays": ["llm_router_available", "patched_at"],
+    "block_if_patch_failed": false
+  }
+}

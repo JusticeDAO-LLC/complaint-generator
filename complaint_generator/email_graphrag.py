@@ -3,8 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ipfs_datasets_py.processors.legal_data import email_corpus as _email_corpus
-from ipfs_datasets_py.processors.multimedia.attachment_text_extractor import extract_attachment_text
+from integrations.ipfs_datasets.legal_data import legal_module
+from integrations.ipfs_datasets.multimedia import extract_attachment_text
+
+_email_corpus = legal_module("email_corpus")
 
 KnowledgeGraphBuilder = _email_corpus.KnowledgeGraphBuilder
 

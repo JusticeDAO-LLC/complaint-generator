@@ -420,6 +420,7 @@
                 <div id="traceEvidenceTriage"></div>
                 <div id="traceEvidenceQuestionTargets"></div>
                 <div id="traceIntakeConfirmation"></div>
+                <div id="traceChronologyBlockerSummary"></div>
                 <div id="traceTemporalHandoff"></div>
                 <div id="traceEvidenceLinks" class="inline-link-row"></div>
             </section>
@@ -1203,6 +1204,53 @@
             `;
         }
 
+        function renderChronologyBlockerSummary(chronologyBlockerSummary, dashboardUrl) {
+            if (!chronologyBlockerSummary || typeof chronologyBlockerSummary !== 'object') {
+                return '';
+            }
+            const blocked = Boolean(chronologyBlockerSummary.chronology_blocked);
+            const summary = String(chronologyBlockerSummary.summary || '').trim();
+            const failedCount = Number(chronologyBlockerSummary.temporal_rule_profile_failed_element_count || 0);
+            const partialCount = Number(chronologyBlockerSummary.temporal_rule_profile_partial_element_count || 0);
+            const unresolvedCount = Number(chronologyBlockerSummary.unresolved_temporal_issue_count || 0);
+            const gapTaskCount = Number(chronologyBlockerSummary.temporal_gap_task_count || 0);
+            const proofScore = Number(chronologyBlockerSummary.proof_readiness_score || 0);
+            const failedRuleFrameIds = Array.isArray(chronologyBlockerSummary.failed_rule_frame_ids)
+                ? chronologyBlockerSummary.failed_rule_frame_ids.filter((id) => String(id || '').trim())
+                : [];
+
+            if (!blocked && !unresolvedCount && !gapTaskCount && !failedCount && !partialCount) {
+                return '';
+            }
+
+            const statusLabel = blocked ? 'blocked' : 'pending';
+            const chips = [
+                failedCount > 0
+                    ? `<span class="chip">Failed rule elements: ${escapeHtml(String(failedCount))}</span>` : '',
+                partialCount > 0
+                    ? `<span class="chip">Partial rule elements: ${escapeHtml(String(partialCount))}</span>` : '',
+                unresolvedCount > 0
+                    ? `<span class="chip">Unresolved issues: ${escapeHtml(String(unresolvedCount))}</span>` : '',
+                gapTaskCount > 0
+                    ? `<span class="chip">Chronology tasks: ${escapeHtml(String(gapTaskCount))}</span>` : '',
+                `<span class="chip">Proof readiness: ${escapeHtml(proofScore.toFixed(2))}</span>`,
+                failedRuleFrameIds.length
+                    ? `<span class="chip">Failed frames: ${escapeHtml(failedRuleFrameIds.join(', '))}</span>` : '',
+            ].filter(Boolean);
+
+            const claimSupportUrl = String(dashboardUrl || '/claim-support-review').trim();
+            return `
+                <div class="intake-handoff-card" data-status="${escapeHtml(statusLabel)}">
+                    <div><strong>Chronology Blocker Summary</strong></div>
+                    <div class="chip-row" style="margin-top: 10px;">${chips.join('')}</div>
+                    ${summary ? `<div style="margin-top: 8px; font-size: 13px;">${escapeHtml(summary)}</div>` : ''}
+                    <div class="inline-link-row" style="margin-top: 10px;">
+                        <a class="inline-link" href="${escapeHtml(claimSupportUrl)}">${blocked ? 'Review chronology blockers' : 'Open chronology review'}</a>
+                    </div>
+                </div>
+            `;
+        }
+
         function renderClaimSupportTemporalHandoff(handoff, dashboardUrl) {
             const normalized = normalizeClaimSupportTemporalHandoff(handoff);
             if (!Object.keys(normalized).length) {
@@ -1845,6 +1893,7 @@
                 ? intakeCaseSummary.temporal_issue_registry_summary
                 : {};
             const claimSupportPacketSummary = intakeCaseSummary.claim_support_packet_summary && typeof intakeCaseSummary.claim_support_packet_summary === 'object' ? intakeCaseSummary.claim_support_packet_summary : {};
+            const intakeChronologyReadiness = intakeCaseSummary.intake_chronology_readiness && typeof intakeCaseSummary.intake_chronology_readiness === 'object' ? intakeCaseSummary.intake_chronology_readiness : {};
             const questionGoalCounts = questionCandidateSummary.question_goal_counts && typeof questionCandidateSummary.question_goal_counts === 'object' ? questionCandidateSummary.question_goal_counts : {};
             const questionSectionCounts = questionCandidateSummary.phase1_section_counts && typeof questionCandidateSummary.phase1_section_counts === 'object' ? questionCandidateSummary.phase1_section_counts : {};
             const questionBlockingCounts = questionCandidateSummary.blocking_level_counts && typeof questionCandidateSummary.blocking_level_counts === 'object' ? questionCandidateSummary.blocking_level_counts : {};
@@ -2109,6 +2158,24 @@
                     Array.isArray(temporalIssueRegistrySummary.issue_ids) && temporalIssueRegistrySummary.issue_ids.length
                         ? `Chronology history issue ids: ${temporalIssueRegistrySummary.issue_ids.join(', ')}`
                         : '',
+                    intakeChronologyReadiness.event_count != null
+                        ? `Chronology events: ${Number(intakeChronologyReadiness.event_count || 0)}`
+                        : '',
+                    intakeChronologyReadiness.anchored_event_count != null
+                        ? `Chronology anchored: ${Number(intakeChronologyReadiness.anchored_event_count || 0)}`
+                        : '',
+                    intakeChronologyReadiness.anchor_coverage_ratio != null
+                        ? `Chronology anchor coverage: ${Number(intakeChronologyReadiness.anchor_coverage_ratio || 0).toFixed(2)}`
+                        : '',
+                    intakeChronologyReadiness.issue_count != null
+                        ? `Chronology readiness issues: ${Number(intakeChronologyReadiness.issue_count || 0)}`
+                        : '',
+                    intakeChronologyReadiness.blocking_issue_count != null && intakeChronologyReadiness.blocking_issue_count > 0
+                        ? `Chronology blocking issues: ${Number(intakeChronologyReadiness.blocking_issue_count || 0)}`
+                        : '',
+                    intakeChronologyReadiness.open_issue_count != null && intakeChronologyReadiness.open_issue_count > 0
+                        ? `Chronology open issues: ${Number(intakeChronologyReadiness.open_issue_count || 0)}`
+                        : '',
                     claimSupportPacketSummary.claim_count != null ? `Packet claims: ${claimSupportPacketSummary.claim_count}` : '',
                     claimSupportPacketSummary.element_count != null ? `Packet elements: ${claimSupportPacketSummary.element_count}` : '',
                     claimSupportPacketSummary.status_counts && typeof claimSupportPacketSummary.status_counts === 'object'
@@ -2135,6 +2202,14 @@
                     claimSupportPacketSummary.proof_readiness_score != null
                         ? `Packet proof readiness: ${Number(claimSupportPacketSummary.proof_readiness_score || 0).toFixed(2)}`
                         : '',
+                    (() => {
+                        const laneLine = formatSummaryCountLine(normalizeSummaryCountMap(claimSupportPacketSummary.support_lane_label_counts));
+                        return laneLine ? `Packet support lanes: ${laneLine}` : '';
+                    })(),
+                    (() => {
+                        const qualityLine = formatSummaryCountLine(normalizeSummaryCountMap(claimSupportPacketSummary.support_quality_counts));
+                        return qualityLine ? `Packet support quality: ${qualityLine}` : '';
+                    })(),
                     claimSupportPacketSummary.claim_support_unresolved_without_review_path_count != null
                         ? `Packet unresolved without path: ${Number(claimSupportPacketSummary.claim_support_unresolved_without_review_path_count || 0)}`
                         : '',
@@ -2300,6 +2375,61 @@
             );
             document.getElementById('traceTemporalHandoff').innerHTML = renderClaimSupportTemporalHandoff(
                 claimSupportTemporalHandoff,
+                traceDashboardUrl,
+            );
+
+            // T5: Derive chronology_blocker_summary from trace data if not present as an
+            // explicit field.  The document builder stores it in draft.source_context but
+            // optimization trace payloads carry the same underlying data through
+            // claimSupportPacketSummary and claimReasoningReview.
+            const traceChronologyBlocker = (trace.chronology_blocker_summary && typeof trace.chronology_blocker_summary === 'object')
+                ? trace.chronology_blocker_summary
+                : (() => {
+                    const unresolvedCount = Number(claimSupportPacketSummary.claim_support_unresolved_temporal_issue_count || 0);
+                    const gapTaskCount = Number(claimSupportPacketSummary.temporal_gap_task_count || 0);
+                    const proofScore = Number(claimSupportPacketSummary.proof_readiness_score || 0);
+                    // Tally incomplete rule profile elements across all claims in claimReasoningReview.
+                    let failedElementCount = 0;
+                    let partialElementCount = 0;
+                    const failedFrameIds = [];
+                    if (claimReasoningReview && typeof claimReasoningReview === 'object') {
+                        for (const claimKey of Object.keys(claimReasoningReview)) {
+                            const cr = claimReasoningReview[claimKey];
+                            if (!cr || typeof cr !== 'object') { continue; }
+                            failedElementCount += Number(cr.temporal_rule_profile_failed_element_count || 0);
+                            partialElementCount += Number(cr.temporal_rule_profile_partial_element_count || 0);
+                            if (cr.proof_bundles && typeof cr.proof_bundles === 'object') {
+                                for (const bundle of Object.values(cr.proof_bundles)) {
+                                    if (!bundle || typeof bundle !== 'object') { continue; }
+                                    const st = String(bundle.status || '').trim();
+                                    const rfId = String(bundle.rule_frame_id || '').trim();
+                                    if ((st === 'failed' || st === 'partial') && rfId && !failedFrameIds.includes(rfId)) {
+                                        failedFrameIds.push(rfId);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    const blocked = Boolean(unresolvedCount > 0 || gapTaskCount > 0 || failedElementCount > 0 || partialElementCount > 0);
+                    if (!blocked) { return null; }
+                    const parts = [];
+                    if (gapTaskCount > 0) { parts.push(`${gapTaskCount} pending chronology gap ${gapTaskCount === 1 ? 'task' : 'tasks'}`); }
+                    if (unresolvedCount > 0) { parts.push(`${unresolvedCount} unresolved temporal ${unresolvedCount === 1 ? 'issue' : 'issues'}`); }
+                    if (failedElementCount > 0) { parts.push(`${failedElementCount} ${failedElementCount === 1 ? 'element' : 'elements'} with failed temporal rule profile`); }
+                    if (partialElementCount > 0 && failedElementCount <= 0) { parts.push(`${partialElementCount} ${partialElementCount === 1 ? 'element' : 'elements'} with partial temporal rule profile`); }
+                    return {
+                        chronology_blocked: blocked,
+                        proof_readiness_score: proofScore,
+                        temporal_gap_task_count: gapTaskCount,
+                        unresolved_temporal_issue_count: unresolvedCount,
+                        temporal_rule_profile_failed_element_count: failedElementCount,
+                        temporal_rule_profile_partial_element_count: partialElementCount,
+                        failed_rule_frame_ids: failedFrameIds,
+                        summary: parts.length ? `Chronology blockers remain: ${parts.join('; ')}.` : '',
+                    };
+                })();
+            document.getElementById('traceChronologyBlockerSummary').innerHTML = renderChronologyBlockerSummary(
+                traceChronologyBlocker,
                 traceDashboardUrl,
             );
 

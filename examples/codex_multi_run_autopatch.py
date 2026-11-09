@@ -965,12 +965,19 @@ def _atomic_write_json(path: str, payload: Dict[str, Any]) -> None:
 
 
 def _load_json_or_none(path: str) -> Optional[Dict[str, Any]]:
+    """Load an optional JSON object, returning ``None`` only when it is absent."""
+
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return data if isinstance(data, dict) else None
-    except Exception:
+    except FileNotFoundError:
         return None
+
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"Expected a JSON object in {path!r}, got {type(data).__name__}"
+        )
+    return data
 
 
 _STAGE_ORDER: Dict[str, int] = {

@@ -68,22 +68,23 @@ class LegalCorpusRAGHook:
         for record in records:
             if not isinstance(record, dict):
                 continue
+            # Do not reconstruct a corpus row from content alone: doing so loses
+            # URI/citation, passage hash scope and the source's temporal context.
+            payload = dict(record)
+            payload.setdefault('title', record.get('content', ''))
+            payload.setdefault('content', record.get('source_passage') or record.get('content', ''))
+            payload.setdefault('snippet', record.get('snippet') or '')
+            payload.setdefault('url', record.get('uri') or record.get('url', ''))
+            metadata = dict(record.get('metadata') or {}) if isinstance(record.get('metadata'), dict) else {}
+            metadata['corpus_provenance'] = {key: record[key] for key in (
+                'source_family','uri','citation','content_hash','content_hash_scope','corpus_id','corpus_version',
+                'cid','retrieved_at','source_passage','jurisdiction','jurisdiction_status','publication_date',
+                'effective_date','applicability','candidate_status','provenance_status') if key in record}
+            for key in ('type','source','complaint_type'):
+                if key in record: metadata[key] = record[key]
+            payload['metadata'] = metadata
             normalized_record = self.integration_adapter.normalize_record(
-                query=query,
-                source_type=source_type,
-                source_name=source_name,
-                record={
-                    'title': record.get('content', ''),
-                    'content': record.get('content', ''),
-                    'snippet': record.get('content', ''),
-                    'score': record.get('score', 0.0),
-                    'metadata': {
-                        'type': record.get('type'),
-                        'source': record.get('source'),
-                        'complaint_type': record.get('complaint_type'),
-                    },
-                },
-            )
+                query=query, source_type=source_type, source_name=source_name, record=payload)
             normalized.append({
                 'source_type': normalized_record.source_type,
                 'source_name': normalized_record.source_name,
@@ -446,6 +447,57 @@ class LegalCorpusRAGHook:
             query=query, complaint_type=complaint_type, results_count=len(results))
         
         return results
+
+    def lookup_bounded_authority_candidates(self, **kwargs: Any) -> Dict[str, Any]:
+        """Retrieve bounded authority candidates without stalling intake.
+
+        Optional backends that are missing, slow, or failing return a typed
+        envelope. Raw case facts are not logged. Discovery does not mark a
+        hit applicable.
+        """
+        contains_private_facts = kwargs.get('contains_private_facts', True) is not False
+        try:
+            from integrations.ipfs_datasets.legal import lookup_bounded_legal_corpus
+
+            envelope = lookup_bounded_legal_corpus(**kwargs)
+        except Exception as exc:
+            envelope = {
+                'status': 'error',
+                'source_family': str(kwargs.get('source_family') or ''),
+                'retrieval_mode': str(kwargs.get('retrieval_mode') or ''),
+                'capability': 'backend_error',
+                'error_code': 'backend_error',
+                'error_message': 'Legal corpus lookup failed.',
+                'results': [],
+                'result_count': 0,
+                'bounded': True,
+                'network_used': False,
+                'setup_invoked': False,
+                'applicability': 'unknown',
+                'selected_rule_applicability': 'unknown',
+            }
+        if not isinstance(envelope, dict):
+            envelope = {
+                'status': 'unavailable',
+                'capability': 'malformed_payload',
+                'error_code': 'malformed_payload',
+                'results': [],
+                'result_count': 0,
+                'applicability': 'unknown',
+            }
+        log_kwargs = {
+            'status': str(envelope.get('status') or ''),
+            'capability': str(envelope.get('capability') or ''),
+            'error_code': str(envelope.get('error_code') or ''),
+            'source_family': str(envelope.get('source_family') or ''),
+            'result_count': int(envelope.get('result_count') or 0),
+            'retrieval_mode': str(envelope.get('retrieval_mode') or ''),
+        }
+        if not contains_private_facts:
+            log_kwargs['query'] = str(kwargs.get('query') or '')
+        self.mediator.log('legal_corpus_bounded_lookup', **log_kwargs)
+        envelope['applicability'] = 'unknown'
+        return envelope
     
     def retrieve_relevant_laws(self, claims: List[str], complaint_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """

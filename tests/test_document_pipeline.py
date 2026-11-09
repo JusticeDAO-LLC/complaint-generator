@@ -14,10 +14,121 @@ from fastapi.testclient import TestClient
 
 from applications.review_api import create_review_api_app
 from applications.review_ui import create_review_surface_app
-from document_pipeline import DEFAULT_OUTPUT_DIR, FormalComplaintDocumentBuilder
+from document_pipeline import (
+    DEFAULT_OUTPUT_DIR,
+    FormalComplaintDocumentBuilder,
+    build_drafting_guardrails,
+    build_drafting_support_bundles,
+)
 
 
 pytestmark = pytest.mark.no_auto_network
+
+
+def test_build_drafting_support_bundles_maps_claim_packets_to_sections():
+    packets = {
+        "retaliation": {
+            "claim_type": "retaliation",
+            "elements": [
+                {
+                    "element_id": "causation",
+                    "element_text": "Causal connection",
+                    "support_status": "partially_supported",
+                    "support_quality": "credible",
+                    "support_lane_label": "partially_corroborated",
+                    "missing_support_report": {
+                        "missing_support_kinds": ["authority"],
+                        "missing_fact_bundle": ["decisionmaker knowledge"],
+                    },
+                    "bundle_manifest": {
+                        "entries": [
+                            {"id": "artifact:email", "entry_type": "evidence"},
+                            {"id": "authority:retaliation", "entry_type": "authority"},
+                        ],
+                    },
+                    "contradiction_report": {"contradiction_count": 1},
+                    "authority_treatment_summary": {"adverse_authority_link_count": 0},
+                    "authority_rule_candidate_summary": {"matched_claim_element_rule_count": 1},
+                    "temporal_rule_status": "partial",
+                }
+            ],
+        }
+    }
+
+    bundles = build_drafting_support_bundles(packets)
+    factual = bundles["sections"]["factual_allegations"]
+    claims = bundles["sections"]["claims_for_relief"]
+    jurisdiction = bundles["sections"]["jurisdiction_and_venue"]
+
+    assert bundles["available"] is True
+    assert factual["support_status"] == "partially_supported"
+    assert factual["source_refs"] == ["artifact:email", "authority:retaliation"]
+    assert factual["explicit_gaps"] == ["authority", "decisionmaker knowledge"]
+    assert claims["claim_elements"][0]["authority_rule_candidate_summary"]["matched_claim_element_rule_count"] == 1
+    assert claims["claim_elements"][0]["validation_summary"]["contradiction_count"] == 1
+    assert jurisdiction["explicit_gaps"] == ["Temporal rule status: partial"]
+
+
+def test_build_drafting_guardrails_flags_authority_and_proof_blockers():
+    packets = {
+        "retaliation": {
+            "claim_type": "retaliation",
+            "elements": [
+                {
+                    "element_id": "causation",
+                    "element_text": "Causal connection",
+                    "support_status": "partially_supported",
+                    "support_quality": "thin",
+                    "missing_support_report": {
+                        "missing_support_kinds": ["evidence"],
+                        "missing_fact_bundle": ["decisionmaker knowledge"],
+                    },
+                    "bundle_manifest": {
+                        "entries": [
+                            {"id": "artifact:email", "entry_type": "evidence"},
+                        ],
+                    },
+                    "contradiction_report": {"contradiction_count": 1},
+                    "authority_treatment_summary": {
+                        "adverse_authority_link_count": 1,
+                        "uncertain_authority_link_count": 1,
+                        "treatment_type_counts": {"good_law_unconfirmed": 1},
+                    },
+                    "authority_rule_candidate_summary": {
+                        "rule_type_counts": {"procedural_prerequisite": 1},
+                        "fact_unsatisfied_rule_count": 1,
+                    },
+                    "temporal_rule_status": "partial",
+                }
+            ],
+        }
+    }
+
+    guardrails = build_drafting_guardrails(build_drafting_support_bundles(packets))
+    warning_types = {warning["warning_type"] for warning in guardrails["warnings"]}
+
+    assert guardrails["status"] == "blocked"
+    assert guardrails["blocker_count"] >= 2
+    assert {
+        "contradiction",
+        "adverse_authority",
+        "weak_treatment_confidence",
+        "missing_procedural_prerequisite",
+        "proof_support_gap",
+    }.issubset(warning_types)
+    assert all(warning["warning_id"].startswith("drafting-guardrail-") for warning in guardrails["warnings"])
+    assert all(warning["recommended_action"] for warning in guardrails["warnings"])
+
+
+def test_document_builder_template_renders_support_summary_and_guardrail_types():
+    script = _document_page_inline_script(
+        Path("templates/document.html").read_text(encoding="utf-8")
+    )
+
+    assert "function renderBuilderSupportSummary(summary)" in script
+    assert "payload.document_builder_summary" in script
+    assert "warning.code || warning.warning_type" in script
+    assert "warning.element_id" in script
 
 
 def _live_hf_token() -> str:
@@ -374,8 +485,30 @@ def _build_mediator() -> Mock:
         {
             "fact_text": f"Evidence shows facts supporting {claim_type}.",
             "summary": "Termination email and HR complaint timeline.",
+            "fact_id": f"fact-{claim_type}",
+            "source_family": "evidence",
+            "source_record_id": "evidence-1",
+            "record_scope": "claim",
+            "artifact_family": "archived_web_page",
+            "corpus_family": "web_archive",
+            "content_origin": "historical_archive_capture",
+            "parse_source": "ipfs_datasets_py",
+            "input_format": "html",
+            "quality_tier": "high",
+            "quality_score": 0.92,
+            "chunk_id": "chunk-1",
+            "chunk_index": 0,
+            "source_passage": {"text": "Termination email and HR complaint timeline."},
         }
     ]
+    mediator.get_claim_fact_registry_summary.side_effect = lambda claim_type=None, user_id=None: {
+        "fact_count": 1,
+        "passage_anchored_fact_count": 1,
+        "source_family_counts": {"evidence": 1},
+        "artifact_family_counts": {"archived_web_page": 1},
+        "corpus_family_counts": {"web_archive": 1},
+        "content_origin_counts": {"historical_archive_capture": 1},
+    }
     mediator.get_claim_overview.side_effect = lambda claim_type=None, user_id=None, required_support_kinds=None: {
         "claims": {
             claim_type: {
@@ -536,6 +669,34 @@ def _build_mediator() -> Mock:
     }
     mediator.phase_manager = None
     return mediator
+
+
+def test_formal_complaint_claims_include_fact_registry_summary():
+    mediator = _build_mediator()
+    builder = FormalComplaintDocumentBuilder(mediator)
+
+    claims = builder._build_claims_for_relief(
+        user_id=None,
+        claim_types=["employment discrimination"],
+        requirements={},
+        statutes=[],
+        support_claims=mediator.summarize_claim_support.return_value["claims"],
+        exhibits=[],
+    )
+
+    employment_claim = claims[0]
+    assert employment_claim["support_summary"]["fact_registry_summary"] == {
+        "fact_count": 1,
+        "passage_anchored_fact_count": 1,
+        "source_family_counts": {"evidence": 1},
+        "artifact_family_counts": {"archived_web_page": 1},
+        "corpus_family_counts": {"web_archive": 1},
+        "content_origin_counts": {"historical_archive_capture": 1},
+    }
+    assert employment_claim["supporting_fact_entries"][0]["corpus_family"] == "web_archive"
+    assert employment_claim["supporting_fact_entries"][0]["source_passage"] == {
+        "text": "Termination email and HR complaint timeline."
+    }
 
 
 def test_formal_complaint_document_builder_generates_docx_and_pdf(tmp_path: Path):
@@ -2375,6 +2536,8 @@ def test_review_api_registers_formal_complaint_document_route():
             optimization_provider=None,
             optimization_model_name=None,
             optimization_persist_artifacts=False,
+            email_timeline_handoff_path=None,
+            email_authority_enrichment_path=None,
             service_method="CM/ECF",
             service_recipients=["Registered Agent for Acme Corporation", "Defense Counsel"],
             service_recipient_details=[
@@ -3021,12 +3184,62 @@ def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
             "drafting_readiness": {
                 "status": "warning",
                 "sections": {
-                    "claims_for_relief": {"title": "Claims for Relief", "status": "warning", "warnings": []},
+                    "claims_for_relief": {
+                        "title": "Claims for Relief",
+                        "status": "warning",
+                        "support_status": "partially_supported",
+                        "claim_element_count": 2,
+                        "source_refs": ["artifact:email", "authority:retaliation"],
+                        "warnings": [],
+                    },
                 },
                 "claims": [
-                    {"claim_type": "employment discrimination", "status": "warning", "warnings": []},
-                    {"claim_type": "retaliation", "status": "warning", "warnings": []},
+                    {
+                        "claim_type": "employment discrimination",
+                        "status": "warning",
+                        "source_family_counts": {"evidence": 1},
+                        "artifact_family_counts": {"archived_web_page": 1},
+                        "warnings": [],
+                    },
+                    {
+                        "claim_type": "retaliation",
+                        "status": "warning",
+                        "source_family_counts": {"legal_authority": 1},
+                        "artifact_family_counts": {"legal_authority_reference": 1},
+                        "warnings": [],
+                    },
                 ],
+                "drafting_guardrails": {
+                    "status": "blocked",
+                    "warning_count": 2,
+                    "blocker_count": 1,
+                    "warnings": [
+                        {
+                            "warning_id": "drafting-guardrail-claims-for-relief-retaliation-causation-contradiction",
+                            "section_id": "claims_for_relief",
+                            "claim_type": "retaliation",
+                            "element_id": "causation",
+                            "severity": "blocker",
+                            "warning_type": "contradiction",
+                            "message": "Retaliation element has contradiction signals.",
+                            "source": "drafting_support_bundle",
+                            "recommended_action": "Resolve contradictory support.",
+                            "source_refs": ["artifact:email"],
+                        },
+                        {
+                            "warning_id": "drafting-guardrail-claims-for-relief-retaliation-causation-adverse-authority",
+                            "section_id": "claims_for_relief",
+                            "claim_type": "retaliation",
+                            "element_id": "causation",
+                            "severity": "warning",
+                            "warning_type": "adverse_authority",
+                            "message": "Retaliation element includes adverse authority.",
+                            "source": "drafting_support_bundle",
+                            "recommended_action": "Review authority treatment.",
+                            "source_refs": ["authority:retaliation"],
+                        },
+                    ],
+                },
                 "warning_count": 1,
             },
             "artifacts": {"docx": {"path": str(artifact_path), "filename": artifact_path.name, "size_bytes": artifact_path.stat().st_size}},
@@ -3050,6 +3263,16 @@ def test_review_api_multiclaim_section_links_include_targeted_claim_urls():
         assert response.status_code == 200
         payload = response.json()
         assert payload["review_links"]["sections"][0]["section_key"] == "claims_for_relief"
+        builder_summary = payload["document_builder_summary"]
+        assert builder_summary["status"] == "warning"
+        assert builder_summary["support_status_counts"] == {"partially_supported": 1}
+        assert builder_summary["guardrail_warning_count"] == 2
+        assert builder_summary["guardrail_blocker_count"] == 1
+        assert builder_summary["warning_type_counts"] == {"contradiction": 1, "adverse_authority": 1}
+        assert builder_summary["section_support"][0]["review_url"] == "/claim-support-review?section=claims_for_relief"
+        assert builder_summary["source_ref_count"] == 2
+        assert builder_summary["source_family_counts"] == {"evidence": 1, "legal_authority": 1}
+        assert builder_summary["artifact_provenance"]["downloadable_count"] == 1
         assert payload["review_links"]["sections"][0]["review_url"] == "/claim-support-review?section=claims_for_relief"
         assert payload["review_links"]["sections"][0]["review_intent"] == {
             "user_id": None,
@@ -4408,3 +4631,218 @@ def test_review_surface_document_builder_can_suppress_mirrored_affidavit_exhibit
     assert payload['artifacts']['txt']['download_url'].startswith('/api/documents/download?path=')
 
     Path(payload['artifacts']['txt']['path']).unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# W10.4 – Round-trip API test for authority-related drafting warnings
+# ---------------------------------------------------------------------------
+
+def test_review_api_preserves_adverse_authority_and_reliability_warnings():
+    """W10.4 – round-trip: adverse_authority_present and authority_reliability_uncertain
+    warning codes survive the full review-API document endpoint response."""
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "intake_readiness": {
+            "score": 0.72,
+            "ready_to_advance": True,
+            "remaining_gap_count": 0,
+            "contradiction_count": 0,
+            "blockers": [],
+        },
+        "intake_contradictions": [],
+    }
+    DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    artifact_path = DEFAULT_OUTPUT_DIR / "authority-warning-test.docx"
+    artifact_path.write_bytes(b"test artifact")
+    try:
+        mediator.build_formal_complaint_document_package.return_value = {
+            "draft": {"title": "Jane Doe v. Employer"},
+            "filing_checklist": [
+                {
+                    "scope": "claim",
+                    "key": "retaliation",
+                    "title": "Retaliation",
+                    "status": "warning",
+                    "summary": "Review Retaliation before filing.",
+                },
+            ],
+            "drafting_readiness": {
+                "status": "warning",
+                "sections": {
+                    "claims_for_relief": {
+                        "title": "Claims for Relief",
+                        "status": "warning",
+                        "warnings": [],
+                    },
+                },
+                "claims": [
+                    {
+                        "claim_type": "retaliation",
+                        "status": "warning",
+                        "temporal_gap_hint_count": 0,
+                        "proof_gap_count": 0,
+                        "unresolved_element_count": 0,
+                        "contradiction_candidate_count": 0,
+                        "claim_unresolved_temporal_issue_count": 0,
+                        "claim_missing_temporal_predicates": [],
+                        "claim_required_provenance_kinds": [],
+                        "authority_treatment_summary": {
+                            "adverse_authority_link_count": 1,
+                            "uncertain_authority_link_count": 2,
+                            "treatment_type_counts": {"adverse": 1, "questioned": 2},
+                        },
+                        "warnings": [
+                            {
+                                "code": "adverse_authority_present",
+                                "severity": "warning",
+                                "message": "Retaliation includes adverse or limiting authority that should be reviewed before relying on it in the draft.",
+                            },
+                            {
+                                "code": "authority_reliability_uncertain",
+                                "severity": "warning",
+                                "message": "Retaliation has authority support with unresolved treatment or good-law uncertainty.",
+                            },
+                        ],
+                    },
+                ],
+                "warning_count": 2,
+            },
+            "artifacts": {
+                "docx": {
+                    "path": str(artifact_path),
+                    "filename": artifact_path.name,
+                    "size_bytes": artifact_path.stat().st_size,
+                }
+            },
+            "output_formats": ["docx"],
+            "generated_at": "2026-03-12T12:00:00+00:00",
+        }
+
+        app = create_review_api_app(mediator)
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/documents/formal-complaint",
+            json={
+                "district": "District of Columbia",
+                "plaintiff_names": ["Jane Doe"],
+                "defendant_names": ["Acme Corporation"],
+                "output_formats": ["docx"],
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        claim_payload = payload["drafting_readiness"]["claims"][0]
+        assert claim_payload["claim_type"] == "retaliation"
+        assert claim_payload["status"] == "warning"
+
+        warning_codes = {w["code"] for w in claim_payload["warnings"]}
+        assert "adverse_authority_present" in warning_codes
+        assert "authority_reliability_uncertain" in warning_codes
+
+        # chip_labels should surface adverse and uncertain authority counts
+        chip_labels = claim_payload.get("chip_labels", [])
+        assert "adverse authorities: 1" in chip_labels
+        assert "uncertain authorities: 2" in chip_labels
+
+        # review_links must also carry the updated chip_labels
+        review_claim = payload["review_links"]["claims"][0]
+        assert "adverse authorities: 1" in review_claim.get("chip_labels", [])
+        assert "uncertain authorities: 2" in review_claim.get("chip_labels", [])
+    finally:
+        artifact_path.unlink(missing_ok=True)
+
+
+def test_review_api_document_builder_summary_degrades_without_optional_guardrails(tmp_path: Path):
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "document_generation",
+        "intake_readiness": {
+            "score": 1.0,
+            "ready_to_advance": True,
+            "remaining_gap_count": 0,
+            "contradiction_count": 0,
+            "blockers": [],
+        },
+        "intake_contradictions": [],
+    }
+    outside_artifact_path = tmp_path / "outside-managed-output.txt"
+    outside_artifact_path.write_text("degraded mode artifact", encoding="utf-8")
+    mediator.build_formal_complaint_document_package.return_value = {
+        "draft": {
+            "title": "Jane Doe v. Employer",
+            "document_provenance_summary": {
+                "fact_backed_ratio": 0.5,
+                "low_grounding_flag": True,
+            },
+        },
+        "filing_checklist": [
+            {
+                "scope": "section",
+                "key": "summary_of_facts",
+                "title": "Summary of Facts",
+                "status": "warning",
+                "summary": "Review Summary of Facts before filing.",
+            },
+        ],
+        "drafting_readiness": {
+            "status": "warning",
+            "sections": {
+                "summary_of_facts": {
+                    "title": "Summary of Facts",
+                    "status": "warning",
+                    "warnings": [
+                        {
+                            "code": "fact_support_thin",
+                            "severity": "warning",
+                            "message": "The factual allegations section has limited support.",
+                        }
+                    ],
+                },
+            },
+            "claims": [
+                {
+                    "claim_type": "retaliation",
+                    "status": "warning",
+                    "support_by_kind": {},
+                    "warnings": [],
+                },
+            ],
+            "warning_count": 1,
+        },
+        "artifacts": {
+            "txt": {
+                "path": str(outside_artifact_path),
+                "filename": outside_artifact_path.name,
+                "size_bytes": outside_artifact_path.stat().st_size,
+            }
+        },
+        "output_formats": ["txt"],
+        "generated_at": "2026-03-12T12:00:00+00:00",
+    }
+
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/documents/formal-complaint",
+        json={
+            "district": "District of Columbia",
+            "plaintiff_names": ["Jane Doe"],
+            "defendant_names": ["Employer"],
+            "output_formats": ["txt"],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "download_url" not in payload["artifacts"]["txt"]
+    assert payload["document_builder_summary"]["status"] == "warning"
+    assert payload["document_builder_summary"]["guardrail_warning_count"] == 0
+    assert payload["document_builder_summary"]["guardrail_blocker_count"] == 0
+    assert payload["document_builder_summary"]["support_status_counts"] == {"warning": 1}
+    assert payload["document_builder_summary"]["artifact_provenance"]["downloadable_count"] == 0
+    assert payload["document_builder_summary"]["document_provenance_summary"]["low_grounding_flag"] is True
+    assert payload["filing_checklist"][0]["review_url"] == "/claim-support-review?claim_type=retaliation&section=summary_of_facts"

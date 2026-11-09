@@ -9,17 +9,31 @@ description = "Complaint generator workspace with package imports, CLI tools, MC
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-  "ipfs_datasets_py[file_conversion,knowledge_graphs,scraping,vectors]>=0.2.0",
+  "ipfs_datasets_py[api,file_conversion,ipld,knowledge_graphs,logic,scraping,vectors]>=0.2.0",
   "mcp>=1.2.0",
   "fastapi>=0.104.0",
   "uvicorn>=0.30.0,<1.0.0",
   "pydantic>=2.0.0",
+  "duckdb>=0.9.0",
+  "cachetools>=5.3.0",
+  "matplotlib>=3.5.0",
+  "plotly>=5.9.0",
+  "rdflib>=6.0.0",
+  "neo4j>=5.20.0",
+  "seaborn>=0.12.0",
+  "spacy>=3.0.0",
+  "yt-dlp>=2025.6.30",
+  "ffmpeg-python>=0.2.0",
   "requests>=2.31.0",
   "httpx>=0.28.1,<1.0.0",
   "python-multipart>=0.0.9",
   "PyJWT>=2.8.0,<3.0.0",
   "beautifulsoup4>=4.12.0,<5.0.0",
+  "newspaper3k>=0.2.8,<1.0.0",
+  "readability-lxml>=0.8.0,<1.0.0",
+  "lxml_html_clean>=0.4.0",
   "cryptography>=41.0.0",
+  "cffi>=1.16.0",
   "python-docx>=1.1.2",
   "reportlab>=4.2.5",
   "typer>=0.12.0",
@@ -35,6 +49,19 @@ dev = [
   "hypothesis>=6.0.0",
   "playwright>=1.53.0,<2.0.0",
   "pyright>=1.1.390",
+]
+# Private artifact envelope (CIMP-PRIV-003).
+# The default dependency set already requires cryptography>=41.0.0.
+# Upstream ipfs_kit_py floors cryptography>=38.0.0. That floor is the Kit
+# library requirement, not the Kit package version, and it is not lowered here.
+# This extra documents the private-storage crypto contract without a second
+# broad install. OS keyring support is optional and is not pulled in by default
+# (user unlock and recovery are CIMP-PRIV-004).
+private-storage = [
+  "cryptography>=41.0.0",
+]
+keyring = [
+  "keyring>=24.2.0",
 ]
 
 [project.scripts]
@@ -77,4 +104,91 @@ include = [
   "lib.*",
   "mediator",
   "mediator.*",
+  "scripts",
+  "scripts.*",
+]
+
+[tool.complaint_generator.import_boundaries]
+description = "Production package import boundaries documented in docs/ARCHITECTURE.md."
+production_packages = [
+  "adversarial_harness",
+  "applications",
+  "backends",
+  "complaint_analysis",
+  "complaint_generator",
+  "complaint_phases",
+  "integrations",
+  "lib",
+  "mediator",
+]
+operator_packages = [
+  "scripts",
+]
+enforced_packages = [
+  "applications",
+  "mediator",
+  "complaint_phases",
+  "integrations",
+  "lib",
+]
+shared_code_package = "lib"
+shared_code_rule = "Keep code in its owning layer until two or more production consumers need the same side-effect-light helper; then move the stable helper or data contract to lib."
+
+# Direct access to optional dependencies is restricted separately from the
+# package-layer graph.  Exceptions are deliberately file-specific: they record
+# compatibility shims and pre-existing migration debt without exempting tests,
+# whole production packages, or future modules from the adapter requirement.
+[tool.complaint_generator.import_boundaries.restricted_imports.ipfs_datasets_py]
+allowed_adapter_paths = [
+  "integrations/ipfs_datasets",
+]
+exception_policy = "Each exception must name one production Python file and its exact imported modules. Remove the imports through an adapter and delete the exception together."
+
+[tool.complaint_generator.import_boundaries.restricted_imports.ipfs_datasets_py.temporary_exceptions]
+"complaint_generator/agentic_evidence_download.py" = ["ipfs_datasets_py.processors.legal_data.email_relevance"]
+"complaint_generator/data_migration.py" = ["ipfs_datasets_py.processors.legal_data"]
+"complaint_generator/email_agentic_search.py" = ["ipfs_datasets_py.processors.legal_data"]
+"complaint_generator/email_authority_enrichment.py" = ["ipfs_datasets_py.processors.legal_data"]
+"complaint_generator/email_credentials.py" = ["ipfs_datasets_py.processors.legal_data"]
+"complaint_generator/email_graphrag.py" = [
+  "ipfs_datasets_py.processors.legal_data",
+  "ipfs_datasets_py.processors.multimedia.attachment_text_extractor",
+]
+"complaint_generator/email_import.py" = ["ipfs_datasets_py.processors.legal_data"]
+"complaint_generator/email_oauth.py" = ["ipfs_datasets_py.processors.legal_data.email_auth"]
+"complaint_generator/email_pipeline.py" = ["ipfs_datasets_py.processors.legal_data.email_pipeline"]
+"complaint_generator/email_seed_planner.py" = ["ipfs_datasets_py.processors.legal_data.email_seed_planner"]
+"complaint_generator/email_timeline_handoff.py" = ["ipfs_datasets_py.processors.legal_data.email_timeline_handoff"]
+"complaint_generator/evidence_relevance.py" = ["ipfs_datasets_py.processors.legal_data.email_relevance"]
+"lib/knowledge_graph_export.py" = [
+  "ipfs_datasets_py.knowledge_graphs.exceptions",
+  "ipfs_datasets_py.knowledge_graphs.migration.neo4j_exporter",
+]
+"lib/knowledge_graph_formats.py" = ["ipfs_datasets_py.knowledge_graphs.migration.formats"]
+
+[tool.complaint_generator.import_boundaries.allowed_imports]
+applications = [
+  "applications",
+  "mediator",
+  "complaint_phases",
+  "integrations",
+  "lib",
+]
+mediator = [
+  "mediator",
+  "complaint_phases",
+  "integrations",
+  "lib",
+]
+complaint_phases = [
+  "complaint_phases",
+  "integrations",
+  "lib",
+]
+integrations = [
+  "integrations",
+  "lib",
+]
+lib = [
+  "lib",
 ]

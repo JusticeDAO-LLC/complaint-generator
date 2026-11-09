@@ -2,6 +2,8 @@ import importlib.util
 import json
 import os
 
+import pytest
+
 
 def _load_ranker_module():
 	project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -14,6 +16,31 @@ def _load_ranker_module():
 
 
 _ranker = _load_ranker_module()
+
+
+@pytest.mark.parametrize("value", [None, "not-a-number", object(), 10**1000])
+def test_safe_float_returns_none_for_expected_conversion_failures(value):
+	assert _ranker._safe_float(value) is None
+
+
+def test_safe_float_does_not_swallow_unexpected_exceptions():
+	class BrokenNumericValue:
+		def __float__(self):
+			raise RuntimeError("conversion implementation failed")
+
+	with pytest.raises(RuntimeError, match="conversion implementation failed"):
+		_ranker._safe_float(BrokenNumericValue())
+
+
+def test_parse_weights_skips_only_malformed_numeric_values(monkeypatch):
+	assert _ranker._parse_weights("success_rate=bad, throughput=2.5") == {"throughput": 2.5}
+
+	def broken_float(_value):
+		raise RuntimeError("float conversion unavailable")
+
+	monkeypatch.setattr(_ranker, "float", broken_float, raising=False)
+	with pytest.raises(RuntimeError, match="float conversion unavailable"):
+		_ranker._parse_weights("throughput=2.5")
 
 
 def test_ranker_prefers_success_and_score(tmp_path):

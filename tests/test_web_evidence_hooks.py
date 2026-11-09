@@ -911,6 +911,142 @@ class TestWebEvidenceIntegrationHook:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_store_evidence_items_archives_high_value_live_url(self):
+        """High-value live web evidence is archived before storage when archive capture is available."""
+        try:
+            from mediator.web_evidence_hooks import WebEvidenceIntegrationHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = 'testuser'
+            mock_mediator.state.complaint_id = 'complaint-1'
+            mock_mediator.phase_manager = Mock()
+            mock_mediator.phase_manager.get_phase_data = Mock(return_value=None)
+            mock_mediator.web_evidence_search = Mock()
+            mock_mediator.web_evidence_search.validate_evidence = Mock(return_value={
+                'valid': True,
+                'relevance_score': 0.86,
+            })
+            mock_mediator.evidence_storage = Mock()
+            mock_mediator.evidence_storage.store_evidence = Mock(return_value={
+                'cid': 'QmLiveArchived',
+                'size': 120,
+                'type': 'web_document',
+                'metadata': {
+                    'document_parse_summary': {
+                        'status': 'fallback',
+                        'chunk_count': 1,
+                        'text_length': 64,
+                        'parser_version': 'documents-adapter:1',
+                        'input_format': 'html',
+                        'paragraph_count': 1,
+                    },
+                    'document_parse_contract': {
+                        'status': 'fallback',
+                        'source': 'web_document',
+                        'chunk_count': 1,
+                        'summary': {
+                            'status': 'fallback',
+                            'chunk_count': 1,
+                            'text_length': 64,
+                            'parser_version': 'documents-adapter:1',
+                            'input_format': 'html',
+                            'paragraph_count': 1,
+                        },
+                        'lineage': {
+                            'source': 'web_document',
+                            'parser_version': 'documents-adapter:1',
+                            'input_format': 'html',
+                            'normalization': 'html_to_text',
+                        },
+                    },
+                },
+                'document_parse': {
+                    'status': 'fallback',
+                    'text': 'Live policy content',
+                    'summary': {
+                        'status': 'fallback',
+                        'chunk_count': 1,
+                        'text_length': 19,
+                        'parser_version': 'documents-adapter:1',
+                        'input_format': 'html',
+                        'paragraph_count': 1,
+                        'quality_tier': 'high',
+                        'quality_score': 95.0,
+                    },
+                    'lineage': {
+                        'source': 'web_document',
+                        'parser_version': 'documents-adapter:1',
+                        'input_format': 'html',
+                        'normalization': 'html_to_text',
+                    },
+                    'chunks': [{'chunk_id': 'chunk-0', 'index': 0, 'start': 0, 'end': 19, 'text': 'Live policy content'}],
+                    'metadata': {'filename': 'live-policy.html', 'mime_type': 'text/html', 'input_format': 'html'},
+                },
+            })
+            mock_mediator.evidence_state = Mock()
+            mock_mediator.evidence_state.upsert_evidence_record = Mock(return_value={
+                'record_id': 9,
+                'created': True,
+                'reused': False,
+            })
+            mock_mediator.claim_support = Mock()
+            mock_mediator.claim_support.resolve_claim_element = Mock(return_value={
+                'claim_element_id': 'employment_discrimination:1',
+                'claim_element_text': 'Protected activity',
+            })
+            mock_mediator.claim_support.upsert_support_link = Mock(return_value={
+                'record_id': 3,
+                'created': True,
+                'reused': False,
+            })
+
+            hook = WebEvidenceIntegrationHook(mock_mediator)
+            with patch('mediator.web_evidence_hooks.scrape_web_content', return_value={'success': False}):
+                with patch('mediator.web_evidence_hooks.archive_url_snapshot', return_value={
+                    'status': 'success',
+                    'archived': True,
+                    'url': 'https://example.com/live-policy',
+                    'original_url': 'https://example.com/live-policy',
+                    'archive_url': 'https://web.archive.org/web/20260719010101/https://example.com/live-policy',
+                    'wayback_url': 'https://web.archive.org/web/20260719010101/https://example.com/live-policy',
+                    'captured_at': '20260719010101',
+                    'archive_timestamp': '20260719010101',
+                    'archive_status_code': 302,
+                    'capture_source': 'wayback_save',
+                }):
+                    result = hook._store_evidence_items(
+                        [
+                            {
+                                'title': 'Live policy',
+                                'url': 'https://example.com/live-policy',
+                                'content': '<html><body>Live policy content</body></html>',
+                                'source_type': 'brave_search',
+                            }
+                        ],
+                        keywords=['retaliation'],
+                        user_id='testuser',
+                        claim_type='employment discrimination',
+                        min_relevance=0.5,
+                    )
+
+            assert result['stored_new'] == 1
+            assert result['archive_attempted'] == 1
+            assert result['archive_captured'] == 1
+            assert result['archive_results'][0]['archive_url'] == 'https://web.archive.org/web/20260719010101/https://example.com/live-policy'
+            store_kwargs = mock_mediator.evidence_storage.store_evidence.call_args.kwargs
+            assert store_kwargs['metadata']['archive_acquisition']['archive_url'] == 'https://web.archive.org/web/20260719010101/https://example.com/live-policy'
+            persisted_info = mock_mediator.evidence_state.upsert_evidence_record.call_args.kwargs['evidence_info']
+            lineage = persisted_info['document_parse']['metadata']['transform_lineage']
+            assert lineage['content_origin'] == 'historical_archive_capture'
+            assert lineage['archive_url'] == 'https://web.archive.org/web/20260719010101/https://example.com/live-policy'
+            support_kwargs = mock_mediator.claim_support.upsert_support_link.call_args.kwargs
+            assert support_kwargs['metadata']['archive_url'] == 'https://web.archive.org/web/20260719010101/https://example.com/live-policy'
+            assert support_kwargs['metadata']['content_origin'] == 'historical_archive_capture'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
     def test_store_evidence_items_persists_archived_web_fact_contract(self):
         """Test archived web evidence facts round-trip through the shared evidence fact contract."""
         try:
@@ -1072,8 +1208,46 @@ class TestWebEvidenceIntegrationHook:
                 assert facts[0]['input_format'] == 'html'
                 assert facts[0]['quality_tier'] == 'high'
                 assert facts[0]['quality_score'] > 0.0
+                assert facts[0]['chunk_id']
+                assert facts[0]['chunk_index'] == 0
+                assert facts[0]['source_passage']['chunk_id'] == facts[0]['chunk_id']
+                assert facts[0]['source_passage']['chunk_index'] == facts[0]['chunk_index']
+                assert facts[0]['metadata']['chunk_id'] == facts[0]['chunk_id']
+                assert facts[0]['metadata']['source_passage']['chunk_id'] == facts[0]['chunk_id']
                 assert facts[0]['metadata']['parse_lineage']['source'] == 'web_document'
                 assert facts[0]['provenance']['metadata']['artifact_family'] == 'archived_web_page'
+
+                import duckdb
+                conn = duckdb.connect(db_path)
+                durable_row = conn.execute(
+                    """
+                    SELECT source_family, source_record_id, source_ref, record_scope,
+                           artifact_family, corpus_family, content_origin, parse_source,
+                           input_format, quality_tier, quality_score, chunk_id, chunk_index,
+                           CAST(source_passage AS VARCHAR)
+                    FROM evidence_facts
+                    WHERE evidence_id = ?
+                    ORDER BY fact_id ASC
+                    LIMIT 1
+                    """,
+                    [record['id']],
+                ).fetchone()
+                conn.close()
+
+                assert durable_row[0] == 'evidence'
+                assert durable_row[1] == record['id']
+                assert durable_row[2] == facts[0]['source_artifact_id']
+                assert durable_row[3] == 'evidence'
+                assert durable_row[4] == 'archived_web_page'
+                assert durable_row[5] == 'web_page'
+                assert durable_row[6] == 'historical_archive_capture'
+                assert durable_row[7] == 'web_document'
+                assert durable_row[8] == 'html'
+                assert durable_row[9] == 'high'
+                assert durable_row[10] > 0.0
+                assert durable_row[11] == facts[0]['chunk_id']
+                assert durable_row[12] == facts[0]['chunk_index']
+                assert facts[0]['chunk_id'] in durable_row[13]
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -1982,6 +2156,13 @@ class TestWebEvidenceIntegrationHook:
                     }
                 ],
             })
+            mock_mediator.evidence_state.get_scraper_queue_state = Mock(return_value={
+                'available': True,
+                'job_count': 2,
+                'ready_queued_count': 1,
+                'jobs': [{'id': 31, 'status': 'queued'}],
+                'inspection_only': True,
+            })
 
             hook = WebEvidenceIntegrationHook(mock_mediator)
 
@@ -2044,6 +2225,8 @@ class TestWebEvidenceIntegrationHook:
             assert result['storage_summary']['total_new'] == 1
             assert result['scraper_run']['persisted'] is True
             assert result['scraper_run']['run_id'] == 9
+            assert result['scraper_queue_state']['inspection_only'] is True
+            assert result['scraper_queue_state']['job_count'] == 2
             assert result['seeded_tactics'][0]['name'] == 'multi_engine_search'
             persist_kwargs = mock_mediator.evidence_state.persist_scraper_run.call_args.kwargs
             assert persist_kwargs['claim_type'] == 'employment discrimination'
@@ -2277,6 +2460,13 @@ class TestMediatorWebEvidenceIntegration:
             mediator.state.username = 'testuser'
             mediator.evidence_state.enqueue_scraper_job = Mock(return_value={'queued': True, 'job_id': 11})
             mediator.evidence_state.get_scraper_queue = Mock(return_value=[{'id': 11, 'status': 'queued'}])
+            mediator.evidence_state.get_scraper_queue_state = Mock(return_value={
+                'available': True,
+                'job_count': 1,
+                'ready_queued_count': 1,
+                'jobs': [{'id': 11, 'status': 'queued'}],
+                'inspection_only': True,
+            })
             mediator.evidence_state.claim_next_scraper_job = Mock(return_value={
                 'claimed': True,
                 'job': {
@@ -2308,12 +2498,18 @@ class TestMediatorWebEvidenceIntegration:
                 claim_type='employment discrimination',
             )
             jobs = mediator.get_scraper_queue(status='queued', limit=5)
+            queue_state = mediator.get_scraper_queue_state(status='queued', limit=5)
             result = mediator.run_next_agentic_scraper_job(worker_id='worker-1', user_id='testuser')
 
             assert queued['queued'] is True
             assert jobs[0]['id'] == 11
+            assert queue_state['inspection_only'] is True
+            assert queue_state['ready_queued_count'] == 1
             assert result['claimed'] is True
             assert result['ran'] is True
             assert result['job']['run_id'] == 15
+            completion_metadata = mediator.evidence_state.complete_scraper_job.call_args.kwargs['metadata']
+            assert completion_metadata['executed_from_queue'] is True
+            assert completion_metadata['worker_id'] == 'worker-1'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")

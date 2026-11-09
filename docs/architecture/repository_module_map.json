@@ -1,0 +1,681 @@
+{
+  "schema": "complaint-generator/repository-module-map@1",
+  "task_id": "CIMP-MOD-01",
+  "source_files_moved": true,
+  "source_files_rewritten": false,
+  "inventory_policy": {
+    "top_level_package_rule": "A top-level Python package is a directory directly under the repository root that contains __init__.py. Unreadable top-level directories are omitted rather than treated as packages.",
+    "largest_python_module_limit": 15,
+    "largest_python_module_order": "byte_size descending, then relative path ascending",
+    "walk_skip_directories": [
+      ".git",
+      ".venv",
+      "__pycache__",
+      "artifacts",
+      "complaint_generator.egg-info",
+      "data",
+      "external",
+      "node_modules",
+      "output",
+      "statefiles",
+      "workspace"
+    ],
+    "session_or_batch_report_rule": "A root markdown file is a session or batch report when its filename contains SESSION, or contains BATCH together with SUMMARY, REPORT, HANDLING, or RETURN.",
+    "compatibility_directory_rule": "Root compatibility directories are empty directories kept for import or checkout compatibility. They are not checkouts under external/."
+  },
+  "packages": [
+    {
+      "name": "adversarial_harness",
+      "path": "adversarial_harness",
+      "init_path": "adversarial_harness/__init__.py",
+      "init_byte_size": 1895
+    },
+    {
+      "name": "applications",
+      "path": "applications",
+      "init_path": "applications/__init__.py",
+      "init_byte_size": 1760
+    },
+    {
+      "name": "backends",
+      "path": "backends",
+      "init_path": "backends/__init__.py",
+      "init_byte_size": 488
+    },
+    {
+      "name": "complaint_analysis",
+      "path": "complaint_analysis",
+      "init_path": "complaint_analysis/__init__.py",
+      "init_byte_size": 5333
+    },
+    {
+      "name": "complaint_generator",
+      "path": "complaint_generator",
+      "init_path": "complaint_generator/__init__.py",
+      "init_byte_size": 7203
+    },
+    {
+      "name": "complaint_phases",
+      "path": "complaint_phases",
+      "init_path": "complaint_phases/__init__.py",
+      "init_byte_size": 3213
+    },
+    {
+      "name": "integrations",
+      "path": "integrations",
+      "init_path": "integrations/__init__.py",
+      "init_byte_size": 450
+    },
+    {
+      "name": "lib",
+      "path": "lib",
+      "init_path": "lib/__init__.py",
+      "init_byte_size": 381
+    },
+    {
+      "name": "mediator",
+      "path": "mediator",
+      "init_path": "mediator/__init__.py",
+      "init_byte_size": 722
+    },
+    {
+      "name": "scripts",
+      "path": "scripts",
+      "init_path": "scripts/__init__.py",
+      "init_byte_size": 193
+    },
+    {
+      "name": "static",
+      "path": "static",
+      "init_path": "static/__init__.py",
+      "init_byte_size": 49
+    },
+    {
+      "name": "templates",
+      "path": "templates",
+      "init_path": "templates/__init__.py",
+      "init_byte_size": 47
+    },
+    {
+      "name": "tests",
+      "path": "tests",
+      "init_path": "tests/__init__.py",
+      "init_byte_size": 39
+    }
+  ],
+  "root_scripts": [
+    {
+      "path": "scripts/maintenance/add_dedup_factory.py",
+      "byte_size": 3176
+    },
+    {
+      "path": "scripts/maintenance/add_init_vars.py",
+      "byte_size": 1933
+    },
+    {
+      "path": "scripts/maintenance/add_optimization_methods.py",
+      "byte_size": 5396
+    },
+    {
+      "path": "scripts/maintenance/batch_230_benchmark.py",
+      "byte_size": 13667
+    },
+    {
+      "path": "scripts/maintenance/batch_231_llm_fallback_profile.py",
+      "byte_size": 3832
+    },
+    {
+      "path": "claim_support_review.py",
+      "byte_size": 843
+    },
+    {
+      "path": "scripts/maintenance/complete_optimizer_integration.py",
+      "byte_size": 8750
+    },
+    {
+      "path": "document_optimization.py",
+      "byte_size": 881
+    },
+    {
+      "path": "document_pipeline.py",
+      "byte_size": 448
+    },
+    {
+      "path": "intake_status.py",
+      "byte_size": 446
+    },
+    {
+      "path": "main.py",
+      "byte_size": 1136
+    },
+    {
+      "path": "scripts/maintenance/profile_generate_10k.py",
+      "byte_size": 2140
+    },
+    {
+      "path": "run.py",
+      "byte_size": 6936
+    },
+    {
+      "path": "setup.py",
+      "byte_size": 2417
+    },
+    {
+      "path": "scripts/legacy_root_checks/test_complaint_mcp_protocol.py",
+      "byte_size": 12254
+    },
+    {
+      "path": "scripts/legacy_root_checks/test_criticscor_comparisons.py",
+      "byte_size": 1698
+    },
+    {
+      "path": "scripts/legacy_root_checks/test_extraction_config_validation.py",
+      "byte_size": 17072
+    },
+    {
+      "path": "scripts/legacy_root_checks/test_main_app_surface.py",
+      "byte_size": 5624
+    },
+    {
+      "path": "scripts/legacy_root_checks/test_parallel_validation_fix.py",
+      "byte_size": 1804
+    },
+    {
+      "path": "scripts/legacy_root_checks/test_pipeline_error_recovery.py",
+      "byte_size": 18842
+    },
+    {
+      "path": "scripts/legacy_root_checks/test_probate_integration.py",
+      "byte_size": 5114
+    },
+    {
+      "path": "scripts/maintenance/update_detect_graph_type.py",
+      "byte_size": 5867
+    },
+    {
+      "path": "workflow_phase_guidance.py",
+      "byte_size": 466
+    }
+  ],
+  "root_markdown": [
+    {
+      "path": "docs/archive/reports/AUDIT_DICT_RETURNS_REPORT.md",
+      "byte_size": 3979,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/sessions/AUTONOMOUS_SESSION_REPORT.md",
+      "byte_size": 14822,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/reports/BATCH_202_PLAN.md",
+      "byte_size": 4452,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/sessions/BATCH_254_258_SESSION_SUMMARY.md",
+      "byte_size": 15081,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/BATCH_305_306_SESSION_SUMMARY.md",
+      "byte_size": 6799,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/BATCH_328_API_RETURN_TYPES_SUMMARY.md",
+      "byte_size": 11564,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/BATCH_329_EXCEPTION_HANDLING_SUMMARY.md",
+      "byte_size": 11919,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/BENCHMARK_SUITE_SESSION_SUMMARY.md",
+      "byte_size": 10574,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "byte_size": 12865,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "DOCUMENTATION_INDEX.md",
+      "byte_size": 21312,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/reports/EXTRACTION_PIPELINE_PROFILE_FINAL.md",
+      "byte_size": 10708,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/sessions/ITEM_7_COMPLETION_SUMMARY.md",
+      "byte_size": 9658,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/sessions/P3_INFRASTRUCTURE_COMPLETION_SESSION.md",
+      "byte_size": 6935,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/P3_SESSION_4_INFRASTRUCTURE_SUMMARY.md",
+      "byte_size": 8334,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/reports/PARALLEL_VALIDATION_FIX_REPORT.md",
+      "byte_size": 4095,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/sessions/PERFORMANCE_OPTIMIZATION_SESSION_COMPLETE.md",
+      "byte_size": 10410,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/PHASE_2_COMPLETION_SUMMARY.md",
+      "byte_size": 5565,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/sessions/QUERY_OPTIMIZER_INTEGRATION_SESSION_WIP.md",
+      "byte_size": 7895,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/QUERY_OPTIMIZER_MODULARIZATION_COMPLETION.md",
+      "byte_size": 15427,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "README.md",
+      "byte_size": 7717,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/sessions/README_OLD.md",
+      "byte_size": 817,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/sessions/README_OLD_BACKUP.md",
+      "byte_size": 16697,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/sessions/README_OLD_FULL.md",
+      "byte_size": 30925,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_3_COMPLETE_SUMMARY.md",
+      "byte_size": 12676,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_4_QUERY_OPTIMIZER_INTEGRATION_COMPLETE.md",
+      "byte_size": 8397,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_84_FINAL_SUMMARY.md",
+      "byte_size": 7741,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_84_PHASE4_EXTENDED_SUMMARY.md",
+      "byte_size": 17752,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_84_PHASE4_SUMMARY.md",
+      "byte_size": 13483,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_84_PROGRESS.md",
+      "byte_size": 13783,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_SUMMARY_2024_02_24.md",
+      "byte_size": 10746,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_SUMMARY_2026_02_23.md",
+      "byte_size": 8389,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_SUMMARY_2026_02_24_COMPLETE.md",
+      "byte_size": 13118,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_SUMMARY_PERFORMANCE_CYCLE_2.md",
+      "byte_size": 5478,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_SUMMARY_PERFORMANCE_PROFILING_PROGRESS.md",
+      "byte_size": 8261,
+      "session_or_batch_report": true
+    },
+    {
+      "path": "TESTING.md",
+      "byte_size": 10848,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "TODO.md",
+      "byte_size": 40808,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/reports/UNIFIED_PERFORMANCE_ANALYSIS.md",
+      "byte_size": 12002,
+      "session_or_batch_report": false
+    },
+    {
+      "path": "docs/archive/reports/plan-mcpPlusPlusIntegration.prompt.md",
+      "byte_size": 6459,
+      "session_or_batch_report": false
+    }
+  ],
+  "session_or_batch_reports": [
+    {
+      "path": "docs/archive/sessions/AUTONOMOUS_SESSION_REPORT.md",
+      "byte_size": 14822,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/BATCH_254_258_SESSION_SUMMARY.md",
+      "byte_size": 15081,
+      "kind": "session_and_batch_report"
+    },
+    {
+      "path": "docs/archive/sessions/BATCH_305_306_SESSION_SUMMARY.md",
+      "byte_size": 6799,
+      "kind": "session_and_batch_report"
+    },
+    {
+      "path": "docs/archive/sessions/BATCH_328_API_RETURN_TYPES_SUMMARY.md",
+      "byte_size": 11564,
+      "kind": "batch_report"
+    },
+    {
+      "path": "docs/archive/sessions/BATCH_329_EXCEPTION_HANDLING_SUMMARY.md",
+      "byte_size": 11919,
+      "kind": "batch_report"
+    },
+    {
+      "path": "docs/archive/sessions/BENCHMARK_SUITE_SESSION_SUMMARY.md",
+      "byte_size": 10574,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/P3_INFRASTRUCTURE_COMPLETION_SESSION.md",
+      "byte_size": 6935,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/P3_SESSION_4_INFRASTRUCTURE_SUMMARY.md",
+      "byte_size": 8334,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/PERFORMANCE_OPTIMIZATION_SESSION_COMPLETE.md",
+      "byte_size": 10410,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/QUERY_OPTIMIZER_INTEGRATION_SESSION_WIP.md",
+      "byte_size": 7895,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_3_COMPLETE_SUMMARY.md",
+      "byte_size": 12676,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_4_QUERY_OPTIMIZER_INTEGRATION_COMPLETE.md",
+      "byte_size": 8397,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_84_FINAL_SUMMARY.md",
+      "byte_size": 7741,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_84_PHASE4_EXTENDED_SUMMARY.md",
+      "byte_size": 17752,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_84_PHASE4_SUMMARY.md",
+      "byte_size": 13483,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_84_PROGRESS.md",
+      "byte_size": 13783,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_SUMMARY_2024_02_24.md",
+      "byte_size": 10746,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_SUMMARY_2026_02_23.md",
+      "byte_size": 8389,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_SUMMARY_2026_02_24_COMPLETE.md",
+      "byte_size": 13118,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_SUMMARY_PERFORMANCE_CYCLE_2.md",
+      "byte_size": 5478,
+      "kind": "session_report"
+    },
+    {
+      "path": "docs/archive/sessions/SESSION_SUMMARY_PERFORMANCE_PROFILING_PROGRESS.md",
+      "byte_size": 8261,
+      "kind": "session_report"
+    }
+  ],
+  "compatibility_directories": [
+    {
+      "path": "ipfs_datasets_py",
+      "empty": true,
+      "external_submodule": false,
+      "purpose": "Empty root compatibility directory for the ipfs_datasets_py import layout. The populated integration lives under integrations/ipfs_datasets and is not this directory. This is not an external/ submodule checkout."
+    },
+    {
+      "path": "mike",
+      "empty": true,
+      "external_submodule": false,
+      "purpose": "Empty root compatibility directory for the mike import layout. The populated integration lives under integrations/mike and is not this directory. This is not an external/ submodule checkout."
+    }
+  ],
+  "duplicate_owners": [
+    {
+      "concern": "cli",
+      "summary": "Interactive CLI, workspace Typer CLI, and the complaint_generator package facade name the same command-line surface.",
+      "modules": [
+        {
+          "path": "applications/cli.py",
+          "byte_size": 70970,
+          "role": "legacy interactive CLI implementation"
+        },
+        {
+          "path": "applications/complaint_cli.py",
+          "byte_size": 87623,
+          "role": "workspace Typer CLI implementation"
+        },
+        {
+          "path": "complaint_generator/cli.py",
+          "byte_size": 19990,
+          "role": "package facade that re-exports applications.complaint_cli"
+        }
+      ]
+    },
+    {
+      "concern": "mcp",
+      "summary": "MCP protocol and server entrypoints exist under applications, with thin facades in complaint_generator and a separate datasets gateway.",
+      "modules": [
+        {
+          "path": "applications/complaint_mcp_protocol.py",
+          "byte_size": 33949,
+          "role": "MCP JSON-RPC protocol implementation"
+        },
+        {
+          "path": "applications/complaint_mcp_server.py",
+          "byte_size": 1130,
+          "role": "MCP server process entrypoint"
+        },
+        {
+          "path": "complaint_generator/mcp.py",
+          "byte_size": 149,
+          "role": "package facade that re-exports applications.complaint_mcp_protocol"
+        },
+        {
+          "path": "complaint_generator/mcp_server.py",
+          "byte_size": 108,
+          "role": "package facade that re-exports applications.complaint_mcp_server.main"
+        },
+        {
+          "path": "integrations/ipfs_datasets/mcp_gateway.py",
+          "byte_size": 2403,
+          "role": "ipfs datasets MCP gateway"
+        }
+      ]
+    },
+    {
+      "concern": "deontic_logic",
+      "summary": "Reusable deontic-logic types live in lib, and complaint_phases re-exports them for compatibility.",
+      "modules": [
+        {
+          "path": "lib/deontic_logic.py",
+          "byte_size": 18634,
+          "role": "deontic-logic implementation"
+        },
+        {
+          "path": "complaint_phases/deontic_logic.py",
+          "byte_size": 464,
+          "role": "compatibility facade that re-exports lib.deontic_logic"
+        }
+      ]
+    },
+    {
+      "concern": "legal_document",
+      "summary": "Pleading helpers live in lib, complaint_phases re-exports them, and mediator/formal_document.py is a separate formal-complaint assembler.",
+      "modules": [
+        {
+          "path": "lib/legal_document.py",
+          "byte_size": 11562,
+          "role": "legal-document parsing and pleading helpers"
+        },
+        {
+          "path": "complaint_phases/legal_document.py",
+          "byte_size": 602,
+          "role": "compatibility facade that re-exports lib.legal_document"
+        },
+        {
+          "path": "mediator/formal_document.py",
+          "byte_size": 140581,
+          "role": "formal complaint document assembly and export"
+        }
+      ]
+    }
+  ],
+  "largest_python_modules": [
+    {
+      "rank": 1,
+      "path": "applications/complaint_workspace.py",
+      "byte_size": 914188
+    },
+    {
+      "rank": 2,
+      "path": "mediator/mediator.py",
+      "byte_size": 587918
+    },
+    {
+      "rank": 3,
+      "path": "complaint_phases/document_pipeline.py",
+      "byte_size": 489169
+    },
+    {
+      "rank": 4,
+      "path": "mediator/claim_support_hooks.py",
+      "byte_size": 446562
+    },
+    {
+      "rank": 5,
+      "path": "integrations/ipfs_datasets/logic.py",
+      "byte_size": 406825
+    },
+    {
+      "rank": 6,
+      "path": "complaint_phases/denoiser.py",
+      "byte_size": 386165
+    },
+    {
+      "rank": 7,
+      "path": "tests/test_claim_support_review_playwright_smoke.py",
+      "byte_size": 379599
+    },
+    {
+      "rank": 8,
+      "path": "integrations/private_storage.py",
+      "byte_size": 365443
+    },
+    {
+      "rank": 9,
+      "path": "adversarial_harness/optimizer.py",
+      "byte_size": 338380
+    },
+    {
+      "rank": 10,
+      "path": "scripts/synthesize_hacc_complaint.py",
+      "byte_size": 332990
+    },
+    {
+      "rank": 11,
+      "path": "tests/test_review_api.py",
+      "byte_size": 328457
+    },
+    {
+      "rank": 12,
+      "path": "integrations/ipfs_accelerate/improvement_runner.py",
+      "byte_size": 326280
+    },
+    {
+      "rank": 13,
+      "path": "applications/dashboard_ui.py",
+      "byte_size": 325087
+    },
+    {
+      "rank": 14,
+      "path": "scripts/refactor_agent_supervisor.py",
+      "byte_size": 305289
+    },
+    {
+      "rank": 15,
+      "path": "tests/test_claim_support_hooks.py",
+      "byte_size": 252947
+    }
+  ]
+}

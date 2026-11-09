@@ -20,7 +20,7 @@ def test_accelerate_router_preserves_fallback_reason(monkeypatch):
 	deps = RouterDeps(accelerate_managers={"llm_router": FakeManager()})
 	monkeypatch.delenv("IPFS_DATASETS_PY_ENABLE_IPFS_ACCELERATE", raising=False)
 
-	with pytest.raises(RuntimeError, match="local_fallback") as exc_info:
+	with pytest.raises(RuntimeError, match="Accelerate not available, using local fallback") as exc_info:
 		generate_text(
 			"Reply with exactly OK.",
 			provider="accelerate",
@@ -29,6 +29,5 @@ def test_accelerate_router_preserves_fallback_reason(monkeypatch):
 		)
 
 	message = str(exc_info.value)
-	assert "Accelerate not available, using local fallback" in message
-	assert "status=success" in message
-	assert "backend=local_fallback" in message
+	# The pinned Native router preserves the manager message verbatim.
+	assert message == "Accelerate not available, using local fallback"

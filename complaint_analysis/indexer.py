@@ -10,7 +10,11 @@ This provides the best of both approaches:
 - Combined relevance scoring
 """
 
+import inspect
 import logging
+import math
+import re
+from collections import Counter
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
@@ -69,6 +73,11 @@ class HybridDocumentIndexer:
         
         # Batch 218: Track indexed documents
         self._indexed_documents: List[Dict[str, Any]] = []
+
+        # Keep source text out of the public indexing result while retaining the
+        # minimum state required for local keyword search.  Keys are object IDs
+        # because callers may attach their own (non-unique) metadata identifiers.
+        self._search_text_by_document_id: Dict[int, str] = {}
     
     async def index_document(self, text: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
@@ -96,11 +105,17 @@ class HybridDocumentIndexer:
         # Generate vector embedding (ipfs_datasets_py)
         if self.enable_embeddings and self.embeddings_router:
             try:
-                embedding = await self.embeddings_router.embed_text(text)
+                embedding = self.embeddings_router.embed_text(text)
+                if inspect.isawaitable(embedding):
+                    embedding = await embedding
                 result['embedding'] = embedding
                 result['embedding_available'] = True
             except Exception as e:
-                print(f"Warning: Embedding failed: {e}")
+                logger.warning(
+                    "Document embedding failed; indexing without a vector: %s",
+                    e,
+                    exc_info=True,
+                )
                 result['embedding_available'] = False
         else:
             result['embedding_available'] = False
@@ -137,6 +152,7 @@ class HybridDocumentIndexer:
         
         # Batch 218: Track indexed document
         self._indexed_documents.append(result)
+        self._search_text_by_document_id[id(result)] = text
         
         return result
     
@@ -224,14 +240,253 @@ class HybridDocumentIndexer:
             filter_by: Optional filters (e.g., {'applicability': 'housing'})
             
         Returns:
-            List of matching documents sorted by combined relevance
+            Scored copies of matching documents sorted by combined relevance.
+            Each result includes ``search_score``, ``keyword_score``, and
+            ``vector_score`` (``None`` when embeddings are unavailable).
+
+        Raises:
+            TypeError: If arguments have the wrong type.
+            ValueError: If query is blank or top_k is negative.
         """
-        # This would integrate with a vector database and DuckDB
-        # For now, return structure for future implementation
-        raise NotImplementedError(
-            "Hybrid search requires integration with vector database and DuckDB. "
-            "Use index_document() to prepare documents, then query via mediator hooks."
-        )
+        if not isinstance(query, str):
+            raise TypeError("query must be a string")
+        query = query.strip()
+        if not query:
+            raise ValueError("query must not be blank")
+        if isinstance(top_k, bool) or not isinstance(top_k, int):
+            raise TypeError("top_k must be an integer")
+        if top_k < 0:
+            raise ValueError("top_k must be non-negative")
+        if filter_by is not None and not isinstance(filter_by, dict):
+            raise TypeError("filter_by must be a dictionary")
+        if top_k == 0 or not self._indexed_documents:
+            return []
+
+        query_terms = self._tokenize(query)
+        query_embedding = await self._query_embedding(query)
+        ranked = []
+
+        for position, document in enumerate(self._indexed_documents):
+            if filter_by and not self._matches_filters(document, filter_by):
+                continue
+
+            searchable_text = self._document_search_text(document)
+            keyword_score = self._keyword_search_score(
+                query,
+                query_terms,
+                searchable_text,
+            )
+            vector_score = self._vector_search_score(
+                query_embedding,
+                document.get('embedding'),
+            )
+
+            # Without a usable embedding, a document must match at least one
+            # query term.  With embeddings, semantic similarity is sufficient.
+            if keyword_score == 0.0 and (
+                vector_score is None or vector_score == 0.0
+            ):
+                continue
+            if vector_score is None:
+                search_score = keyword_score
+            else:
+                search_score = (vector_score * 0.65) + (keyword_score * 0.35)
+
+            result = dict(document)
+            result['search_score'] = search_score
+            result['keyword_score'] = keyword_score
+            result['vector_score'] = vector_score
+            ranked.append((
+                search_score,
+                keyword_score,
+                float(document.get('relevance_score', 0.0) or 0.0),
+                -position,
+                result,
+            ))
+
+        ranked.sort(key=lambda item: item[:4], reverse=True)
+        return [item[4] for item in ranked[:top_k]]
+
+    async def _query_embedding(self, query: str) -> Optional[List[float]]:
+        """Generate and normalize a query embedding, degrading to keywords."""
+        if not self.enable_embeddings or self.embeddings_router is None:
+            return None
+
+        try:
+            embedding = self.embeddings_router.embed_text(query)
+            if inspect.isawaitable(embedding):
+                embedding = await embedding
+            return self._coerce_vector(embedding)
+        except Exception as exc:
+            logger.warning(
+                "Query embedding failed; using keyword-only search: %s",
+                exc,
+                exc_info=True,
+            )
+            return None
+
+    @staticmethod
+    def _coerce_vector(value: Any) -> Optional[List[float]]:
+        """Return a finite float vector for common embedding payload shapes."""
+        if isinstance(value, dict):
+            value = value.get('embedding', value.get('vector'))
+        if hasattr(value, 'tolist'):
+            value = value.tolist()
+        if isinstance(value, tuple):
+            value = list(value)
+        if not isinstance(value, list) or not value:
+            return None
+
+        try:
+            vector = [float(component) for component in value]
+        except (TypeError, ValueError):
+            return None
+        if not all(math.isfinite(component) for component in vector):
+            return None
+        return vector
+
+    @classmethod
+    def _vector_search_score(
+        cls,
+        query_embedding: Optional[List[float]],
+        document_embedding: Any,
+    ) -> Optional[float]:
+        """Calculate cosine similarity normalized to the 0..1 score range."""
+        document_vector = cls._coerce_vector(document_embedding)
+        if query_embedding is None or document_vector is None:
+            return None
+        if len(query_embedding) != len(document_vector):
+            return None
+
+        query_norm = math.sqrt(sum(value * value for value in query_embedding))
+        document_norm = math.sqrt(sum(value * value for value in document_vector))
+        if query_norm == 0.0 or document_norm == 0.0:
+            return None
+
+        cosine = sum(
+            query_value * document_value
+            for query_value, document_value in zip(query_embedding, document_vector)
+        ) / (query_norm * document_norm)
+        return max(0.0, min(1.0, (cosine + 1.0) / 2.0))
+
+    @staticmethod
+    def _tokenize(value: str) -> List[str]:
+        """Tokenize search input consistently while preserving legal numbers."""
+        return re.findall(r"[a-z0-9]+", value.lower())
+
+    @classmethod
+    def _keyword_search_score(
+        cls,
+        query: str,
+        query_terms: List[str],
+        searchable_text: str,
+    ) -> float:
+        """Score exact terms, bounded frequency, and an exact phrase bonus."""
+        if not query_terms:
+            return 0.0
+
+        document_terms = cls._tokenize(searchable_text)
+        if not document_terms:
+            return 0.0
+        document_term_counts = Counter(document_terms)
+        term_counts = {
+            term: document_term_counts[term]
+            for term in set(query_terms)
+        }
+        matched_terms = sum(1 for count in term_counts.values() if count)
+        if matched_terms == 0:
+            return 0.0
+
+        coverage = matched_terms / len(term_counts)
+        bounded_frequency = sum(
+            min(count, 3) for count in term_counts.values()
+        ) / (len(term_counts) * 3)
+        normalized_query = ' '.join(cls._tokenize(query))
+        normalized_document = ' '.join(document_terms)
+        phrase_bonus = float(normalized_query in normalized_document)
+        return (coverage * 0.7) + (bounded_frequency * 0.2) + (phrase_bonus * 0.1)
+
+    def _document_search_text(self, document: Dict[str, Any]) -> str:
+        """Build searchable text from private content and public index fields."""
+        values = [self._search_text_by_document_id.get(id(document), '')]
+        values.extend(self._flatten_search_values(document.get('metadata', {})))
+        values.extend(self._flatten_search_values(document.get('keywords', {})))
+        values.extend(self._flatten_search_values(document.get('applicability', [])))
+        values.extend(self._flatten_search_values(document.get('legal_provisions', {})))
+        return ' '.join(value for value in values if value)
+
+    @classmethod
+    def _flatten_search_values(cls, value: Any) -> List[str]:
+        """Flatten scalar values without stringifying opaque containers."""
+        if isinstance(value, dict):
+            flattened = []
+            for key, nested_value in value.items():
+                flattened.append(str(key))
+                flattened.extend(cls._flatten_search_values(nested_value))
+            return flattened
+        if isinstance(value, (list, tuple, set)):
+            flattened = []
+            for nested_value in value:
+                flattened.extend(cls._flatten_search_values(nested_value))
+            return flattened
+        if value is None or isinstance(value, bool):
+            return []
+        if isinstance(value, (str, int, float)):
+            return [str(value)]
+        return []
+
+    @classmethod
+    def _matches_filters(
+        cls,
+        document: Dict[str, Any],
+        filters: Dict[str, Any],
+    ) -> bool:
+        """Match all filters against document fields or metadata fallback fields."""
+        for field, expected in filters.items():
+            if not isinstance(field, str) or not field:
+                return False
+            found, actual = cls._resolve_filter_value(document, field)
+            if not found or not cls._filter_value_matches(actual, expected):
+                return False
+        return True
+
+    @staticmethod
+    def _resolve_filter_value(
+        document: Dict[str, Any],
+        field: str,
+    ) -> tuple[bool, Any]:
+        parts = field.split('.')
+        current: Any = document
+        found = True
+        for part in parts:
+            if not isinstance(current, dict) or part not in current:
+                found = False
+                break
+            current = current[part]
+        if found:
+            return True, current
+
+        # A plain key conveniently falls back to metadata, while dotted paths
+        # remain explicit (for example ``metadata.source``).
+        metadata = document.get('metadata', {})
+        if len(parts) == 1 and isinstance(metadata, dict) and field in metadata:
+            return True, metadata[field]
+        return False, None
+
+    @staticmethod
+    def _filter_value_matches(actual: Any, expected: Any) -> bool:
+        collections = (list, tuple, set)
+        if isinstance(expected, collections):
+            if isinstance(actual, collections):
+                return any(
+                    actual_value == expected_value
+                    for actual_value in actual
+                    for expected_value in expected
+                )
+            return any(actual == expected_value for expected_value in expected)
+        if isinstance(actual, collections):
+            return any(actual_value == expected for actual_value in actual)
+        return actual == expected
     
     def get_statistics(self, documents: List[Dict[str, Any]]) -> Dict[str, Any]:
         """

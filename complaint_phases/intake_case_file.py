@@ -5,10 +5,13 @@ Helpers for building and summarizing the structured intake case file.
 from __future__ import annotations
 
 import calendar
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from itertools import combinations
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Mapping, Optional
+
+from integrations.ipfs_datasets.types import user_assertion_from_mapping
 
 from .intake_claim_registry import normalize_claim_type, refresh_required_elements, registry_for_claim_type
 
@@ -27,6 +30,235 @@ def _coerce_list(value: Any) -> List[Any]:
 
 def _coerce_dict(value: Any) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+QUESTION_DISPOSITIONS = (
+    "answered",
+    "unknown",
+    "refused",
+    "skipped",
+    "deferred",
+    "invalidated",
+)
+_NON_FACT_QUESTION_DISPOSITIONS = {
+    "unknown",
+    "refused",
+    "skipped",
+    "deferred",
+    "invalidated",
+}
+_QUESTION_DISPOSITION_ALIASES = {
+    "answered": "answered",
+    "answer": "answered",
+    "unknown": "unknown",
+    "do_not_know": "unknown",
+    "dont_know": "unknown",
+    "don't_know": "unknown",
+    "do-not-know": "unknown",
+    "declined": "refused",
+    "decline": "refused",
+    "refused": "refused",
+    "refuse": "refused",
+    "refusal": "refused",
+    "skipped": "skipped",
+    "skip": "skipped",
+    "deferred": "deferred",
+    "defer": "deferred",
+    "invalidated": "invalidated",
+    "invalidate": "invalidated",
+    "contradictory": "contradictory",
+}
+_CLOSED_QUESTION_DISPOSITIONS = _NON_FACT_QUESTION_DISPOSITIONS | {
+    "answered",
+    "declined",
+    "contradictory",
+}
+
+
+def canonical_question_disposition(value: Any) -> str:
+    """Map an answer label onto the persisted disposition vocabulary."""
+    token = _normalize_text(value).lower().replace(" ", "_")
+    if token in _QUESTION_DISPOSITION_ALIASES:
+        return _QUESTION_DISPOSITION_ALIASES[token]
+    return ""
+
+
+def question_disposition_creates_fact(disposition: str) -> bool:
+    """Unknown and refusal dispositions are not facts or requirement satisfaction."""
+    return canonical_question_disposition(disposition) == "answered"
+
+
+def _question_disposition_key(record: Mapping[str, Any]) -> tuple:
+    return (
+        _normalize_text(record.get("target_id")),
+        _normalize_text(record.get("target_revision")),
+        _normalize_text(record.get("disposition")).lower(),
+        bool(record.get("reopened")),
+        _normalize_text(record.get("reopen_reason")),
+    )
+
+
+def _normalize_question_disposition_record(record: Mapping[str, Any]) -> Dict[str, Any]:
+    disposition = canonical_question_disposition(record.get("disposition")) or _normalize_text(
+        record.get("disposition")
+    ).lower()
+    non_fact = disposition in _NON_FACT_QUESTION_DISPOSITIONS or disposition in {"declined", "contradictory"}
+    creates_fact = False if non_fact else bool(record.get("creates_fact"))
+    satisfies_requirement = False if non_fact else bool(record.get("satisfies_requirement"))
+    contradictory_conclusion = False if non_fact else bool(record.get("contradictory_conclusion"))
+    if disposition != "answered":
+        creates_fact = False if non_fact else creates_fact
+    return {
+        "target_id": _normalize_text(record.get("target_id")),
+        "target_revision": _normalize_text(record.get("target_revision")) or "unresolved",
+        "target_kind": _normalize_text(record.get("target_kind")) or None,
+        "disposition": disposition,
+        "question": _normalize_text(record.get("question")) or None,
+        "answer": None if non_fact and not _normalize_text(record.get("answer")) else record.get("answer"),
+        "reason": _normalize_text(record.get("reason")) or None,
+        "creates_fact": creates_fact,
+        "satisfies_requirement": satisfies_requirement,
+        "contradictory_conclusion": contradictory_conclusion,
+        "reopened": bool(record.get("reopened")),
+        "reopen_reason": _normalize_text(record.get("reopen_reason")) or None,
+        "evidence_change": _normalize_text(record.get("evidence_change")) or None,
+        "scope_change": _normalize_text(record.get("scope_change")) or None,
+        "status": "reopened" if record.get("reopened") else "disposed",
+    }
+
+
+def question_disposition_records(intake_case_file: Any) -> List[Dict[str, Any]]:
+    case_file = _coerce_dict(intake_case_file)
+    records: List[Dict[str, Any]] = []
+    seen = set()
+    for item in _coerce_list(case_file.get("question_dispositions")):
+        if not isinstance(item, dict):
+            continue
+        normalized = _normalize_question_disposition_record(item)
+        if not normalized["target_id"] or not normalized["disposition"]:
+            continue
+        key = _question_disposition_key(normalized)
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append(normalized)
+    return records
+
+
+def question_target_is_closed(
+    intake_case_file: Any,
+    target_id: Any,
+    target_revision: Any = None,
+) -> bool:
+    """A disposed target stays closed across revisions until an explicit reopen."""
+    wanted = _normalize_text(target_id)
+    if not wanted:
+        return False
+    revision = _normalize_text(target_revision)
+    closed = False
+    for record in question_disposition_records(intake_case_file):
+        if record["target_id"] != wanted:
+            continue
+        if record["reopened"]:
+            reopen_revision = record.get("target_revision") or ""
+            if not revision or not reopen_revision or reopen_revision in {revision, "unresolved"}:
+                closed = False
+            continue
+        if record["disposition"] in _CLOSED_QUESTION_DISPOSITIONS:
+            closed = True
+    return closed
+
+
+def record_question_disposition(
+    intake_case_file: Dict[str, Any],
+    *,
+    target_id: Any,
+    target_revision: Any,
+    disposition: Any,
+    target_kind: Any = None,
+    question: Any = None,
+    answer: Any = None,
+    reason: Any = None,
+    creates_fact: bool = False,
+    satisfies_requirement: bool = False,
+    contradictory_conclusion: bool = False,
+) -> Dict[str, Any]:
+    """Persist one stable target revision and its disposition on the case file."""
+    case_file = _coerce_dict(intake_case_file)
+    canonical = canonical_question_disposition(disposition)
+    if not canonical:
+        raise ValueError("question disposition must be answered, unknown, refused, skipped, deferred, or invalidated")
+    record = _normalize_question_disposition_record({
+        "target_id": target_id,
+        "target_revision": target_revision,
+        "target_kind": target_kind,
+        "disposition": canonical,
+        "question": question,
+        "answer": answer,
+        "reason": reason,
+        "creates_fact": creates_fact,
+        "satisfies_requirement": satisfies_requirement,
+        "contradictory_conclusion": contradictory_conclusion,
+        "reopened": False,
+    })
+    if not record["target_id"]:
+        raise ValueError("question disposition requires a stable target_id")
+    records = question_disposition_records(case_file)
+    records = [
+        item for item in records
+        if not (
+            item["target_id"] == record["target_id"]
+            and item["target_revision"] == record["target_revision"]
+            and not item["reopened"]
+        )
+    ]
+    records.append(record)
+    case_file["question_dispositions"] = records
+    return record
+
+
+def reopen_question_disposition(
+    intake_case_file: Dict[str, Any],
+    target_id: Any,
+    *,
+    reason: Any,
+    target_revision: Any = None,
+    evidence_change: Any = None,
+    scope_change: Any = None,
+) -> Dict[str, Any]:
+    """Reopen a disposed question only when new evidence or scope is named."""
+    why = _normalize_text(reason)
+    evidence = _normalize_text(evidence_change) or None
+    scope = _normalize_text(scope_change) or None
+    if not why:
+        raise ValueError("reopening a disposed question requires a reason")
+    if not evidence and not scope:
+        raise ValueError("reopening a disposed question requires new evidence or changed scope")
+    case_file = _coerce_dict(intake_case_file)
+    wanted = _normalize_text(target_id)
+    records = question_disposition_records(case_file)
+    disposed = [
+        item for item in records
+        if item["target_id"] == wanted and not item["reopened"] and item["disposition"] in _CLOSED_QUESTION_DISPOSITIONS
+    ]
+    if not wanted or not disposed:
+        raise ValueError("no disposed question matches that target")
+    revision = _normalize_text(target_revision) or disposed[-1]["target_revision"]
+    reopened = _normalize_question_disposition_record({
+        **disposed[-1],
+        "target_revision": revision,
+        "reopened": True,
+        "reopen_reason": why,
+        "evidence_change": evidence,
+        "scope_change": scope,
+        "creates_fact": False,
+        "satisfies_requirement": False,
+        "contradictory_conclusion": False,
+        "answer": None,
+    })
+    records.append(reopened)
+    case_file["question_dispositions"] = records
+    return reopened
 
 
 def _coerce_provenance_refs(value: Any) -> List[Any]:
@@ -59,6 +291,11 @@ def _unique_normalized_strings(values: Any) -> List[str]:
         if normalized and normalized not in normalized_values:
             normalized_values.append(normalized)
     return normalized_values
+
+
+def _normalize_scope_key(value: Any) -> str:
+    text = _normalize_text(value).lower()
+    return "".join(ch if ch.isalnum() else "_" for ch in text).strip("_")
 
 
 def _looks_like_staff_person_name(value: Any) -> bool:
@@ -867,6 +1104,20 @@ def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
     fact = _coerce_dict(record)
     normalized_text = _normalize_text(fact.get("text") or "")
     fact_type = _normalize_text(fact.get("fact_type") or "general").lower() or "general"
+    claim_types = _unique_normalized_strings(
+        list(fact.get("claim_types") or [])
+        + ([fact.get("target_claim_type")] if str(fact.get("target_claim_type") or "").strip() else [])
+    )
+    element_tags = _unique_normalized_strings(
+        list(fact.get("element_tags") or [])
+        + list(fact.get("target_element_ids") or [])
+        + ([fact.get("target_element_id")] if str(fact.get("target_element_id") or "").strip() else [])
+    )
+    element_links = _normalize_intake_target_links(
+        fact.get("element_links") or fact.get("target_links"),
+        claim_types=claim_types,
+        element_ids=element_tags,
+    )
     existing_temporal_context = _coerce_dict(fact.get("temporal_context"))
     reusable_temporal_raw_text = ""
     if (
@@ -918,8 +1169,11 @@ def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
         "structured_timeline_group": _normalize_text(fact.get("structured_timeline_group") or "") or None,
         "actor_ids": list(fact.get("actor_ids") or []),
         "target_ids": list(fact.get("target_ids") or []),
-        "claim_types": list(fact.get("claim_types") or []),
-        "element_tags": list(fact.get("element_tags") or []),
+        "claim_types": claim_types,
+        "element_tags": element_tags,
+        "target_claim_types": claim_types,
+        "target_element_ids": element_tags,
+        "element_links": element_links,
         "location": _normalize_text(fact.get("location") or "") or None,
         "fact_participants": _coerce_dict(fact.get("fact_participants")),
         "event_label": _normalize_text(fact.get("event_label") or normalized_text) or None,
@@ -939,8 +1193,99 @@ def _normalize_canonical_fact_record(record: Any) -> Dict[str, Any]:
     }
 
 
+def _normalize_intake_target_links(
+    value: Any,
+    *,
+    claim_types: List[str] | None = None,
+    element_ids: List[str] | None = None,
+    fact_ids: List[str] | None = None,
+) -> List[Dict[str, str]]:
+    links: List[Dict[str, str]] = []
+    seen = set()
+
+    def _append_link(
+        *,
+        claim_type: Any = "",
+        element_id: Any = "",
+        fact_id: Any = "",
+    ) -> None:
+        normalized_claim_type = _normalize_text(claim_type)
+        normalized_element_id = _normalize_text(element_id)
+        normalized_fact_id = _normalize_text(fact_id)
+        if not normalized_claim_type and not normalized_element_id and not normalized_fact_id:
+            return
+        marker = (normalized_claim_type, normalized_element_id, normalized_fact_id)
+        if marker in seen:
+            return
+        seen.add(marker)
+        link: Dict[str, str] = {}
+        if normalized_claim_type:
+            link["claim_type"] = normalized_claim_type
+        if normalized_element_id:
+            link["element_id"] = normalized_element_id
+        if normalized_fact_id:
+            link["fact_id"] = normalized_fact_id
+        links.append(link)
+
+    for item in value if isinstance(value, list) else []:
+        if isinstance(item, dict):
+            _append_link(
+                claim_type=item.get("claim_type") or item.get("target_claim_type"),
+                element_id=item.get("element_id") or item.get("target_element_id") or item.get("claim_element_id"),
+                fact_id=item.get("fact_id") or item.get("target_fact_id"),
+            )
+            continue
+        normalized_item = _normalize_text(item)
+        if normalized_item:
+            _append_link(element_id=normalized_item)
+
+    normalized_claim_types = _unique_normalized_strings(claim_types or [])
+    normalized_element_ids = _unique_normalized_strings(element_ids or [])
+    normalized_fact_ids = _unique_normalized_strings(fact_ids or [])
+    if normalized_claim_types and normalized_element_ids and normalized_fact_ids:
+        for claim_type in normalized_claim_types:
+            for element_id in normalized_element_ids:
+                for fact_id in normalized_fact_ids:
+                    _append_link(claim_type=claim_type, element_id=element_id, fact_id=fact_id)
+    elif normalized_claim_types and normalized_element_ids:
+        for claim_type in normalized_claim_types:
+            for element_id in normalized_element_ids:
+                _append_link(claim_type=claim_type, element_id=element_id)
+    else:
+        for claim_type in normalized_claim_types:
+            _append_link(claim_type=claim_type)
+        for element_id in normalized_element_ids:
+            _append_link(element_id=element_id)
+    for fact_id in normalized_fact_ids:
+        _append_link(fact_id=fact_id)
+    return links
+
+
 def _normalize_proof_lead_record(record: Any) -> Dict[str, Any]:
     lead = _coerce_dict(record)
+    lead_type = _normalize_text(lead.get("lead_type") or "evidence").lower() or "evidence"
+    related_fact_ids = _unique_normalized_strings(lead.get("related_fact_ids") or [])
+    fact_targets = _unique_normalized_strings(
+        list(lead.get("fact_targets") or [])
+        + list(lead.get("target_fact_ids") or [])
+        + related_fact_ids
+    )
+    element_targets = _unique_normalized_strings(
+        list(lead.get("element_targets") or [])
+        + list(lead.get("target_element_ids") or [])
+        + ([lead.get("target_element_id")] if str(lead.get("target_element_id") or "").strip() else [])
+    )
+    target_claim_types = _unique_normalized_strings(
+        list(lead.get("target_claim_types") or [])
+        + list(lead.get("claim_types") or [])
+        + ([lead.get("target_claim_type")] if str(lead.get("target_claim_type") or "").strip() else [])
+    )
+    target_links = _normalize_intake_target_links(
+        lead.get("target_links") or lead.get("element_links"),
+        claim_types=target_claim_types,
+        element_ids=element_targets,
+        fact_ids=fact_targets,
+    )
     raw_temporal_scope = _normalize_text(
         lead.get("temporal_scope")
         or _coerce_dict(lead.get("temporal_context")).get("raw_text")
@@ -948,12 +1293,22 @@ def _normalize_proof_lead_record(record: Any) -> Dict[str, Any]:
     ) or None
     return {
         **lead,
-        "lead_type": _normalize_text(lead.get("lead_type") or "evidence").lower() or "evidence",
+        "lead_type": lead_type,
         "description": _normalize_text(lead.get("description") or ""),
-        "related_fact_ids": list(lead.get("related_fact_ids") or []),
-        "fact_targets": list(lead.get("fact_targets") or []),
-        "element_targets": list(lead.get("element_targets") or []),
-        "timeline_anchor_ids": list(lead.get("timeline_anchor_ids") or []),
+        "related_fact_ids": related_fact_ids,
+        "fact_targets": fact_targets,
+        "element_targets": element_targets,
+        "target_claim_types": target_claim_types,
+        "target_element_ids": element_targets,
+        "target_fact_ids": fact_targets,
+        "target_links": target_links,
+        "timeline_anchor_ids": _unique_normalized_strings(lead.get("timeline_anchor_ids") or []),
+        "availability": _normalize_text(lead.get("availability") or "availability_unknown").lower() or "availability_unknown",
+        "availability_details": _normalize_text(lead.get("availability_details") or ""),
+        "owner": _normalize_text(lead.get("owner") or "unknown") or "unknown",
+        "custodian": _normalize_text(lead.get("custodian") or lead.get("owner") or "unknown") or "unknown",
+        "expected_format": _normalize_text(lead.get("expected_format") or _derive_expected_format(lead_type)),
+        "retrieval_path": _normalize_text(lead.get("retrieval_path") or _derive_retrieval_path(lead_type)),
         "source_artifact_ids": _unique_normalized_strings(
             list(lead.get("source_artifact_ids") or [])
             + ([lead.get("source_artifact_id")] if str(lead.get("source_artifact_id") or "").strip() else [])
@@ -966,6 +1321,34 @@ def _normalize_proof_lead_record(record: Any) -> Dict[str, Any]:
         "temporal_scope": raw_temporal_scope,
         "temporal_context": _build_temporal_context(raw_temporal_scope),
     }
+
+
+def _ensure_stable_intake_record_ids(
+    records: Any,
+    *,
+    id_key: str,
+    prefix: str,
+) -> List[Dict[str, Any]]:
+    normalized_records = [
+        dict(record)
+        for record in (records if isinstance(records, list) else [])
+        if isinstance(record, dict)
+    ]
+    seen_ids = {
+        _normalize_text(record.get(id_key) or "")
+        for record in normalized_records
+        if _normalize_text(record.get(id_key) or "")
+    }
+    next_index = 1
+    for record in normalized_records:
+        if _normalize_text(record.get(id_key) or ""):
+            continue
+        while f"{prefix}_{next_index:03d}" in seen_ids:
+            next_index += 1
+        record[id_key] = f"{prefix}_{next_index:03d}"
+        seen_ids.add(record[id_key])
+        next_index += 1
+    return normalized_records
 
 
 def _merge_normalized_string_lists(*values: Any) -> List[str]:
@@ -1007,13 +1390,22 @@ def _canonical_fact_match_keys(record: Any) -> List[tuple[Any, ...]]:
 def _merge_canonical_fact_records(base: Any, overlay: Any) -> Dict[str, Any]:
     base_fact = _normalize_canonical_fact_record(base)
     overlay_fact = _normalize_canonical_fact_record(overlay)
+    merged_claim_types = _merge_normalized_string_lists(base_fact.get("claim_types"), overlay_fact.get("claim_types"))
+    merged_element_tags = _merge_normalized_string_lists(base_fact.get("element_tags"), overlay_fact.get("element_tags"))
     return {
         **base_fact,
         **overlay_fact,
         "actor_ids": _merge_normalized_string_lists(base_fact.get("actor_ids"), overlay_fact.get("actor_ids")),
         "target_ids": _merge_normalized_string_lists(base_fact.get("target_ids"), overlay_fact.get("target_ids")),
-        "claim_types": _merge_normalized_string_lists(base_fact.get("claim_types"), overlay_fact.get("claim_types")),
-        "element_tags": _merge_normalized_string_lists(base_fact.get("element_tags"), overlay_fact.get("element_tags")),
+        "claim_types": merged_claim_types,
+        "element_tags": merged_element_tags,
+        "target_claim_types": merged_claim_types,
+        "target_element_ids": merged_element_tags,
+        "element_links": _normalize_intake_target_links(
+            list(base_fact.get("element_links") or []) + list(overlay_fact.get("element_links") or []),
+            claim_types=merged_claim_types,
+            element_ids=merged_element_tags,
+        ),
         "timeline_anchor_ids": _merge_normalized_string_lists(
             base_fact.get("timeline_anchor_ids"),
             overlay_fact.get("timeline_anchor_ids"),
@@ -1091,17 +1483,37 @@ def _proof_lead_match_keys(record: Any) -> List[tuple[Any, ...]]:
 def _merge_proof_lead_records(base: Any, overlay: Any) -> Dict[str, Any]:
     base_lead = _normalize_proof_lead_record(base)
     overlay_lead = _normalize_proof_lead_record(overlay)
+    merged_related_fact_ids = _merge_normalized_string_lists(
+        base_lead.get("related_fact_ids"),
+        overlay_lead.get("related_fact_ids"),
+    )
+    merged_fact_targets = _merge_normalized_string_lists(
+        base_lead.get("fact_targets"),
+        overlay_lead.get("fact_targets"),
+        merged_related_fact_ids,
+    )
+    merged_element_targets = _merge_normalized_string_lists(
+        base_lead.get("element_targets"),
+        overlay_lead.get("element_targets"),
+    )
+    merged_claim_types = _merge_normalized_string_lists(
+        base_lead.get("target_claim_types"),
+        overlay_lead.get("target_claim_types"),
+    )
     return {
         **base_lead,
         **overlay_lead,
-        "related_fact_ids": _merge_normalized_string_lists(
-            base_lead.get("related_fact_ids"),
-            overlay_lead.get("related_fact_ids"),
-        ),
-        "fact_targets": _merge_normalized_string_lists(base_lead.get("fact_targets"), overlay_lead.get("fact_targets")),
-        "element_targets": _merge_normalized_string_lists(
-            base_lead.get("element_targets"),
-            overlay_lead.get("element_targets"),
+        "related_fact_ids": merged_related_fact_ids,
+        "fact_targets": merged_fact_targets,
+        "element_targets": merged_element_targets,
+        "target_claim_types": merged_claim_types,
+        "target_element_ids": merged_element_targets,
+        "target_fact_ids": merged_fact_targets,
+        "target_links": _normalize_intake_target_links(
+            list(base_lead.get("target_links") or []) + list(overlay_lead.get("target_links") or []),
+            claim_types=merged_claim_types,
+            element_ids=merged_element_targets,
+            fact_ids=merged_fact_targets,
         ),
         "timeline_anchor_ids": _merge_normalized_string_lists(
             base_lead.get("timeline_anchor_ids"),
@@ -1454,10 +1866,15 @@ def build_temporal_relation_registry(
         if _normalize_text(fact.get("fact_id") or "")
     }
     registry: List[Dict[str, Any]] = []
+
+    # Track explicit fact pairs so inferred relations only fill gaps.
+    explicit_pairs: set = set()
+
     for index, relation in enumerate(timeline_relations if isinstance(timeline_relations, list) else [], start=1):
         if not isinstance(relation, dict):
             continue
-        relation_id = _normalize_text(relation.get("relation_id") or "") or f"timeline_relation_{index:03d}"
+        raw_relation_id = _normalize_text(relation.get("relation_id") or "")
+        relation_id = raw_relation_id or f"timeline_relation_{index:03d}"
         source_fact_id = _normalize_text(relation.get("source_fact_id") or "")
         target_fact_id = _normalize_text(relation.get("target_fact_id") or "")
         source_fact = _coerce_dict(fact_index.get(source_fact_id))
@@ -1476,6 +1893,22 @@ def build_temporal_relation_registry(
             list(source_fact.get("testimony_record_ids") or [])
             + list(target_fact.get("testimony_record_ids") or [])
         )
+        raw_inference_basis = _normalize_text(relation.get("inference_basis") or "")
+        relation_id_looks_generated = bool(raw_relation_id and raw_relation_id.startswith("timeline_relation_"))
+        inference_basis = raw_inference_basis or (
+            "normalized_temporal_context" if relation_id_looks_generated else "explicit_relation"
+        )
+        inference_mode = _normalize_text(relation.get("inference_mode") or "")
+        if not inference_mode:
+            inference_mode = (
+                "derived_from_structured_sequence"
+                if inference_basis == "structured_timeline_sequence"
+                else (
+                    "derived_from_temporal_context"
+                    if inference_basis == "normalized_temporal_context"
+                    else "explicit"
+                )
+            )
         registry.append(
             {
                 **relation,
@@ -1495,14 +1928,103 @@ def build_temporal_relation_registry(
                     list(source_fact.get("source_span_refs") or [])
                     + list(target_fact.get("source_span_refs") or [])
                 ),
-                "inference_mode": _normalize_text(relation.get("inference_mode") or "derived_from_temporal_context"),
-                "inference_basis": _normalize_text(relation.get("inference_basis") or "normalized_temporal_context"),
+                "inference_mode": inference_mode,
+                "inference_basis": inference_basis,
                 "explanation": (
                     f"{source_fact_id or 'unknown_fact'} {str(relation.get('relation_type') or 'related_to')} "
                     f"{target_fact_id or 'unknown_fact'} based on normalized temporal context."
                 ),
             }
         )
+        if source_fact_id and target_fact_id:
+            explicit_pairs.add((source_fact_id, target_fact_id))
+            explicit_pairs.add((target_fact_id, source_fact_id))
+
+    # T1: Infer ordering relations from date anchors for pairs without an explicit relation.
+    # When two timeline-capable facts both carry a start_date, derive before/same_time/after
+    # so that proof-bundle and rule-profile evaluation can use a complete partial-order graph
+    # even when the upstream relation extractor missed the pair.
+    #
+    # Guard: skip inference when the anchored-fact set is large to avoid O(n²) overhead.
+    # Typical temporal-capable sets are small (≤ ~20 facts); a 50-fact ceiling keeps the
+    # worst-case below 1 250 pairs while protecting against degenerate inputs.
+    _MAX_INFERRED_ANCHOR_FACTS = 50
+    anchored_facts = [
+        (
+            _normalize_text(fact.get("fact_id") or ""),
+            str(_coerce_dict(fact.get("temporal_context")).get("start_date") or "").strip(),
+            fact,
+        )
+        for fact in _timeline_capable_facts(canonical_facts)
+        if _normalize_text(fact.get("fact_id") or "")
+        and str(_coerce_dict(fact.get("temporal_context")).get("start_date") or "").strip()
+    ]
+    inferred_index = len(registry)
+    if len(anchored_facts) <= _MAX_INFERRED_ANCHOR_FACTS:
+        for (id_a, date_a, fact_a), (id_b, date_b, fact_b) in combinations(anchored_facts, 2):
+            pair_key = (id_a, id_b)
+            if pair_key in explicit_pairs:
+                continue
+            if date_a < date_b:
+                relation_type = "before"
+                source_fact_id, target_fact_id = id_a, id_b
+                source_fact, target_fact = fact_a, fact_b
+                source_date, target_date = date_a, date_b
+            elif date_a > date_b:
+                relation_type = "before"
+                source_fact_id, target_fact_id = id_b, id_a
+                source_fact, target_fact = fact_b, fact_a
+                source_date, target_date = date_b, date_a
+            else:
+                relation_type = "same_time"
+                source_fact_id, target_fact_id = id_a, id_b
+                source_fact, target_fact = fact_a, fact_b
+                source_date, target_date = date_a, date_b
+            inferred_index += 1
+            relation_id = f"inferred_relation_{inferred_index:03d}"
+            claim_types = _unique_normalized_strings(
+                list(source_fact.get("claim_types") or []) + list(target_fact.get("claim_types") or [])
+            )
+            element_tags = _unique_normalized_strings(
+                list(source_fact.get("element_tags") or []) + list(target_fact.get("element_tags") or [])
+            )
+            source_artifact_ids = _unique_normalized_strings(
+                list(source_fact.get("source_artifact_ids") or [])
+                + list(target_fact.get("source_artifact_ids") or [])
+            )
+            testimony_record_ids = _unique_normalized_strings(
+                list(source_fact.get("testimony_record_ids") or [])
+                + list(target_fact.get("testimony_record_ids") or [])
+            )
+            registry.append(
+                {
+                    "relation_id": relation_id,
+                    "registry_version": "temporal_relation_registry.v1",
+                    "relation_type": relation_type,
+                    "source_fact_id": source_fact_id,
+                    "target_fact_id": target_fact_id,
+                    "source_temporal_fact_id": str(source_fact.get("temporal_fact_id") or source_fact_id or "") or None,
+                    "target_temporal_fact_id": str(target_fact.get("temporal_fact_id") or target_fact_id or "") or None,
+                    "claim_types": claim_types,
+                    "element_tags": element_tags,
+                    "source_fact_text": _normalize_text(source_fact.get("text") or "") or None,
+                    "target_fact_text": _normalize_text(target_fact.get("text") or "") or None,
+                    "source_artifact_ids": source_artifact_ids,
+                    "testimony_record_ids": testimony_record_ids,
+                    "source_span_refs": _coerce_provenance_refs(
+                        list(source_fact.get("source_span_refs") or [])
+                        + list(target_fact.get("source_span_refs") or [])
+                    ),
+                    "inference_mode": "derived_from_date_anchors",
+                    "inference_basis": (
+                        f"{source_fact_id}.start_date:{source_date} vs {target_fact_id}.start_date:{target_date}"
+                    ),
+                    "explanation": (
+                        f"{source_fact_id} {relation_type} {target_fact_id} inferred from date anchors "
+                        f"({source_date} vs {target_date})."
+                    ),
+                }
+            )
     return registry
 
 
@@ -1636,11 +2158,25 @@ def build_temporal_issue_registry(
         )
         issue_index_by_signature[signature] = len(registry) - 1
 
+    # T1: canonical issue type aliases so that contradiction-queue entries tagged with
+    # the "temporal_" prefix resolve to the same canonical category that rule profiles
+    # and downstream consumers (e.g. evaluate_temporal_rule_profile) expect.
+    # Entries not present in this mapping pass through unchanged — they are already
+    # in canonical form (e.g. "temporal_reverse_before" is not normalised further).
+    _TEMPORAL_ISSUE_CATEGORY_ALIASES: Dict[str, str] = {
+        "temporal_contradictory_dates": "contradictory_dates",
+        "temporal_limitations_risk": "limitations_risk",
+        "temporal_missing_anchor": "missing_anchor",
+        "temporal_relative_only_ordering": "relative_only_ordering",
+    }
+
     for contradiction in contradiction_queue if isinstance(contradiction_queue, list) else []:
         candidate = _coerce_dict(contradiction)
-        category = _normalize_text(candidate.get("category") or candidate.get("type") or "").lower()
-        if not category.startswith("temporal"):
+        raw_category = _normalize_text(candidate.get("category") or candidate.get("type") or "").lower()
+        if not raw_category.startswith("temporal"):
             continue
+        # Normalise to the canonical category expected by rule profiles.
+        category = _TEMPORAL_ISSUE_CATEGORY_ALIASES.get(raw_category, raw_category)
         issue_id = _normalize_text(candidate.get("contradiction_id") or candidate.get("dependency_id") or "")
         issue_id = issue_id or f"temporal_issue:{category}:{len(registry) + 1}"
         if issue_id in seen_issue_ids:
@@ -1793,6 +2329,389 @@ def build_timeline_consistency_summary(
     }
 
 
+def _temporal_record_claim_keys(record: Dict[str, Any]) -> set[str]:
+    values: List[Any] = []
+    for field_name in ("claim_types", "affected_claim_types"):
+        field_value = record.get(field_name)
+        if isinstance(field_value, list):
+            values.extend(field_value)
+    for field_name in ("claim_type", "target_claim_type"):
+        field_value = record.get(field_name)
+        if _normalize_text(field_value):
+            values.append(field_value)
+    intent = record.get("intake_question_intent") if isinstance(record.get("intake_question_intent"), dict) else {}
+    if _normalize_text(intent.get("target_claim_type")):
+        values.append(intent.get("target_claim_type"))
+    return {_normalize_scope_key(value) for value in values if _normalize_scope_key(value)}
+
+
+def _temporal_record_element_keys(record: Dict[str, Any]) -> set[str]:
+    values: List[Any] = []
+    for field_name in ("element_tags", "affected_element_ids", "target_element_ids", "element_targets"):
+        field_value = record.get(field_name)
+        if isinstance(field_value, list):
+            values.extend(field_value)
+    for field_name in ("claim_element_id", "target_element_id"):
+        field_value = record.get(field_name)
+        if _normalize_text(field_value):
+            values.append(field_value)
+    intent = record.get("intake_question_intent") if isinstance(record.get("intake_question_intent"), dict) else {}
+    if _normalize_text(intent.get("target_element_id")):
+        values.append(intent.get("target_element_id"))
+    return {_normalize_scope_key(value) for value in values if _normalize_scope_key(value)}
+
+
+def _temporal_issue_id(issue: Dict[str, Any]) -> str:
+    return _normalize_text(issue.get("issue_id") or issue.get("contradiction_id") or issue.get("dependency_id") or "")
+
+
+def _temporal_relation_preview(relation: Dict[str, Any]) -> str:
+    source_fact_id = _normalize_text(relation.get("source_fact_id") or relation.get("source_temporal_fact_id") or "")
+    target_fact_id = _normalize_text(relation.get("target_fact_id") or relation.get("target_temporal_fact_id") or "")
+    relation_type = _normalize_text(relation.get("relation_type") or "").replace("_", " ")
+    return " ".join(part for part in [source_fact_id, relation_type, target_fact_id] if part).strip()
+
+
+def _build_temporal_graph_record(
+    *,
+    graph_id: str,
+    claim_type: str,
+    facts: List[Dict[str, Any]],
+    relations: List[Dict[str, Any]],
+    issues: List[Dict[str, Any]],
+    element_id: str = "",
+    element_label: str = "",
+) -> Dict[str, Any]:
+    fact_ids = [
+        _normalize_text(fact.get("fact_id") or fact.get("temporal_fact_id") or "")
+        for fact in facts
+        if _normalize_text(fact.get("fact_id") or fact.get("temporal_fact_id") or "")
+    ]
+    relation_ids = [
+        _normalize_text(relation.get("relation_id") or "")
+        for relation in relations
+        if _normalize_text(relation.get("relation_id") or "")
+    ]
+    issue_ids: List[str] = []
+    open_issue_ids: List[str] = []
+    blocking_issue_ids: List[str] = []
+    issue_type_counts: Dict[str, int] = {}
+    issue_status_counts: Dict[str, int] = {}
+    severity_counts: Dict[str, int] = {}
+    missing_temporal_predicates: List[str] = []
+    required_provenance_kinds: List[str] = []
+    warnings: List[str] = []
+
+    for issue in issues:
+        issue_id = _temporal_issue_id(issue)
+        if issue_id and issue_id not in issue_ids:
+            issue_ids.append(issue_id)
+        issue_type = _normalize_text(issue.get("issue_type") or issue.get("category") or "").lower()
+        if issue_type:
+            issue_type_counts[issue_type] = issue_type_counts.get(issue_type, 0) + 1
+        status_value = _normalize_text(issue.get("current_resolution_status") or issue.get("status") or "open").lower() or "open"
+        issue_status_counts[status_value] = issue_status_counts.get(status_value, 0) + 1
+        severity = _normalize_text(issue.get("severity") or "").lower()
+        if severity:
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+        if status_value != "resolved" and issue_id:
+            open_issue_ids.append(issue_id)
+        if status_value != "resolved" and (bool(issue.get("blocking")) or severity == "blocking") and issue_id:
+            blocking_issue_ids.append(issue_id)
+        for predicate in issue.get("missing_temporal_predicates") if isinstance(issue.get("missing_temporal_predicates"), list) else []:
+            normalized_predicate = _normalize_text(predicate)
+            if normalized_predicate and normalized_predicate not in missing_temporal_predicates:
+                missing_temporal_predicates.append(normalized_predicate)
+        for provenance_kind in issue.get("required_provenance_kinds") if isinstance(issue.get("required_provenance_kinds"), list) else []:
+            normalized_kind = _normalize_text(provenance_kind)
+            if normalized_kind and normalized_kind not in required_provenance_kinds:
+                required_provenance_kinds.append(normalized_kind)
+        if status_value != "resolved":
+            summary = _normalize_text(issue.get("summary") or issue_type or issue_id)
+            if summary and summary not in warnings:
+                warnings.append(summary)
+
+    relation_type_counts: Dict[str, int] = {}
+    relation_preview: List[str] = []
+    for relation in relations:
+        relation_type = _normalize_text(relation.get("relation_type") or "").lower()
+        if relation_type:
+            relation_type_counts[relation_type] = relation_type_counts.get(relation_type, 0) + 1
+        preview = _temporal_relation_preview(relation)
+        if preview and preview not in relation_preview:
+            relation_preview.append(preview)
+
+    anchored_fact_ids: List[str] = []
+    unanchored_fact_ids: List[str] = []
+    timeline_anchor_ids: List[str] = []
+    for fact in facts:
+        fact_id = _normalize_text(fact.get("fact_id") or fact.get("temporal_fact_id") or "")
+        temporal_context = _coerce_dict(fact.get("temporal_context"))
+        has_anchor = bool(
+            temporal_context.get("start_date")
+            or fact.get("start_time")
+            or _coerce_list(fact.get("timeline_anchor_ids"))
+        )
+        if fact_id and has_anchor:
+            anchored_fact_ids.append(fact_id)
+        elif fact_id:
+            unanchored_fact_ids.append(fact_id)
+        for anchor_id in fact.get("timeline_anchor_ids") if isinstance(fact.get("timeline_anchor_ids"), list) else []:
+            normalized_anchor_id = _normalize_text(anchor_id)
+            if normalized_anchor_id and normalized_anchor_id not in timeline_anchor_ids:
+                timeline_anchor_ids.append(normalized_anchor_id)
+
+    partial_order_ready = bool(facts) and not open_issue_ids and not blocking_issue_ids and not unanchored_fact_ids
+    graph_record = {
+        "contract_version": "claim_temporal_graph.v1",
+        "graph_id": graph_id,
+        "claim_type": claim_type,
+        "claim_key": _normalize_scope_key(claim_type),
+        "element_id": element_id,
+        "element_key": _normalize_scope_key(element_id or element_label),
+        "element_label": element_label,
+        "fact_count": len(facts),
+        "relation_count": len(relations),
+        "issue_count": len(issues),
+        "fact_ids": fact_ids,
+        "temporal_fact_ids": fact_ids,
+        "anchored_fact_ids": anchored_fact_ids,
+        "unanchored_fact_ids": unanchored_fact_ids,
+        "relation_ids": relation_ids,
+        "temporal_relation_ids": relation_ids,
+        "issue_ids": issue_ids,
+        "temporal_issue_ids": issue_ids,
+        "open_issue_ids": open_issue_ids,
+        "blocking_issue_ids": blocking_issue_ids,
+        "timeline_anchor_ids": timeline_anchor_ids,
+        "relation_type_counts": relation_type_counts,
+        "relation_preview": relation_preview[:10],
+        "issue_type_counts": issue_type_counts,
+        "issue_status_counts": issue_status_counts,
+        "severity_counts": severity_counts,
+        "missing_temporal_predicates": missing_temporal_predicates,
+        "required_provenance_kinds": required_provenance_kinds,
+        "warning_count": len(warnings),
+        "warnings": warnings,
+        "partial_order_ready": partial_order_ready,
+        "readiness": {
+            "ready_for_temporal_formalization": partial_order_ready,
+            "trace_fact_ids": fact_ids,
+            "trace_relation_ids": relation_ids,
+            "trace_issue_ids": issue_ids,
+            "blocking_issue_ids": blocking_issue_ids,
+            "missing_temporal_predicates": missing_temporal_predicates,
+            "required_provenance_kinds": required_provenance_kinds,
+        },
+        "facts": facts,
+        "relations": relations,
+        "issues": issues,
+    }
+    return graph_record
+
+
+def build_claim_temporal_graphs(
+    temporal_fact_registry: List[Dict[str, Any]],
+    temporal_relation_registry: List[Dict[str, Any]],
+    temporal_issue_registry: List[Dict[str, Any]],
+    candidate_claims: List[Dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
+    """Assemble deterministic claim and element temporal partial-order graphs.
+
+    The graph is intentionally derived from the canonical temporal registries so
+    packet readiness, proof bundles, and review payloads can all trace back to the
+    same fact/relation/issue IDs.
+    """
+    facts = [
+        _coerce_dict(fact)
+        for fact in (temporal_fact_registry if isinstance(temporal_fact_registry, list) else [])
+        if isinstance(fact, dict)
+    ]
+    relations = [
+        _coerce_dict(relation)
+        for relation in (temporal_relation_registry if isinstance(temporal_relation_registry, list) else [])
+        if isinstance(relation, dict)
+    ]
+    issues = [
+        _coerce_dict(issue)
+        for issue in (temporal_issue_registry if isinstance(temporal_issue_registry, list) else [])
+        if isinstance(issue, dict)
+    ]
+    facts_by_id = {
+        _normalize_text(fact.get("fact_id") or fact.get("temporal_fact_id") or ""): fact
+        for fact in facts
+        if _normalize_text(fact.get("fact_id") or fact.get("temporal_fact_id") or "")
+    }
+
+    claim_labels_by_key: Dict[str, str] = {}
+    for claim in candidate_claims if isinstance(candidate_claims, list) else []:
+        if not isinstance(claim, dict):
+            continue
+        label = _normalize_text(claim.get("claim_type") or claim.get("label") or claim.get("claim_id") or "")
+        key = _normalize_scope_key(label)
+        if key:
+            claim_labels_by_key.setdefault(key, label)
+    for record in [*facts, *relations, *issues]:
+        for claim_key in _temporal_record_claim_keys(record):
+            claim_labels_by_key.setdefault(claim_key, claim_key)
+    if not claim_labels_by_key and facts:
+        claim_labels_by_key["unscoped_claim"] = "unscoped_claim"
+
+    single_claim_key = next(iter(claim_labels_by_key)) if len(claim_labels_by_key) == 1 else ""
+    claim_graphs: Dict[str, Dict[str, Any]] = {}
+    aggregate_fact_ids: List[str] = []
+    aggregate_relation_ids: List[str] = []
+    aggregate_issue_ids: List[str] = []
+
+    for claim_key in sorted(claim_labels_by_key):
+        claim_type = claim_labels_by_key[claim_key]
+        selected_fact_ids = {
+            _normalize_text(fact.get("fact_id") or fact.get("temporal_fact_id") or "")
+            for fact in facts
+            if (
+                claim_key in _temporal_record_claim_keys(fact)
+                or (single_claim_key == claim_key and not _temporal_record_claim_keys(fact))
+            )
+            and _normalize_text(fact.get("fact_id") or fact.get("temporal_fact_id") or "")
+        }
+        selected_relations: List[Dict[str, Any]] = []
+        for relation in relations:
+            relation_claim_keys = _temporal_record_claim_keys(relation)
+            source_fact_id = _normalize_text(relation.get("source_fact_id") or relation.get("source_temporal_fact_id") or "")
+            target_fact_id = _normalize_text(relation.get("target_fact_id") or relation.get("target_temporal_fact_id") or "")
+            relation_matches_claim = claim_key in relation_claim_keys or (single_claim_key == claim_key and not relation_claim_keys)
+            relation_touches_claim_fact = bool(selected_fact_ids & {source_fact_id, target_fact_id})
+            if relation_matches_claim or relation_touches_claim_fact:
+                selected_relations.append(relation)
+                if source_fact_id:
+                    selected_fact_ids.add(source_fact_id)
+                if target_fact_id:
+                    selected_fact_ids.add(target_fact_id)
+
+        selected_facts = [
+            facts_by_id[fact_id]
+            for fact_id in sorted(selected_fact_ids)
+            if fact_id in facts_by_id
+        ]
+        selected_fact_labels = {
+            _normalize_text(fact.get("text") or fact.get("event_label") or "").lower()
+            for fact in selected_facts
+            if _normalize_text(fact.get("text") or fact.get("event_label") or "")
+        }
+        selected_issues: List[Dict[str, Any]] = []
+        for issue in issues:
+            issue_claim_keys = _temporal_record_claim_keys(issue)
+            issue_fact_ids = {
+                _normalize_text(fact_id)
+                for fact_id in _coerce_list(issue.get("fact_ids"))
+                if _normalize_text(fact_id)
+            }
+            issue_node_labels = {
+                _normalize_text(issue.get("left_node_name") or "").lower(),
+                _normalize_text(issue.get("right_node_name") or "").lower(),
+            }
+            issue_node_labels.discard("")
+            issue_matches_claim = claim_key in issue_claim_keys or (single_claim_key == claim_key and not issue_claim_keys)
+            if (
+                issue_matches_claim
+                or (issue_fact_ids and bool(issue_fact_ids & selected_fact_ids))
+                or (issue_node_labels and bool(issue_node_labels & selected_fact_labels))
+            ):
+                selected_issues.append(issue)
+
+        element_keys: Dict[str, str] = {}
+        for record in [*selected_facts, *selected_relations, *selected_issues]:
+            for element_key in _temporal_record_element_keys(record):
+                element_keys.setdefault(element_key, element_key)
+
+        element_graphs: Dict[str, Dict[str, Any]] = {}
+        for element_key in sorted(element_keys):
+            element_seed_fact_ids = {
+                _normalize_text(fact.get("fact_id") or fact.get("temporal_fact_id") or "")
+                for fact in selected_facts
+                if element_key in _temporal_record_element_keys(fact)
+                and _normalize_text(fact.get("fact_id") or fact.get("temporal_fact_id") or "")
+            }
+            element_relations: List[Dict[str, Any]] = []
+            for relation in selected_relations:
+                source_fact_id = _normalize_text(relation.get("source_fact_id") or relation.get("source_temporal_fact_id") or "")
+                target_fact_id = _normalize_text(relation.get("target_fact_id") or relation.get("target_temporal_fact_id") or "")
+                if element_key in _temporal_record_element_keys(relation) or element_seed_fact_ids & {source_fact_id, target_fact_id}:
+                    element_relations.append(relation)
+                    if source_fact_id:
+                        element_seed_fact_ids.add(source_fact_id)
+                    if target_fact_id:
+                        element_seed_fact_ids.add(target_fact_id)
+            element_facts = [
+                facts_by_id[fact_id]
+                for fact_id in sorted(element_seed_fact_ids)
+                if fact_id in facts_by_id
+            ]
+            element_fact_labels = {
+                _normalize_text(fact.get("text") or fact.get("event_label") or "").lower()
+                for fact in element_facts
+                if _normalize_text(fact.get("text") or fact.get("event_label") or "")
+            }
+            element_issues = []
+            for issue in selected_issues:
+                issue_fact_ids = {
+                    _normalize_text(fact_id)
+                    for fact_id in _coerce_list(issue.get("fact_ids"))
+                    if _normalize_text(fact_id)
+                }
+                issue_node_labels = {
+                    _normalize_text(issue.get("left_node_name") or "").lower(),
+                    _normalize_text(issue.get("right_node_name") or "").lower(),
+                }
+                issue_node_labels.discard("")
+                if (
+                    element_key in _temporal_record_element_keys(issue)
+                    or (issue_fact_ids and bool(issue_fact_ids & element_seed_fact_ids))
+                    or (issue_node_labels and bool(issue_node_labels & element_fact_labels))
+                ):
+                    element_issues.append(issue)
+            if not element_facts and not element_relations and not element_issues:
+                continue
+            element_graphs[element_key] = _build_temporal_graph_record(
+                graph_id=f"claim_temporal_graph:{claim_key}:{element_key}",
+                claim_type=claim_type,
+                element_id=element_key,
+                element_label=element_keys[element_key],
+                facts=element_facts,
+                relations=element_relations,
+                issues=element_issues,
+            )
+
+        claim_graph = _build_temporal_graph_record(
+            graph_id=f"claim_temporal_graph:{claim_key}",
+            claim_type=claim_type,
+            facts=selected_facts,
+            relations=selected_relations,
+            issues=selected_issues,
+        )
+        claim_graph["elements"] = element_graphs
+        claim_graphs[claim_key] = claim_graph
+        for fact_id in claim_graph.get("fact_ids", []):
+            if fact_id not in aggregate_fact_ids:
+                aggregate_fact_ids.append(fact_id)
+        for relation_id in claim_graph.get("relation_ids", []):
+            if relation_id not in aggregate_relation_ids:
+                aggregate_relation_ids.append(relation_id)
+        for issue_id in claim_graph.get("issue_ids", []):
+            if issue_id not in aggregate_issue_ids:
+                aggregate_issue_ids.append(issue_id)
+
+    return {
+        "contract_version": "claim_temporal_graph_assembly.v1",
+        "claim_count": len(claim_graphs),
+        "claims": claim_graphs,
+        "claim_keys": list(claim_graphs.keys()),
+        "fact_ids": aggregate_fact_ids,
+        "relation_ids": aggregate_relation_ids,
+        "issue_ids": aggregate_issue_ids,
+    }
+
+
 def _contradiction_support_kind(resolution_lane: str) -> str:
     normalized = _normalize_text(resolution_lane).lower()
     if normalized == "capture_testimony":
@@ -1829,6 +2748,7 @@ def _derive_retrieval_path(lead_type: str) -> str:
         return "witness_follow_up"
     if "photo" in normalized or "image" in normalized:
         return "complainant_device_gallery"
+    return "complainant_possession"
 
 
 def merge_preserved_temporal_issue_registry(
@@ -1892,9 +2812,92 @@ def build_candidate_claims(knowledge_graph) -> List[Dict[str, Any]]:
                 "confidence": float(entity.confidence),
                 "source": entity.source,
                 "required_elements": [],
+                "epistemic_class": _normalize_text(entity.attributes.get("epistemic_class") or "") or None,
+                "narrative_kind": _normalize_text(entity.attributes.get("narrative_kind") or "") or None,
             }
         )
     return candidates
+
+
+def _user_assertion_payload(provenance: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(provenance, Mapping):
+        return None
+    payload = provenance.get("user_assertion")
+    if not isinstance(payload, Mapping) or not _normalize_text(payload.get("contract_version") or ""):
+        return None
+    return user_assertion_from_mapping(payload).as_dict()
+
+
+def _project_user_assertion(provenance: Any, *, legacy_ref: str, expected_text: Optional[str] = None) -> Dict[str, Any]:
+    """Project an assertion envelope. Records without one keep the legacy case-file shape."""
+    envelope_payload = _user_assertion_payload(provenance)
+    if envelope_payload is None:
+        return {
+            "source_kind": "knowledge_graph_entity",
+            "source_ref": legacy_ref,
+            "status": "accepted",
+            "assertion_status": "unverified",
+            "source_span_refs": [],
+        }
+    envelope = user_assertion_from_mapping(envelope_payload)
+    if (expected_text is not None and envelope.is_asserted_user_fact
+            and " ".join(expected_text.split()) != " ".join(envelope.source_span_text.split())):
+        envelope = replace(envelope, record_type="unverified_candidate", source_kind="unverified",
+            assertion_status="unverified", deficiencies=("unsupported_extracted_content",))
+    identity = envelope.source_identity
+    source_kind = envelope.source_kind if envelope.is_asserted_user_fact else (envelope.record_type or envelope.source_kind or "unverified")
+    if envelope.is_asserted_user_fact:
+        status = envelope.assertion_status
+    elif envelope.record_type == "legal_text":
+        status = "legal_text"
+    elif envelope.record_type in {"model_suggestion", "inferred_claim_label"}:
+        status = "suggestion"
+    else:
+        status = "unverified"
+    span_refs: List[Dict[str, Any]] = []
+    if envelope.source_span_start is not None and envelope.source_span_end is not None:
+        span_refs.append(
+            {
+                "kind": "user_source_span",
+                "source_kind": source_kind,
+                "source_id": identity,
+                "start": envelope.source_span_start,
+                "end": envelope.source_span_end,
+                "source_hash": envelope.source_hash,
+                "text": envelope.source_span_text,
+                "assertion_status": status,
+                "stable_id": envelope.stable_id,
+            }
+        )
+    return {
+        "source_kind": source_kind,
+        "source_ref": identity if envelope.is_asserted_user_fact and identity else legacy_ref,
+        "status": status,
+        "assertion_status": status,
+        "extractor_version": envelope.extractor_version,
+        "stable_id": envelope.stable_id,
+        "source_hash": envelope.source_hash,
+        "source_id": envelope.source_id,
+        "message_id": envelope.message_id,
+        "document_id": envelope.document_id,
+        "source_span": {
+            "start": envelope.source_span_start,
+            "end": envelope.source_span_end,
+            "text": envelope.source_span_text,
+            "unit": "byte",
+        },
+        "source_span_refs": span_refs,
+        "user_assertion": envelope.as_dict(),
+        "source_assertions": [user_assertion_from_mapping(item).as_dict()
+            for item in (provenance.get("user_assertions") or [])
+            if isinstance(item, Mapping) and user_assertion_from_mapping(item).is_asserted_user_fact],
+        "record_type": envelope.record_type,
+        "contract_version": envelope.contract_version,
+        "jurisdiction": envelope.jurisdiction,
+        "actor": envelope.actor,
+        "asserted_name": envelope.name,
+        "asserted_event_date": envelope.event_date,
+    }
 
 
 def build_canonical_facts(knowledge_graph) -> List[Dict[str, Any]]:
@@ -1907,6 +2910,12 @@ def build_canonical_facts(knowledge_graph) -> List[Dict[str, Any]]:
         fact_text = _normalize_text(entity.attributes.get("description") or entity.name)
         if not fact_text:
             continue
+        provenance_projection = _project_user_assertion(getattr(entity, "provenance", {}), legacy_ref=entity.id,
+                                                       expected_text=fact_text)
+        existing_span_refs = _coerce_provenance_refs(entity.attributes.get("source_span_refs"))
+        provenance_projection["source_span_refs"] = _coerce_provenance_refs(
+            existing_span_refs + list(provenance_projection.get("source_span_refs") or [])
+        )
         canonical_facts.append(
             _normalize_canonical_fact_record(
                 {
@@ -1931,10 +2940,9 @@ def build_canonical_facts(knowledge_graph) -> List[Dict[str, Any]]:
                     "actor_ids": list(entity.attributes.get("actor_ids") or []),
                     "target_ids": list(entity.attributes.get("target_ids") or []),
                     "location": _normalize_text(entity.attributes.get("location") or "") or None,
-                    "source_kind": "knowledge_graph_entity",
-                    "source_ref": entity.id,
                     "confidence": float(entity.confidence),
-                    "status": "accepted",
+                    "epistemic_class": _normalize_text(entity.attributes.get("epistemic_class") or "") or None,
+                    "value_status": _normalize_text(entity.attributes.get("value_status") or "") or None,
                     "needs_corroboration": entity.confidence < 0.85,
                     "corroboration_priority": "high" if entity.confidence < 0.7 else "medium",
                     "materiality": "medium",
@@ -1942,12 +2950,81 @@ def build_canonical_facts(knowledge_graph) -> List[Dict[str, Any]]:
                     "event_support_refs": _unique_normalized_strings(entity.attributes.get("event_support_refs") or []),
                     "source_artifact_ids": _unique_normalized_strings(entity.attributes.get("source_artifact_ids") or []),
                     "testimony_record_ids": _unique_normalized_strings(entity.attributes.get("testimony_record_ids") or []),
-                    "source_span_refs": _coerce_provenance_refs(entity.attributes.get("source_span_refs")),
                     "contradiction_group_id": None,
+                    **provenance_projection,
                 }
             )
         )
     return canonical_facts
+
+
+def build_canonical_fact_edges(knowledge_graph) -> List[Dict[str, Any]]:
+    """Project graph edges with their assertion envelopes.
+
+    source_id and target_id stay node endpoints. User message and document
+    identity stays inside the assertion envelope.
+    """
+    if knowledge_graph is None:
+        return []
+    edges: List[Dict[str, Any]] = []
+    relationships = getattr(knowledge_graph, "relationships", {})
+    relationship_values = relationships.values() if isinstance(relationships, Mapping) else relationships
+    for relationship in relationship_values:
+        # Revalidate mutable graph records before projecting their assertion.
+        serializer = getattr(relationship, "to_dict", None)
+        serialized = serializer() if callable(serializer) else {}
+        provenance = serialized.get("provenance", getattr(relationship, "provenance", {}))
+        projection = _project_user_assertion(
+            provenance,
+            legacy_ref=str(getattr(relationship, "id", "") or ""),
+        )
+        edges.append(
+            {
+                **projection,
+                "relationship_id": getattr(relationship, "id", ""),
+                "source_id": getattr(relationship, "source_id", ""),
+                "target_id": getattr(relationship, "target_id", ""),
+                "relation_type": getattr(relationship, "relation_type", ""),
+                "confidence": getattr(relationship, "confidence", None),
+            }
+        )
+    return edges
+
+
+def restore_entity_from_canonical_fact(fact: Mapping[str, Any]):
+    """Rebuild a fact entity from a canonical projection without inventing fields."""
+    from complaint_phases.knowledge_graph import Entity
+
+    record = dict(fact or {})
+    assertion = record.get("user_assertion") if isinstance(record.get("user_assertion"), Mapping) else {}
+    attributes = {
+        "description": record.get("text") or "",
+        "fact_type": record.get("fact_type") or "general",
+        "predicate_family": record.get("predicate_family") or "",
+        "event_label": record.get("event_label") or "",
+        "event_id": record.get("event_id") or "",
+        "event_date_or_range": record.get("event_date_or_range") or "",
+        "source_span_refs": list(record.get("source_span_refs") or []),
+    }
+    if isinstance(record.get("sequence_index"), int):
+        attributes["sequence_index"] = record.get("sequence_index")
+    provenance: Dict[str, Any] = {}
+    if assertion:
+        provenance["user_assertion"] = dict(assertion)
+    history = record.get("source_assertions")
+    if isinstance(history, list):
+        provenance["user_assertions"] = [user_assertion_from_mapping(item).as_dict()
+            for item in history if isinstance(item, Mapping) and user_assertion_from_mapping(item).is_asserted_user_fact]
+    confidence = record.get("confidence")
+    return Entity(
+        id=str(record.get("fact_id") or record.get("stable_id") or ""),
+        type="fact",
+        name=str(record.get("name") or record.get("text") or ""),
+        attributes=attributes,
+        confidence=float(0.0 if confidence is None else confidence),
+        source="complaint",
+        provenance=provenance,
+    )
 
 
 def build_proof_leads(knowledge_graph) -> List[Dict[str, Any]]:
@@ -2048,6 +3125,41 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
         normalized_id = _normalize_text(item.get("open_item_id") or "")
         if not normalized_id:
             return
+        target_claim_type = _normalize_text(item.get("target_claim_type") or "")
+        target_element_id = _normalize_text(item.get("target_element_id") or "")
+        evidence_classes = _unique_normalized_strings(item.get("evidence_classes") or [])
+        # Build target_element_metadata: look up the matching element in candidate_claims so the
+        # caller gets a richer object with label, blocking status, and evidence classes.
+        resolved_element_metadata: Dict[str, Any] = {}
+        if target_element_id and target_claim_type:
+            for claim in candidate_claims:
+                if not isinstance(claim, dict):
+                    continue
+                if _normalize_text(str(claim.get("claim_type") or "")).lower() != target_claim_type.lower():
+                    continue
+                for element in (claim.get("required_elements") or []):
+                    if not isinstance(element, dict):
+                        continue
+                    if _normalize_text(str(element.get("element_id") or "")).lower() == target_element_id.lower():
+                        resolved_element_metadata = {
+                            "element_id": _normalize_text(str(element.get("element_id") or "")),
+                            "label": _normalize_text(str(element.get("label") or element.get("element_id") or "")),
+                            "blocking": bool(element.get("blocking", True)),
+                            "evidence_classes": _unique_normalized_strings(
+                                evidence_classes + list(element.get("evidence_classes") or [])
+                            ),
+                            "claim_type": target_claim_type,
+                        }
+                        break
+                if resolved_element_metadata:
+                    break
+        if not resolved_element_metadata and target_element_id:
+            resolved_element_metadata = {
+                "element_id": target_element_id,
+                "label": target_element_id,
+                "claim_type": target_claim_type,
+                "evidence_classes": evidence_classes,
+            }
         normalized_item = {
             **item,
             "open_item_id": normalized_id,
@@ -2056,8 +3168,16 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
             "blocking_level": _normalize_text(item.get("blocking_level") or "important").lower() or "important",
             "section": _normalize_text(item.get("section") or "general").lower() or "general",
             "reason": _normalize_text(item.get("reason") or "Follow-up required."),
-            "target_claim_type": _normalize_text(item.get("target_claim_type") or ""),
-            "target_element_id": _normalize_text(item.get("target_element_id") or ""),
+            "target_claim_type": target_claim_type,
+            "target_element_id": target_element_id,
+            "target_claim_types": [target_claim_type] if target_claim_type else [],
+            "target_element_ids": [target_element_id] if target_element_id else [],
+            "target_element_metadata": resolved_element_metadata,
+            "element_links": _normalize_intake_target_links(
+                item.get("element_links"),
+                claim_types=[target_claim_type] if target_claim_type else [],
+                element_ids=[target_element_id] if target_element_id else [],
+            ),
             "next_question_strategy": _normalize_text(item.get("next_question_strategy") or "targeted_blocker_follow_up").lower() or "targeted_blocker_follow_up",
             "recommended_support_kind": _normalize_text(item.get("recommended_support_kind") or "intake_clarification").lower() or "intake_clarification",
             "proof_path_status": _normalize_text(item.get("proof_path_status") or "missing").lower() or "missing",
@@ -2099,6 +3219,29 @@ def build_open_items(intake_case_file: Dict[str, Any]) -> List[Dict[str, Any]]:
             has_named_staff = True
         if staff_title_pattern.search(_normalize_text(fact_dict.get("text") or fact_dict.get("event_label") or "")):
             has_staff_title = True
+
+    legal_context = case_file.get("legal_context")
+    if not isinstance(legal_context, dict):
+        legal_context = refresh_explicit_legal_context(case_file)
+        case_file["legal_context"] = legal_context
+    for question in _coerce_list(legal_context.get("questions")):
+        question_dict = _coerce_dict(question)
+        question_id = _normalize_text(question_dict.get("question_id") or "")
+        if not question_id:
+            continue
+        _add_item(
+            {
+                "open_item_id": f"legal_context:{question_id}",
+                "kind": "legal_context_gap",
+                "blocking_level": "blocking" if question_dict.get("field") == "jurisdiction" else "important",
+                "section": "legal_context",
+                "reason": _normalize_text(question_dict.get("prompt") or "Legal context is unresolved."),
+                "next_question_strategy": f"ask_{_normalize_text(question_dict.get('field') or 'legal_context')}",
+                "recommended_support_kind": "intake_clarification",
+                "proof_path_status": "missing",
+                "question": question_dict,
+            }
+        )
 
     for claim in candidate_claims:
         claim_dict = _coerce_dict(claim)
@@ -2964,6 +4107,254 @@ def build_intake_sections(
     }
 
 
+def _legal_context_helpers():
+    from integrations.ipfs_datasets.legal import (
+        apply_legal_context_update,
+        classify_legal_date,
+        empty_legal_context,
+        questions_for_legal_context,
+        resolve_explicit_jurisdiction,
+    )
+    return {
+        "apply_legal_context_update": apply_legal_context_update,
+        "classify_legal_date": classify_legal_date,
+        "empty_legal_context": empty_legal_context,
+        "questions_for_legal_context": questions_for_legal_context,
+        "resolve_explicit_jurisdiction": resolve_explicit_jurisdiction,
+    }
+
+
+def extract_explicit_jurisdiction_from_text(text: Any) -> str:
+    """Require an unambiguous affirmative statement, rather than the first hit."""
+    helpers = _legal_context_helpers()
+    raw = _normalize_text(text)
+    if not raw:
+        return "unknown"
+    selected = set()
+    uncertain = re.compile(
+        r"\b(?:not|never|no|unsure|uncertain|whether|maybe|perhaps|might|could|"
+        r"possibly|dispute|disputed|cited|claimed|claims|don't|doesn't|isn't)\b",
+        re.IGNORECASE,
+    )
+    for clause in re.findall(r"[^.;!?\n]+[.;!?\n]?", raw):
+        if clause.rstrip().endswith("?") or re.match(
+            r"\s*(?:do|does|is|are|should|can|would|will|which|what|how|where|when)\b",
+            clause, re.IGNORECASE,
+        ) or uncertain.search(clause) or re.search(r"\bmay\s+(?:be|apply|govern)\b", clause, re.IGNORECASE):
+            continue
+        candidates = []
+        if re.search(
+            r"\bfederal\s+law\s+(?:applies|governs)\b|"
+            r"\b(?:filed|pending)\s+in\s+(?:(?:a|the)\s+)?federal\s+court\b",
+            clause, re.IGNORECASE,
+        ):
+            candidates.append("federal")
+        labeled = re.search(r"\bjurisdiction\s*:\s*([A-Za-z][A-Za-z ]{1,40})", clause, re.IGNORECASE)
+        if labeled:
+            candidates.append(labeled.group(1).strip(" ."))
+        candidates.extend(match.group(1).strip() for match in re.finditer(
+            r"\b(?:under|pursuant to|state of|or|and)\s+(?:(?:under|pursuant to)\s+)?([A-Za-z][A-Za-z ]{1,30}?)\s+(?:law|statute|court)\b",
+            clause, re.IGNORECASE,
+        ))
+        for candidate in candidates:
+            resolved = helpers["resolve_explicit_jurisdiction"](candidate)
+            if resolved != "unknown":
+                selected.add(resolved)
+    return next(iter(selected)) if len(selected) == 1 else "unknown"
+
+
+def _extract_labeled_legal_date(text: str, labels: tuple[str, ...], role: str) -> Dict[str, Any] | None:
+    helpers = _legal_context_helpers()
+    for label in labels:
+        match = re.search(rf"\b{label}\s*[: ]\s*([^.;\n]+)", text, flags=re.IGNORECASE)
+        if match:
+            return helpers["classify_legal_date"](match.group(1).strip(), role=role)
+    return None
+
+
+def derive_explicit_legal_context(intake_case_file: Dict[str, Any]) -> Dict[str, Any]:
+    """Build legal context from explicit user text and dated facts."""
+    helpers = _legal_context_helpers()
+    case_file = _coerce_dict(intake_case_file)
+    source_text = _normalize_text(case_file.get("source_complaint_text") or "")
+    context = helpers["empty_legal_context"]()
+    jurisdiction = extract_explicit_jurisdiction_from_text(source_text)
+    context["jurisdiction"] = jurisdiction
+    context["jurisdiction_explicit"] = jurisdiction != "unknown"
+    context["status"] = "unknown" if jurisdiction == "unknown" else "explicit"
+
+    applicable = _extract_labeled_legal_date(
+        source_text,
+        ("applicable law date", "law in effect on", "law applicable on"),
+        "applicable_law_date",
+    )
+    if applicable:
+        context["applicable_law_date"] = applicable
+    filing = _extract_labeled_legal_date(
+        source_text,
+        ("filing date", "filed on", "reference date"),
+        "filing_reference_date",
+    )
+    if filing:
+        context["filing_reference_date"] = filing
+    retrieval_raw = _normalize_text(
+        case_file.get("corpus_retrieved_at") or case_file.get("corpus_retrieval_date") or ""
+    )
+    if retrieval_raw:
+        context["corpus_retrieval_date"] = helpers["classify_legal_date"](
+            retrieval_raw,
+            role="corpus_retrieval_date",
+        )
+
+    event_dates: List[Dict[str, Any]] = []
+    for fact in _coerce_list(case_file.get("canonical_facts")):
+        if not isinstance(fact, dict):
+            continue
+        raw_event = _normalize_text(fact.get("event_date_or_range") or "")
+        if not raw_event:
+            continue
+        event_dates.append(helpers["classify_legal_date"](raw_event, role="event_date"))
+    context["event_dates"] = event_dates
+    if len(event_dates) == 1:
+        context["event_date"] = event_dates[0]
+    context["questions"] = helpers["questions_for_legal_context"](
+        context,
+        selecting_rules=bool(_coerce_list(case_file.get("candidate_claims"))),
+    )
+    return context
+
+
+def refresh_explicit_legal_context(intake_case_file: Dict[str, Any]) -> Dict[str, Any]:
+    """Recompute context and invalidate selected rules when the user changes it."""
+    helpers = _legal_context_helpers()
+    case_file = _coerce_dict(intake_case_file)
+    previous = case_file.get("legal_context")
+    if not isinstance(previous, dict):
+        previous = helpers["empty_legal_context"]()
+    derived = derive_explicit_legal_context(case_file)
+    overrides = _coerce_dict(case_file.get("legal_context_overrides"))
+    # Presence, including an explicit blank, matters. Missing source context
+    # cannot silently retain a previously selected jurisdiction or date.
+    updates: Dict[str, Any] = {
+        "jurisdiction": overrides.get("jurisdiction") if "jurisdiction" in overrides else derived.get("jurisdiction"),
+    }
+    for role in ("applicable_law_date", "event_date", "filing_reference_date", "corpus_retrieval_date"):
+        if role in overrides:
+            updates[role] = overrides.get(role)
+        else:
+            updates[role] = derived.get(role)
+    if "event_dates" in overrides:
+        updates["event_dates"] = overrides.get("event_dates")
+    elif "event_date" in overrides:
+        updates["event_dates"] = [overrides["event_date"]] if overrides["event_date"] else []
+    else:
+        updates["event_dates"] = derived.get("event_dates") or []
+    proof = [
+        item for item in _coerce_list(case_file.get("proof_leads"))
+        if isinstance(item, dict)
+    ]
+    updated = helpers["apply_legal_context_update"](previous, updates, dependent_proof=proof)
+    updated["questions"] = helpers["questions_for_legal_context"](
+        updated,
+        selecting_rules=bool(_coerce_list(case_file.get("candidate_claims"))),
+    )
+    # Ordinary intake refresh and mediator question refresh use this path too;
+    # invalidation must reach the actual proof records, not only a nested copy.
+    if updated.get("changed_fields"):
+        invalidated = _coerce_list(updated.get("dependent_proof"))
+        if len(invalidated) != len(proof) or not all(isinstance(item, dict) for item in invalidated):
+            raise ValueError("Legal context changed the dependent proof projection shape")
+        # The update preserves order/cardinality. Identity indexing would merge
+        # distinct legacy records with absent or duplicate proof identifiers.
+        case_file["proof_leads"] = [dict(item) for item in invalidated]
+    case_file["legal_context"] = updated
+    return updated
+
+
+def apply_explicit_legal_context(intake_case_file: Dict[str, Any], **updates: Any) -> Dict[str, Any]:
+    """Record user answers and drop rule applicability that depended on the old context."""
+    case_file = _coerce_dict(intake_case_file)
+    overrides = _coerce_dict(case_file.get("legal_context_overrides"))
+    for key, value in updates.items():
+        overrides[key] = value
+    case_file["legal_context_overrides"] = overrides
+    case_file["legal_context"] = refresh_explicit_legal_context(case_file)
+    return case_file
+
+
+def project_graph_revision_view(case_file: Dict[str, Any], knowledge_graph) -> Dict[str, Any]:
+    """Expose narrative nodes, revisions, unknowns, and contradictions without dropping history."""
+    if not isinstance(case_file, dict) or knowledge_graph is None:
+        return case_file
+    from complaint_phases.knowledge_graph import inspect_graph_revisions
+
+    narrative_nodes = []
+    unknowns = []
+    contradictions = []
+    support_edges = []
+    for entity in getattr(knowledge_graph, "entities", {}).values():
+        attributes = entity.attributes if isinstance(getattr(entity, "attributes", None), dict) else {}
+        epistemic_class = _normalize_text(attributes.get("epistemic_class") or "") or None
+        if attributes.get("narrative_source_linked") or attributes.get("narrative_kind"):
+            envelope = _user_assertion_payload(getattr(entity, "provenance", {})) or {}
+            narrative_nodes.append({
+                "entity_id": entity.id,
+                "entity_type": entity.type,
+                "narrative_kind": attributes.get("narrative_kind"),
+                "name": entity.name,
+                "epistemic_class": epistemic_class or "user_allegation",
+                "stable_id": envelope.get("stable_id"),
+                "source_span": envelope.get("source_span"),
+                "source_hash": envelope.get("source_hash"),
+                "statement": envelope.get("source_span_text") or attributes.get("description") or entity.name,
+            })
+        value_status = _normalize_text(attributes.get("value_status") or "")
+        if value_status == "unknown":
+            unknowns.append({"entity_id": entity.id, "statement": attributes.get("description") or entity.name, "value_status": "unknown"})
+        if value_status == "contradiction":
+            contradictions.append({"entity_id": entity.id, "statement": attributes.get("description") or entity.name, "value_status": "contradiction"})
+    ledger = knowledge_graph.factual_ledger() if hasattr(knowledge_graph, "factual_ledger") else {}
+    for conflict in ledger.get("conflicts") or []:
+        if isinstance(conflict, dict):
+            contradictions.append(dict(conflict))
+    for revision in ledger.get("revisions") or []:
+        if not isinstance(revision, dict):
+            continue
+        revision_status = _normalize_text(revision.get("value_status") or "")
+        statement = revision.get("statement") or (revision.get("provenance") or {}).get("statement")
+        if revision_status == "unknown" and statement:
+            unknowns.append({
+                "entity_id": revision.get("entity_id") or "",
+                "statement": statement,
+                "value_status": "unknown",
+                "event_id": revision.get("event_id") or "",
+            })
+        if revision_status == "contradiction" and statement:
+            contradictions.append({
+                "entity_id": revision.get("entity_id") or "",
+                "statement": statement,
+                "value_status": "contradiction",
+                "event_id": revision.get("event_id") or "",
+            })
+    for relationship in getattr(knowledge_graph, "relationships", {}).values():
+        attributes = relationship.attributes if isinstance(getattr(relationship, "attributes", None), dict) else {}
+        if attributes.get("epistemic_class"):
+            support_edges.append({
+                "relationship_id": relationship.id,
+                "relation_type": relationship.relation_type,
+                "epistemic_class": attributes.get("epistemic_class"),
+                "source_id": relationship.source_id,
+                "target_id": relationship.target_id,
+                "statement": attributes.get("statement"),
+            })
+    case_file["graph_revisions"] = inspect_graph_revisions(knowledge_graph)
+    case_file["narrative_source_nodes"] = narrative_nodes
+    case_file["visible_unknowns"] = unknowns
+    case_file["visible_contradictions"] = contradictions
+    case_file["epistemic_support_edges"] = support_edges
+    return case_file
+
+
 def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[str, Any]:
     """Build the initial structured intake case file from current graph state."""
     candidate_claims = [
@@ -2978,23 +4369,39 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
             if isinstance(fact, dict)
         ]
     ))
+    canonical_facts = _ensure_stable_intake_record_ids(
+        canonical_facts,
+        id_key="fact_id",
+        prefix="fact",
+    )
     proof_leads = [
         _normalize_proof_lead_record(lead)
         for lead in build_proof_leads(knowledge_graph)
         if isinstance(lead, dict)
     ]
+    proof_leads = _ensure_stable_intake_record_ids(
+        proof_leads,
+        id_key="lead_id",
+        prefix="lead",
+    )
 
     timeline_anchors = build_timeline_anchors(canonical_facts)
     timeline_relations = build_timeline_relations(canonical_facts)
     temporal_fact_registry = build_temporal_fact_registry(canonical_facts, timeline_anchors)
     temporal_relation_registry = build_temporal_relation_registry(canonical_facts, timeline_relations)
     temporal_issue_registry = build_temporal_issue_registry(canonical_facts, [])
+    claim_temporal_graphs = build_claim_temporal_graphs(
+        temporal_fact_registry,
+        temporal_relation_registry,
+        temporal_issue_registry,
+        candidate_claims,
+    )
     event_ledger = build_event_ledger(temporal_fact_registry)
     proof_leads = _link_proof_leads_to_timeline_anchors(proof_leads, timeline_anchors)
     timeline_consistency_summary = build_timeline_consistency_summary(
         canonical_facts,
         timeline_anchors,
-        timeline_relations,
+        temporal_relation_registry,
     )
     intake_sections = build_intake_sections(
         knowledge_graph,
@@ -3020,6 +4427,8 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
         "temporal_fact_registry": temporal_fact_registry,
         "temporal_relation_registry": temporal_relation_registry,
         "temporal_issue_registry": temporal_issue_registry,
+        "timeline_issues": temporal_issue_registry,
+        "claim_temporal_graphs": claim_temporal_graphs,
         "event_ledger": event_ledger,
         "timeline_consistency_summary": timeline_consistency_summary,
         "harm_profile": build_harm_profile(canonical_facts),
@@ -3027,11 +4436,14 @@ def build_intake_case_file(knowledge_graph, complaint_text: str = "") -> Dict[st
         "proof_leads": proof_leads,
         "blocker_follow_up_summary": blocker_follow_up_summary,
         "contradiction_queue": [],
+        "question_dispositions": [],
         "open_items": [],
         "summary_snapshots": [],
         "complainant_summary_confirmation": {},
         "source_complaint_text": normalized_complaint_text,
     }
+    intake_case_file["legal_context"] = refresh_explicit_legal_context(intake_case_file)
+    intake_case_file = project_graph_revision_view(intake_case_file, knowledge_graph)
 
     open_items = build_open_items(intake_case_file)
     intake_case_file["open_items"] = open_items
@@ -3057,7 +4469,10 @@ def refresh_intake_sections(intake_case_file: Dict[str, Any], knowledge_graph) -
 def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, *, append_snapshot: bool = False) -> Dict[str, Any]:
     """Refresh derived intake sections, open items, and summary snapshots."""
     case_file = _coerce_dict(intake_case_file)
-    previous_temporal_issue_registry = _coerce_list(case_file.get("temporal_issue_registry"))
+    previous_temporal_issue_registry = (
+        _coerce_list(case_file.get("temporal_issue_registry"))
+        or _coerce_list(case_file.get("timeline_issues"))
+    )
     previous_canonical_facts = _coerce_list(case_file.get("canonical_facts"))
     previous_proof_leads = _coerce_list(case_file.get("proof_leads"))
     if knowledge_graph is not None:
@@ -3068,9 +4483,19 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
                 previous_canonical_facts,
             )
         ))
+        case_file["canonical_facts"] = _ensure_stable_intake_record_ids(
+            _coerce_list(case_file.get("canonical_facts")),
+            id_key="fact_id",
+            prefix="fact",
+        )
         case_file["proof_leads"] = _merge_preserved_proof_leads(
             build_proof_leads(knowledge_graph),
             previous_proof_leads,
+        )
+        case_file["proof_leads"] = _ensure_stable_intake_record_ids(
+            _coerce_list(case_file.get("proof_leads")),
+            id_key="lead_id",
+            prefix="lead",
         )
     else:
         case_file["canonical_facts"] = _dedupe_structured_timeline_groups(_enrich_canonical_facts_with_relative_anchor_dates([
@@ -3078,11 +4503,21 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
             for record in _coerce_list(case_file.get("canonical_facts"))
             if isinstance(record, dict)
         ]))
+        case_file["canonical_facts"] = _ensure_stable_intake_record_ids(
+            _coerce_list(case_file.get("canonical_facts")),
+            id_key="fact_id",
+            prefix="fact",
+        )
         case_file["proof_leads"] = [
             _normalize_proof_lead_record(record)
             for record in _coerce_list(case_file.get("proof_leads"))
             if isinstance(record, dict)
         ]
+        case_file["proof_leads"] = _ensure_stable_intake_record_ids(
+            _coerce_list(case_file.get("proof_leads")),
+            id_key="lead_id",
+            prefix="lead",
+        )
     case_file["intake_sections"] = refresh_intake_sections(case_file, knowledge_graph)
     case_file["timeline_anchors"] = build_timeline_anchors(_coerce_list(case_file.get("canonical_facts")))
     case_file["timeline_relations"] = build_timeline_relations(_coerce_list(case_file.get("canonical_facts")))
@@ -3104,6 +4539,13 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
         ),
         previous_temporal_issue_registry,
     )
+    case_file["timeline_issues"] = _coerce_list(case_file.get("temporal_issue_registry"))
+    case_file["claim_temporal_graphs"] = build_claim_temporal_graphs(
+        _coerce_list(case_file.get("temporal_fact_registry")),
+        _coerce_list(case_file.get("temporal_relation_registry")),
+        _coerce_list(case_file.get("temporal_issue_registry")),
+        _coerce_list(case_file.get("candidate_claims")),
+    )
     case_file["proof_leads"] = _link_proof_leads_to_timeline_anchors(
         _coerce_list(case_file.get("proof_leads")),
         _coerce_list(case_file.get("timeline_anchors")),
@@ -3111,16 +4553,18 @@ def refresh_intake_case_file(intake_case_file: Dict[str, Any], knowledge_graph, 
     case_file["timeline_consistency_summary"] = build_timeline_consistency_summary(
         _coerce_list(case_file.get("canonical_facts")),
         _coerce_list(case_file.get("timeline_anchors")),
-        _coerce_list(case_file.get("timeline_relations")),
+        _coerce_list(case_file.get("temporal_relation_registry")),
     )
     case_file["harm_profile"] = build_harm_profile(_coerce_list(case_file.get("canonical_facts")))
     case_file["remedy_profile"] = build_remedy_profile(_coerce_list(case_file.get("canonical_facts")))
+    case_file["legal_context"] = refresh_explicit_legal_context(case_file)
     case_file["blocker_follow_up_summary"] = build_blocker_follow_up_summary(
         candidate_claims=_coerce_list(case_file.get("candidate_claims")),
         canonical_facts=_coerce_list(case_file.get("canonical_facts")),
         proof_leads=_coerce_list(case_file.get("proof_leads")),
         source_text=str(case_file.get("source_complaint_text") or ""),
     )
+    case_file["question_dispositions"] = question_disposition_records(case_file)
     case_file["open_items"] = build_open_items(case_file)
 
     summary_snapshots = _coerce_list(case_file.get("summary_snapshots"))

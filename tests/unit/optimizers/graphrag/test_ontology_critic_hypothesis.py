@@ -9,6 +9,8 @@ Uses Hypothesis to generate random ontologies and test invariants:
 Note: @given tests create the critic instance internally to avoid pytest fixture resolution conflicts.
 """
 
+import pytest
+pytest.importorskip("hypothesis")
 from hypothesis import given, strategies as st, settings, HealthCheck
 from hypothesis.strategies import composite
 

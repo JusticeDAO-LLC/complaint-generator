@@ -131,6 +131,14 @@ Make legal research claim-element-aware so the system can search for support, op
 
 Add focused tests for typed authority-treatment and rule-candidate payloads before landing this batch; do not rely only on broader hook coverage.
 
+Current status:
+
+- legal search programs are now durable per-authority records, not only transient follow-up task metadata
+- stored authorities expose `search_programs` and `search_program_summary` alongside treatment and rule-candidate payloads
+- duplicate authority upserts can attach later search-program records to reused authority rows without breaking treatment persistence
+- stored treatment rows expose graph-compatible relationship aliases plus citation-history summaries for authority and support-review consumers
+- duplicate authority upserts can attach later rule candidates to reused authority rows without duplicating stable rule IDs
+
 ## Batch 3: Durable Support Corpus and Graph Query Hardening
 
 ### Goal

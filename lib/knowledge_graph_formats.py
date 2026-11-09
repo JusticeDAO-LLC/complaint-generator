@@ -10,17 +10,20 @@ If the submodule is not installed, a lightweight pure-Python fallback is provide
 so the lib module is always importable.
 """
 
+from integrations.ipfs_datasets.loader import import_module_optional
+
 try:
-    from ipfs_datasets_py.knowledge_graphs.migration.formats import (
-        MigrationFormat,
-        NodeData,
-        RelationshipData,
-        SchemaData,
-        GraphData,
-        register_format,
-        registered_formats,
-    )
-except ImportError:
+    _formats, _formats_error = import_module_optional("ipfs_datasets_py.knowledge_graphs.migration.formats")
+    if _formats is None:
+        raise ImportError(str(_formats_error or "graph migration formats unavailable"))
+    MigrationFormat = _formats.MigrationFormat
+    NodeData = _formats.NodeData
+    RelationshipData = _formats.RelationshipData
+    SchemaData = _formats.SchemaData
+    GraphData = _formats.GraphData
+    register_format = _formats.register_format
+    registered_formats = _formats.registered_formats
+except (ImportError, AttributeError):
     # --- Lightweight fallback (no external dependencies) ---
     import json
     from dataclasses import dataclass, field
@@ -77,13 +80,28 @@ except ImportError:
         def register(self, fmt, save, load):
             self._save[fmt] = save
             self._load[fmt] = load
+        @staticmethod
+        def _unsupported_format(operation, fmt, handlers):
+            requested = getattr(fmt, "value", fmt)
+            available = sorted(
+                str(getattr(registered, "value", registered))
+                for registered in handlers
+            )
+            available_text = ", ".join(available) if available else "none"
+            return ValueError(
+                f"Unsupported {operation} format {requested!r}: no handler is "
+                f"registered. Available {operation} formats: {available_text}. "
+                "Call register_format() to add a handler."
+            )
         def save(self, graph, filepath, fmt):
             h = self._save.get(fmt)
-            if h is None: raise NotImplementedError(f"No save handler for {fmt.value!r}")
+            if h is None:
+                raise self._unsupported_format("save", fmt, self._save)
             h(graph, filepath)
         def load(self, filepath, fmt):
             h = self._load.get(fmt)
-            if h is None: raise NotImplementedError(f"No load handler for {fmt.value!r}")
+            if h is None:
+                raise self._unsupported_format("load", fmt, self._load)
             return h(filepath)
         def registered_formats(self): return [f for f in self._save if f in self._load]
 

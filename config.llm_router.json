@@ -15,6 +15,20 @@
             "max_tokens": 128
         },
         {
+            "id": "llm-router-grok-4.7",
+            "type": "llm_router",
+            "provider": "grok_cli",
+            "model": "grok-4.7",
+            "max_tokens": 1024,
+            "temperature": 0,
+            "timeout_seconds": 60,
+            "retry_max_attempts": 2,
+            "allow_local_fallback": false,
+            "allow_cross_provider_fallback": false,
+            "forbid_model_substitution": true,
+            "structured_output": false
+        },
+        {
             "id": "hf-router",
             "type": "llm_router",
             "provider": "huggingface_router",

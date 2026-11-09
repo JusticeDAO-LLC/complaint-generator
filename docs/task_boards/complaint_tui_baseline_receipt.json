@@ -1,0 +1,71 @@
+{
+  "schema_version": "complaint-generator.tui-baseline-receipt.v1",
+  "task_id": "CIMP-TUI-01",
+  "product_acceptance": false,
+  "defect_classification_independent_of_smoke": true,
+  "baseline_smoke_pass_is_not_product_acceptance": true,
+  "deadline_seconds": 15,
+  "synthetic_only": true,
+  "live_provider_started": false,
+  "network_connections_used": false,
+  "provider_executables_used": false,
+  "real_complaint_files_used": false,
+  "existing_sessions_used": false,
+  "interview_rewritten": false,
+  "baseline_smoke": {
+    "result": "pass",
+    "product_acceptance": false,
+    "meaning": "The bounded offline PTY pause/resume smoke can pass while the defect observations below stay open. Smoke pass/fail does not accept the intake product."
+  },
+  "observations": [
+    {
+      "id": "TUI-BASE-PTY",
+      "classification": "passed_baseline",
+      "product_acceptance": false,
+      "counts_as_smoke_pass": true,
+      "observation": "A real PTY child calls applications.complaint_cli.chat(user_id=pty-synthetic-cimp-tui-01, max_turns=2) with an integer max_turns, in a temporary session directory, after Python socket-connect and provider-process guards. Two synthetic answers are persisted, the pause/resume message is shown, and the child exits 0 within the fixed 15-second deadline. This is baseline smoke only."
+    },
+    {
+      "id": "TUI-BASE-RESUME",
+      "classification": "passed_baseline",
+      "product_acceptance": false,
+      "counts_as_smoke_pass": true,
+      "observation": "After the PTY child exits, a fresh ComplaintWorkspaceService on the same temporary directory reads the same user id, the two persisted synthetic answers, and the next unanswered question. Resume uses the workspace service, not the child singleton."
+    },
+    {
+      "id": "TUI-GAP-NARRATIVE",
+      "classification": "reproduced_gap",
+      "product_acceptance": false,
+      "counts_as_smoke_pass": false,
+      "observation": "run_intake_chat_turn stores the initial complaint narrative as party_name. A housing narrative is accepted as the answer to 'Who is bringing the complaint?' This is an observed product defect, not a passing product criterion, and it is independent of the baseline smoke result."
+    },
+    {
+      "id": "TUI-GAP-UNKNOWN",
+      "classification": "reproduced_gap",
+      "product_acceptance": false,
+      "counts_as_smoke_pass": false,
+      "observation": "Seven unknown answers produce conversation_state.is_complete=true and the Intake complete message. Completion is seven nonempty strings, not resolution of answerable factual or legal issues."
+    },
+    {
+      "id": "TUI-GAP-GRAPHS",
+      "classification": "reproduced_gap",
+      "product_acceptance": false,
+      "counts_as_smoke_pass": false,
+      "observation": "A completed workspace intake session has only annotation_knowledge_graph. run_intake_chat_turn does not persist a factual knowledge graph or a dependency graph."
+    },
+    {
+      "id": "TUI-GAP-EOF",
+      "classification": "reproduced_gap",
+      "product_acceptance": false,
+      "counts_as_smoke_pass": false,
+      "observation": "Closing the PTY at the first chat prompt is EOF. The chat process exits 1 instead of a documented pause outcome."
+    },
+    {
+      "id": "TUI-GAP-PRIVACY",
+      "classification": "reproduced_gap",
+      "product_acceptance": false,
+      "counts_as_smoke_pass": false,
+      "observation": "Synthetic workspace JSON is stored as plaintext UTF-8. File mode matches an ordinary write under the process umask; the writer does not apply an encryption envelope or an explicit owner-only mode. The audited environment observed mode 0664. Encryption and private permissions remain unimplemented."
+    }
+  ]
+}

@@ -3,14 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from complaint_generator.agentic_evidence_download import run_agentic_evidence_download
+from typing import Optional, Sequence
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,8 +26,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
-    args = build_parser().parse_args()
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+
+    # Keep the optional scraper stack behind the command boundary so importing
+    # this entrypoint (and requesting --help) does not require its dependencies.
+    from complaint_generator.agentic_evidence_download import run_agentic_evidence_download
+
     payload = run_agentic_evidence_download(
         complaint_query=args.complaint_query,
         complaint_keywords=args.complaint_keyword,

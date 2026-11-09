@@ -1,8 +1,12 @@
+import logging
 import re
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import strings
+
+
+logger = logging.getLogger(__name__)
 
 
 _QUESTION_RE = re.compile(r"[^?\n]+?\?")
@@ -27,6 +31,21 @@ class Inquiries:
 		"medium": 2,
 		"low": 3,
 	}
+	_CLOSED_DISPOSITIONS = {"unknown", "declined", "refused", "skipped", "contradictory"}
+	_TARGET_COPY_FIELDS = (
+		"unresolved_target",
+		"target_id",
+		"target_revision",
+		"target_kind",
+		"why_answer_helps",
+		"expected_information",
+		"user_answerability",
+		"dependency_impact",
+		"uncertainty",
+		"provenance",
+		"disposition",
+		"answer_disposition",
+	)
 	_OBJECTIVE_KEYWORDS = {
 		"timeline": ("when", "date", "time", "timeline", "first incident", "date range"),
 		"exact_dates": ("exact date", "exact dates", "specific date", "what date", "calendar date"),
@@ -49,9 +68,52 @@ class Inquiries:
 		self._index: Optional[Dict[str, Dict[str, Any]]] = None
 		self._index_signature: Tuple[int, int] = (0, 0)
 
+	@classmethod
+	def _disposition(cls, inquiry: Dict[str, Any]) -> str:
+		return str(
+			inquiry.get("disposition")
+			or inquiry.get("answer_disposition")
+			or ""
+		).strip().lower()
+
+	@classmethod
+	def _target_id(cls, inquiry: Dict[str, Any]) -> str:
+		target = inquiry.get("unresolved_target") if isinstance(inquiry.get("unresolved_target"), dict) else {}
+		return str(target.get("target_id") or inquiry.get("target_id") or "").strip()
+
+	@classmethod
+	def _is_closed_disposition(cls, inquiry: Dict[str, Any]) -> bool:
+		return cls._disposition(inquiry) in cls._CLOSED_DISPOSITIONS
+
+	def _closed_target_ids(self, inquiries) -> set:
+		closed = set()
+		for inquiry in inquiries or []:
+			if not isinstance(inquiry, dict):
+				continue
+			target_id = self._target_id(inquiry)
+			if target_id and self._is_closed_disposition(inquiry):
+				closed.add(target_id)
+		return closed
+
+	def _is_pending_inquiry(self, inquiry: Dict[str, Any], closed_targets: set) -> bool:
+		if not isinstance(inquiry, dict):
+			return False
+		if self._is_closed_disposition(inquiry):
+			return False
+		target_id = self._target_id(inquiry)
+		if target_id and target_id in closed_targets:
+			return False
+		# Falsey answers stay unanswered unless a closed disposition is already recorded.
+		return not inquiry.get("answer")
+
 	@staticmethod
 	def _find_unanswered(inquiries):
 		for inquiry in inquiries:
+			if not isinstance(inquiry, dict):
+				continue
+			disposition = str(inquiry.get("disposition") or inquiry.get("answer_disposition") or "").strip().lower()
+			if disposition in Inquiries._CLOSED_DISPOSITIONS:
+				continue
 			if not inquiry.get("answer"):
 				return inquiry
 		return None
@@ -74,10 +136,11 @@ class Inquiries:
 		if not inquiries:
 			return None
 		gap_context = self._build_gap_context()
+		closed_targets = self._closed_target_ids(inquiries)
 		unanswered = [
 			(item, index)
 			for index, item in enumerate(inquiries)
-			if not item.get("answer")
+			if self._is_pending_inquiry(item, closed_targets)
 		]
 		if not unanswered:
 			return None
@@ -169,8 +232,9 @@ class Inquiries:
 					existing["claim_type"] = item.get("claim_type")
 				if item.get("element"):
 					existing["element"] = item.get("element")
-				if item.get("provenance"):
+				if item.get("provenance") and not existing.get("provenance"):
 					existing["provenance"] = dict(item.get("provenance") or {})
+				self._copy_target_fields(existing, item)
 				if question_text != existing.get("question"):
 					alternatives = existing.setdefault("alternative_questions", [])
 					if all(self._normalize_question(candidate) != normalized for candidate in alternatives):
@@ -193,6 +257,7 @@ class Inquiries:
 				"element": item.get("element"),
 				"provenance": dict(item.get("provenance") or {}),
 			}
+			self._copy_target_fields(inquiry, item)
 			inquiries.append(inquiry)
 			index[normalized] = inquiry
 			merged += 1
@@ -240,15 +305,49 @@ class Inquiries:
 		element = str(inquiry.get("element") or "").strip()
 		if claim_type and element:
 			reasons.append(f"addresses {claim_type} element: {element}")
+		target = inquiry.get("unresolved_target") if isinstance(inquiry.get("unresolved_target"), dict) else {}
+		if target.get("why_answer_helps"):
+			reasons.append(str(target.get("why_answer_helps")))
+		elif inquiry.get("why_answer_helps"):
+			reasons.append(str(inquiry.get("why_answer_helps")))
+		if target.get("expected_information"):
+			reasons.append(f"needed information: {target.get('expected_information')}")
 		if not reasons:
 			reasons.append("selected as the next unanswered question")
-		return {
+		explanation = {
 			"summary": f"Selected because it is a {priority} priority question and {'; '.join(reasons)}",
 			"priority": priority,
 			"support_gap_targeted": bool(inquiry.get("support_gap_targeted")),
 			"dependency_gap_targeted": bool(inquiry.get("dependency_gap_targeted")),
 			"reasons": reasons,
 		}
+		if target:
+			explanation["unresolved_target"] = dict(target)
+			explanation["target_id"] = target.get("target_id")
+			explanation["target_revision"] = target.get("target_revision")
+			explanation["target_kind"] = target.get("target_kind")
+			explanation["why_answer_helps"] = target.get("why_answer_helps")
+			explanation["expected_information"] = target.get("expected_information")
+			explanation["user_answerability"] = target.get("user_answerability")
+			explanation["provenance"] = dict(target.get("provenance") or {})
+		disposition = self._disposition(inquiry)
+		if disposition:
+			explanation["disposition"] = disposition
+		return explanation
+
+	def _copy_target_fields(self, existing: Dict[str, Any], item: Dict[str, Any]) -> None:
+		for field in self._TARGET_COPY_FIELDS:
+			incoming = item.get(field)
+			if incoming in (None, "", [], {}):
+				continue
+			current = existing.get(field)
+			if field in {"disposition", "answer_disposition"} and current not in (None, ""):
+				continue
+			if field == "unresolved_target" and isinstance(current, dict) and current.get("target_id"):
+				continue
+			if current not in (None, "", [], {}):
+				continue
+			existing[field] = dict(incoming) if isinstance(incoming, dict) else incoming
 
 	def _register(self, question, inquiries, index):
 		normalized = self._normalize_question(question)
@@ -431,6 +530,10 @@ class Inquiries:
 			try:
 				context = builder()
 			except Exception:
+				logger.warning(
+					"Unable to build inquiry gap context; continuing without mediator gap priorities",
+					exc_info=True,
+				)
 				context = {}
 			context = context if isinstance(context, dict) else {}
 		try:
@@ -444,5 +547,8 @@ class Inquiries:
 					context.setdefault("intake_covered_objectives", list(summary.get("covered_objectives") or []))
 					context.setdefault("intake_uncovered_objectives", list(summary.get("uncovered_objectives") or []))
 		except Exception:
-			pass
+			logger.warning(
+				"Unable to load persisted intake priority summary; continuing with available inquiry gap context",
+				exc_info=True,
+			)
 		return context

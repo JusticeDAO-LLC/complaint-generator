@@ -1234,3 +1234,376 @@ def migrate_legacy_session(
         "migration_manifest": migration_manifest,
         "imported_paths": imported_paths,
     }
+
+
+# ---------------------------------------------------------------------------
+# Versioned private migration (CIMP-DUR-002)
+# The legacy snapshot above remains an explicit plaintext export. It is not
+# invoked by the encrypted migration path.
+# ---------------------------------------------------------------------------
+
+import hashlib
+import stat as _stat
+
+PRIVATE_MIGRATION_SCHEMA = "complaint-private-migration/v1"
+PRIVATE_MIGRATION_VERSION = 1
+_MANIFEST_NAME = "private_migration_manifest.json"
+_PUBLIC_ENTRY_FIELDS = (
+    "artifact_ref",
+    "ciphertext_name",
+    "ciphertext_sha256",
+    "readback",
+    "status",
+)
+
+
+class PrivateMigrationError(RuntimeError):
+    def __init__(self, code: str, message: str = "") -> None:
+        super().__init__(message or code)
+        self.code = code
+
+
+class PrivateMigrationInterrupted(PrivateMigrationError):
+    def __init__(self, partial: Dict[str, Any]) -> None:
+        super().__init__("interrupted", "migration interrupted before the next artifact commit")
+        self.partial = partial
+
+
+def _opaque_ref(tenant_id: str, case_id: str, kind: str, revision: str) -> str:
+    material = "\0".join((tenant_id, case_id, kind, revision)).encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _safe_path(path: Path, *, root: Path | None = None) -> Path:
+    """Reject symbolic paths before a source is opened or a destination is created."""
+    path = Path(os.path.abspath(path))
+    if root is not None and not path.is_relative_to(root):
+        raise PrivateMigrationError("path_outside_source")
+    for parent in [*reversed(path.parents), path]:
+        try:
+            metadata = parent.lstat()
+        except FileNotFoundError:
+            continue
+        if _stat.S_ISLNK(metadata.st_mode):
+            raise PrivateMigrationError("unsafe_path")
+    return path
+
+
+def _regular_bytes(path: Path, *, single_link: bool = False) -> bytes:
+    _safe_path(path)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        metadata = os.fstat(fd)
+        if not _stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid():
+            raise PrivateMigrationError("unsafe_path")
+        if single_link and metadata.st_nlink != 1:
+            raise PrivateMigrationError("unsafe_path")
+        with os.fdopen(fd, "rb", closefd=False) as handle:
+            return handle.read()
+    finally:
+        os.close(fd)
+
+
+def _private_directory(path: Path) -> Path:
+    path = _safe_path(path)
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    metadata = path.lstat()
+    if not _stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid():
+        raise PrivateMigrationError("unsafe_path")
+    os.chmod(path, 0o700)
+    return path
+
+
+def _read_manifest(path: Path) -> Dict[str, Any]:
+    try:
+        raw = _regular_bytes(path, single_link=True)
+    except FileNotFoundError:
+        return {"schema": PRIVATE_MIGRATION_SCHEMA, "schema_version": PRIVATE_MIGRATION_VERSION, "entries": [], "complete": False}
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        raise PrivateMigrationError("malformed_manifest") from None
+    if (not isinstance(payload, dict) or set(payload) != {"schema", "schema_version", "entries", "complete"}
+            or payload.get("schema") != PRIVATE_MIGRATION_SCHEMA
+            or type(payload.get("schema_version")) is not int or payload["schema_version"] != PRIVATE_MIGRATION_VERSION
+            or type(payload.get("complete")) is not bool or not isinstance(payload.get("entries"), list)):
+        raise PrivateMigrationError("malformed_manifest")
+    seen = set()
+    for entry in payload["entries"]:
+        if not isinstance(entry, dict) or set(entry) != set(_PUBLIC_ENTRY_FIELDS):
+            raise PrivateMigrationError("malformed_manifest")
+        ref = entry["artifact_ref"]
+        digest = entry["ciphertext_sha256"]
+        if (not isinstance(ref, str) or len(ref) != 64 or any(c not in "0123456789abcdef" for c in ref)
+                or ref in seen or entry["ciphertext_name"] != ref + ".bin"
+                or not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest)
+                or entry["readback"] != "verified" or entry["status"] != "processed"):
+            raise PrivateMigrationError("malformed_manifest")
+        seen.add(ref)
+    return payload
+
+
+def _write_private_bytes(path: Path, payload: bytes, *, replace: bool = True) -> None:
+    import tempfile
+    fd, name = tempfile.mkstemp(prefix=".private-migration-", suffix=".tmp", dir=path.parent)
+    temporary = Path(name)
+    published = False
+    directory_fd = None
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if _regular_bytes(temporary, single_link=True) != payload:
+            raise PrivateMigrationError("readback_mismatch")
+        if path.exists():
+            _regular_bytes(path, single_link=True)
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        if replace:
+            os.replace(temporary, path)
+        else:
+            # Exclusive publication preserves a concurrently created destination.
+            os.link(temporary, path, follow_symlinks=False)
+            published = True
+            temporary.unlink()
+        published = True
+        os.fsync(directory_fd)
+    except OSError:
+        raise PrivateMigrationError("publication_indeterminate" if published else "publication_failed") from None
+    finally:
+        if directory_fd is not None:
+            os.close(directory_fd)
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass  # A retained staging file contains ciphertext only.
+
+
+def _write_manifest(path: Path, payload: Dict[str, Any]) -> None:
+    _write_private_bytes(path, json.dumps(payload, sort_keys=True).encode("utf-8"))
+
+
+def _owner_record_matches(artifact: Dict[str, Any]) -> bool:
+    record = artifact.get("owner_record")
+    if not isinstance(record, dict):
+        return False
+    owner, case_id = record.get("owner"), record.get("case_id")
+    access = artifact.get("access")
+    return bool(isinstance(owner, str) and owner and isinstance(case_id, str) and case_id
+                and owner == artifact.get("tenant_id") and case_id == artifact.get("case_id")
+                and str(artifact.get("principal_id") or owner) == owner
+                and getattr(access, "trust", None) in {"authenticated", "trusted_local"}
+                and getattr(access, "principal_id", None) == owner and getattr(access, "case_id", None) == case_id)
+
+
+def _artifact_bytes(artifact: Dict[str, Any]) -> bytes:
+    if "payload" in artifact:
+        payload = artifact["payload"]
+        return payload.encode("utf-8") if isinstance(payload, str) else bytes(payload)
+    if artifact.get("source_path") is None:
+        raise PrivateMigrationError("missing_payload")
+    return _regular_bytes(Path(artifact["source_path"]))
+
+
+def _sources_match(original_sources: Dict[str, bytes]) -> bool:
+    try:
+        return all(_regular_bytes(Path(path)) == payload for path, payload in original_sources.items())
+    except (OSError, PrivateMigrationError):
+        return False
+
+
+def _cleanup_sources(artifacts: List[Dict[str, Any]], roots: List[Path], originals: Dict[str, bytes]) -> Dict[str, Any]:
+    """Validate every original, located hardlink and declared copy before deleting any."""
+    planned: Dict[Path, tuple[int, int, bytes]] = {}
+    try:
+        for artifact in artifacts:
+            if artifact.get("source_path") is None:
+                continue
+            source = Path(artifact["source_path"])
+            payload = originals[str(source)]
+            if _regular_bytes(source) != payload:
+                return {"cleanup_performed": False, "cleanup_complete": False, "code": "source_changed"}
+            metadata = source.stat()
+            located = set()
+            for root in roots:
+                for candidate in root.rglob("*"):
+                    if candidate.is_symlink():
+                        continue
+                    info = candidate.lstat()
+                    if _stat.S_ISREG(info.st_mode) and (info.st_dev, info.st_ino) == (metadata.st_dev, metadata.st_ino):
+                        located.add(candidate)
+            if len(located) != metadata.st_nlink:
+                return {"cleanup_performed": False, "cleanup_complete": False, "code": "external_hardlink"}
+            for candidate in located | {Path(item) for item in artifact.get("copy_paths", [])}:
+                if _regular_bytes(candidate) != payload:
+                    return {"cleanup_performed": False, "cleanup_complete": False, "code": "copy_mismatch"}
+                info = candidate.stat()
+                # A declared copy with an unaccounted external link is also not erased.
+                if candidate not in located and info.st_nlink != 1:
+                    return {"cleanup_performed": False, "cleanup_complete": False, "code": "external_hardlink"}
+                planned[candidate] = (info.st_dev, info.st_ino, payload)
+        # Recheck the entire deletion set; never restore or replace an outside writer's bytes.
+        for candidate, (dev, ino, payload) in planned.items():
+            info = candidate.lstat()
+            if (info.st_dev, info.st_ino) != (dev, ino) or _regular_bytes(candidate) != payload:
+                return {"cleanup_performed": False, "cleanup_complete": False, "code": "source_changed"}
+    except (OSError, PrivateMigrationError):
+        return {"cleanup_performed": False, "cleanup_complete": False, "code": "cleanup_unavailable"}
+    removed = 0
+    try:
+        for candidate in planned:
+            candidate.unlink()
+            removed += 1
+    except OSError:
+        return {"cleanup_performed": bool(removed), "cleanup_complete": False, "removed_count": removed, "code": "cleanup_incomplete"}
+    return {"cleanup_performed": True, "cleanup_complete": True, "removed_count": removed}
+
+
+def migrate_private_workspace(
+    *, source_root: Path, destination_root: Path, artifacts: List[Dict[str, Any]],
+    snapshot_roots: List[Path] | None = None, cleanup: bool = False,
+    fail_after_committed: int | None = None,
+) -> Dict[str, Any]:
+    """Explicit owned migration: encrypt, authenticate readback, then record progress.
+
+    Legacy originals remain unchanged until a separate explicit cleanup request.
+    No source rollback can overwrite another writer's changes.
+    """
+    from integrations.private_storage import (PrivateArtifactBinding, PrivateKeyMaterialError,
+        PrivateStorageError, open_private_artifact, seal_private_artifact)
+    source_root = _safe_path(Path(source_root))
+    if not source_root.is_dir() or source_root.stat().st_uid != os.getuid():
+        raise PrivateMigrationError("unsafe_path")
+    roots = [source_root, *[_safe_path(Path(item)) for item in snapshot_roots or []]]
+    for root in roots:
+        if not root.is_dir() or root.stat().st_uid != os.getuid():
+            raise PrivateMigrationError("unsafe_path")
+    # Admit every owner before opening any source or creating a destination.
+    if not artifacts or any(not isinstance(item, dict) or not _owner_record_matches(item) for item in artifacts):
+        return {"schema": PRIVATE_MIGRATION_SCHEMA, "schema_version": PRIVATE_MIGRATION_VERSION,
+                "status": "owner_mismatch", "code": "owner_mismatch", "complete": False,
+                "committed": 0, "total": len(artifacts), "entries": [], "source_bytes_preserved": True,
+                "cleanup_performed": False, "cleanup_complete": False}
+    admitted = []
+    refs = set()
+    for supplied in artifacts:
+        item = dict(supplied)
+        for field in ("artifact_kind", "revision"):
+            if not isinstance(item.get(field), str) or not item[field]:
+                raise PrivateMigrationError("invalid_binding")
+        if item.get("source_path") is not None:
+            item["source_path"] = _safe_path(Path(item["source_path"]), root=source_root)
+        copies = []
+        for name in item.get("copy_paths", []):
+            path = _safe_path(Path(name))
+            if not any(path.is_relative_to(root) for root in roots):
+                raise PrivateMigrationError("path_outside_source")
+            copies.append(path)
+        item["copy_paths"] = copies
+        ref = _opaque_ref(item["tenant_id"], item["case_id"], item["artifact_kind"], item["revision"])
+        if ref in refs:
+            raise PrivateMigrationError("duplicate_binding")
+        refs.add(ref)
+        admitted.append(item)
+    destination_root = _private_directory(Path(destination_root))
+    # Ciphertext output may not replace a source or one of its declared copies.
+    source_paths = {Path(item["source_path"]) for item in admitted if item.get("source_path") is not None}
+    source_paths.update(Path(copy) for item in admitted for copy in item["copy_paths"])
+    manifest_path = destination_root / _MANIFEST_NAME
+    if manifest_path in source_paths or any(destination_root / (ref + ".bin") in source_paths for ref in refs):
+        raise PrivateMigrationError("source_destination_overlap")
+    manifest = _read_manifest(manifest_path)
+    entries = {entry["artifact_ref"]: entry for entry in manifest["entries"]}
+    originals = {str(item["source_path"]): _artifact_bytes(item) for item in admitted if item.get("source_path") is not None}
+    committed = 0
+
+    def finish(status: str, code: str = "", *, publish: bool = True) -> Dict[str, Any]:
+        preserved = _sources_match(originals)
+        if status == "complete" and not preserved:
+            status, code = "recoverable", "source_changed"
+        complete = status == "complete" and bool(refs) and refs.issubset(entries) and committed == len(admitted)
+        manifest["entries"] = list(entries.values())
+        manifest["complete"] = complete
+        manifest_durable = False
+        if publish and (manifest_path.exists() or entries):
+            try:
+                _write_manifest(manifest_path, manifest)
+                manifest_durable = True
+            except (PrivateMigrationError, OSError) as exc:
+                status, code, complete = "recoverable", getattr(exc, "code", "publication_failed"), False
+        elif complete:
+            complete = False
+        result = {"cleanup_performed": False, "cleanup_complete": False}
+        if complete and cleanup:
+            result = _cleanup_sources(admitted, roots, originals)
+        return {"schema": PRIVATE_MIGRATION_SCHEMA, "schema_version": PRIVATE_MIGRATION_VERSION,
+                "status": status, "code": code, "committed": committed, "total": len(admitted), "complete": complete,
+                "manifest_durable": manifest_durable,
+                "publication_indeterminate": code == "publication_indeterminate",
+                "cleanup_available": complete and not result["cleanup_performed"],
+                **result, "cleanup_code": result.get("code", ""), "code": code,
+                "manifest_path": str(manifest_path), "entries": list(entries.values()),
+                "source_bytes_preserved": preserved if not result["cleanup_performed"] else False}
+
+    for item in admitted:
+        binding = PrivateArtifactBinding(tenant_id=item["tenant_id"], case_id=item["case_id"],
+            artifact_kind=item["artifact_kind"], revision=item["revision"], principal_id=item.get("principal_id") or item["tenant_id"])
+        ref = _opaque_ref(item["tenant_id"], item["case_id"], item["artifact_kind"], item["revision"])
+        target = destination_root / (ref + ".bin")
+        if fail_after_committed is not None and committed >= fail_after_committed:
+            raise PrivateMigrationInterrupted(finish("interrupted"))
+        try:
+            if item.get("locked") is True:
+                raise PrivateKeyMaterialError("key_locked")
+            provider = item.get("key_provider")
+            if provider is not None:
+                key_id, key = provider.resolve(binding)
+                if ((item.get("key") is not None and item["key"] != key)
+                        or (item.get("key_id") is not None and item["key_id"] != key_id)):
+                    raise PrivateKeyMaterialError("key_mismatch")
+            else:
+                key_id, key = item.get("key_id"), item.get("key")
+                if key is None or not key_id:
+                    raise PrivateKeyMaterialError("key_locked")
+        except PrivateKeyMaterialError:
+            return finish("recoverable", "destination_preserved") if target.exists() else finish("unlock_needed", "unlock_needed")
+        try:
+            payload = originals[str(item["source_path"])] if item.get("source_path") is not None else _artifact_bytes(item)
+            if target.exists():
+                if item.get("reject_existing_destination"):
+                    return finish("recoverable", "destination_preserved")
+                envelope = _regular_bytes(target, single_link=True)
+                existing = entries.get(ref)
+                if existing is not None and _sha256(envelope) != existing["ciphertext_sha256"]:
+                    return finish("recoverable", "readback_failed")
+                opened = open_private_artifact(envelope, binding=binding, key=key, expected_key_id=key_id)
+                if opened != payload:
+                    return finish("recoverable", "destination_preserved")
+            else:
+                if ref in entries:
+                    return finish("recoverable", "readback_failed")
+                envelope = seal_private_artifact(payload, binding=binding, key=key, key_id=key_id)
+                # Staged bytes are ciphertext only; authenticate before committing the name.
+                if open_private_artifact(envelope, binding=binding, key=key, expected_key_id=key_id) != payload:
+                    return finish("recoverable", "readback_failed")
+                _write_private_bytes(target, envelope, replace=False)
+            readback = _regular_bytes(target, single_link=True)
+            if readback != envelope or open_private_artifact(readback, binding=binding, key=key, expected_key_id=key_id) != payload:
+                return finish("recoverable", "readback_failed")
+        except PrivateMigrationError as exc:
+            return finish("recoverable", exc.code, publish=False)
+        except (OSError, PrivateStorageError, ValueError):
+            return finish("recoverable", "readback_failed")
+        entries[ref] = {"artifact_ref": ref, "ciphertext_name": ref + ".bin", "ciphertext_sha256": _sha256(envelope),
+                        "readback": "verified", "status": "processed"}
+        committed += 1
+        manifest["entries"], manifest["complete"] = list(entries.values()), False
+        try:
+            _write_manifest(manifest_path, manifest)
+        except (PrivateMigrationError, OSError) as exc:
+            return finish("recoverable", getattr(exc, "code", "publication_failed"), publish=False)
+    return finish("complete")

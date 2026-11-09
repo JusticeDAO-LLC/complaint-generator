@@ -54,14 +54,14 @@ def canonicalize_application_type(app_type: Any) -> str:
     raise ValueError(f"unknown application type: {app_type}")
 
 
-def create_uvicorn_app_for_type(app_type: str, mediator: Any):
+def create_uvicorn_app_for_type(app_type: str, mediator: Any, *, gui_inference_route: Any = None):
     canonical = canonicalize_application_type(app_type)
     if canonical == "review-api":
-        return create_review_api_app(mediator)
+        return create_review_api_app(mediator, gui_inference_route=gui_inference_route)
     if canonical == "review-dashboard":
-        return create_review_dashboard_app()
+        return create_review_dashboard_app(gui_inference_route=gui_inference_route)
     if canonical == "review-surface":
-        return create_review_surface_app(mediator)
+        return create_review_surface_app(mediator, gui_inference_route=gui_inference_route)
     return None
 
 
@@ -77,7 +77,9 @@ def _run_uvicorn_app(app: Any, application_config: Dict[str, Any]) -> None:
 
 
 def _run_server_app(mediator: Any, application_config: Dict[str, Any]) -> None:
-    SERVER(mediator).run(
+    options = ({"gui_inference_route": application_config["gui_inference_route"]}
+               if "gui_inference_route" in application_config else {})
+    SERVER(mediator, **options).run(
         host=application_config.get("host", "0.0.0.0"),
         port=application_config.get("port", 8000),
         reload=bool(application_config.get("reload", False)),
@@ -150,7 +152,10 @@ def launch_application(
         target = _run_server_app
         args = (mediator, application_config)
     else:
-        app = create_uvicorn_app_for_type(canonical, mediator)
+        app = (create_uvicorn_app_for_type(canonical, mediator,
+                    gui_inference_route=application_config["gui_inference_route"])
+               if "gui_inference_route" in application_config
+               else create_uvicorn_app_for_type(canonical, mediator))
         target = _run_uvicorn_app
         args = (app, application_config)
 

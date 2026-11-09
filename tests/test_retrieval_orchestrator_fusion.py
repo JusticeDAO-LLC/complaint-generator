@@ -134,3 +134,54 @@ def test_retrieval_orchestrator_build_support_bundle_separates_buckets():
     assert len(support_bundle["top_evidence"]) == 1
     assert len(support_bundle["cross_supported"]) >= 1
     assert len(support_bundle["hybrid_cross_supported"]) >= 1
+
+
+def test_retrieval_orchestrator_enriches_claim_element_quality_temporal_and_graph_ranking():
+    orchestrator = RetrievalOrchestrator()
+    query_context = orchestrator.build_query_context(
+        query="termination retaliation within 180 days",
+        complaint_type="employment_retaliation",
+        jurisdiction="federal",
+        claim_element_text="Adverse employment action after protected complaint",
+        temporal_context="termination within 180 days of notice in 2025",
+    )
+    records = [
+        NormalizedRetrievalRecord(
+            source_type="web",
+            source_name="generic",
+            query="termination retaliation",
+            title="Generic employment article",
+            snippet="General workplace discussion",
+            score=0.45,
+            confidence=0.5,
+        ),
+        NormalizedRetrievalRecord(
+            source_type="statute",
+            source_name="us_code",
+            query="termination retaliation",
+            title="Retaliation timing rule",
+            citation="42 U.S.C. § 2000e-3",
+            snippet="Adverse employment action after protected complaint within 180 days of notice",
+            score=0.30,
+            confidence=0.7,
+            metadata={
+                "jurisdiction": "federal",
+                "quality_score": 0.9,
+                "authority_class": "statute",
+                "effective_date": "2025-01-01",
+                "graph_trace_summary": {"traced_link_count": 2},
+                "support_quality_summary": {"dominant_quality_tier": "strong_support"},
+            },
+        ),
+    ]
+
+    ranked = orchestrator.merge_and_rank(records, max_results=2, query_context=query_context)
+
+    assert ranked[0].source_type == "statute"
+    factors = ranked[0].metadata["orchestrator_ranking_factors"]
+    assert factors["claim_element_fit_weight"] > 0.0
+    assert factors["source_quality_weight"] > 0.0
+    assert factors["authority_class_weight"] > 0.0
+    assert factors["temporal_relevance_weight"] > 0.0
+    assert factors["graph_signal_weight"] > 0.0
+    assert ranked[0].metadata["orchestrator_ranking_explanation"]

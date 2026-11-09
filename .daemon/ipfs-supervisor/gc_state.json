@@ -1,0 +1,9 @@
+{
+  "last_gc_time": 1784599899.2808614,
+  "last_aggressive_gc_time": 1784585405.0098057,
+  "last_prune_time": 1784599899.1965337,
+  "last_reflog_expire_time": 1784599899.2086515,
+  "last_repack_time": 1784585405.0098057,
+  "total_gc_runs": 2,
+  "total_objects_freed": 1039
+}

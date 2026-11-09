@@ -227,6 +227,11 @@ Use `--user-id` and `--claim-type` to scope the repair when you only want to upd
 | `/home` | Home page after login | HTML template (home.html) |
 | `/chat` | Chat interface | HTML template (chat.html) |
 | `/claim-support-review` | Operator review dashboard for claim support, targeted question recommendations, testimony intake, pasted or uploaded document intake, parse-quality signals, follow-up execution, recent follow-up history, and manual-review resolution | HTML template (claim_support_review.html) |
+| `/api/claim-support/support-timeline` | Operator drilldown for claim support over time, ordered latest capture or observation first | JSON payload with `timeline`, `entry_count`, per-entry fact summary, support reference, and provenance fields |
+| `/api/claim-support/archive-history` | Operator drilldown for archived web captures used by claim support | JSON payload with limited visible `captures`, `capture_count`, `domain_count`, and `captures_by_domain` grouped from the returned captures |
+| `/api/claim-support/graph-trace` | Operator drilldown for graph support behind one claim element or support reference | JSON payload with `graph_traces`, `graph_trace_count`, and compact graph summary counts |
+| `/api/claim-support/enrichment-queue` | Inspect queued, running, completed, or failed heavy enrichment work without reading raw tables | JSON payload with queue entries plus pending, running, completed, and failed counts |
+| `/api/claim-support/enrichment-job/{job_id}` | Inspect one background enrichment job | JSON payload with job status, metadata, progress, partial results, error, and timestamps |
 | `/profile` | User profile page | HTML template (profile.html) |
 | `/results` | Results/complaint display | HTML template (results.html) |
 | `/document` | Formal complaint builder and preview surface for court-style pleading drafts | HTML template (document.html) |
@@ -242,6 +247,7 @@ Use `--user-id` and `--claim-type` to scope the repair when you only want to upd
 | `/api/claim-support/save-testimony` | Persist a structured testimony record for the current claim-support review context | JSON payload with `testimony_result`, `recorded`, and optional `post_save_review` using the standard review contract; save-time canonicalization resolves text-only claim elements to registered `claim_element_id` values when the match is unambiguous |
 | `/api/claim-support/save-document` | Persist pasted document text for the current claim-support review context through the shared evidence parse, chunk, and graph pipeline | JSON payload with `document_result`, `recorded`, and optional `post_save_review` using the standard review contract |
 | `/api/claim-support/upload-document` | Persist an uploaded file for the current claim-support review context through the shared evidence parse, chunk, and graph pipeline | Multipart form response with `document_result`, `recorded`, and optional `post_save_review` using the standard review contract |
+| `/api/claim-support/enrich-background` | Queue long-running archive, graph, legal-authority, parse, or proof enrichment work for operator review | JSON payload with submission status, `job_id`, and refreshed `queue_state` when available |
 | `/api/documents/formal-complaint` | Formal complaint export endpoint for court-style pleading drafts | JSON payload with the structured draft, generated artifact paths, selected output formats, generation timestamp, and claim-level drafting-readiness or support-summary context used by the builder preview |
 | `/api/documents/download` | Download a generated complaint artifact from the managed output directory | Generated DOCX or PDF file response |
 
@@ -323,7 +329,9 @@ Example response fields:
 
 POST to this endpoint to build a filing-style complaint package from the current intake, legal analysis, claim support, and evidence context. The export includes a court caption, parties, nature of the action, summary of facts, fuller factual allegations, claims for relief, legal standards, requested relief, and linked exhibits.
 
-The browser UI for this workflow is available at `/document`, which submits to this endpoint and renders artifact download links, section-level drafting readiness, claim-level filing warnings, compact claim-level source context, and the generated pleading text from the response payload.
+The browser UI for this workflow is available at `/document`, which submits to this endpoint and renders artifact download links, section-level drafting readiness, claim-level filing warnings, compact claim-level source context, guardrail summaries, managed artifact provenance, and the generated pleading text from the response payload.
+
+DOCX generation uses `python-docx` when that optional package is installed. In slim deployments where the package is unavailable, the document pipeline still emits valid DOCX containers with the pleading and affidavit text, section headings, grouped factual allegation headings, readiness-driven open gaps, and claim-support handoff content preserved for operator review. PDF, TXT, checklist, and packet artifacts continue through their native renderers.
 
 Example request:
 
@@ -469,6 +477,7 @@ Example response fields:
 - `draft.certificate_of_service`: generated service block rendered into the complaint body and export artifacts; the title and body adapt to the resolved forum style, for example `Proof of Service` in state-oriented drafts.
 - `draft.affidavit`: generated affidavit metadata used by the builder preview and affidavit export artifacts, including venue lines, numbered fact statements, supporting exhibits, jurat text, and notary block lines; state-oriented drafts can switch to sworn language and omit the `(or affirmed)` wording in the default jurat.
 - `drafting_readiness`: section-level and claim-level filing-readiness signals surfaced in the builder preview.
+- `document_builder_summary`: browser-oriented support and export summary generated by the document API. It includes section support statuses, source-family/artifact-family/content-origin counts, W10.2 guardrail warning and blocker counts, guardrail warning-type counts, managed output directory metadata, downloadable artifact counts, and document grounding metrics.
 - `drafting_readiness.claims[*].source_family_counts` / `artifact_family_counts` / `content_origin_counts`: compact source-context counts lifted from persisted claim-support summaries so the builder preview can show where claim support currently comes from without sending users back to the review dashboard first.
 - `drafting_readiness.claims[*].review_intent` / `drafting_readiness.sections[*].review_intent`: normalized claim- and section-scoped review focus metadata that browsers or other clients can persist without rebuilding the query string by hand.
 - `filing_checklist`: operator-facing pre-filing checklist items derived from the readiness payload, including direct review links and `review_intent` metadata for claim- and section-specific remediation in the builder preview.

@@ -1,0 +1,45 @@
+{
+  "skill_asset_id": "complaint-router",
+  "version": "1.0.0",
+  "name": "Complaint router policy",
+  "description": "Workspace LLM router policy skill. Enforces that all text-generation requests from the Mike editor surface are routed through the workspace llm_router rather than a Mike-internal provider. Exposes router availability and the active model selection policy.",
+  "capability": "workspace_llm_router",
+  "adapter": "integrations/ipfs_datasets/llm.py",
+  "entry_point": "generate_text_with_metadata",
+  "required_for_grounding_modes": ["legal_corpus_only", "strict_legal_containment"],
+  "router_policy": {
+    "centralized_policy": {
+      "router_selection_in_workspace": true,
+      "model_selection_in_workspace": true,
+      "safety_policy_in_workspace": true,
+      "grounding_policy_in_workspace": true
+    },
+    "narrow_adapter_boundary": {
+      "mike_requests_generation_via_workspace": true,
+      "mike_does_not_choose_provider": true,
+      "mike_does_not_choose_model": true
+    }
+  },
+  "inputs": {
+    "prompt": {
+      "type": "string",
+      "description": "The generation prompt to route through the workspace llm_router."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional metadata to attach to the generation request.",
+      "nullable": true
+    }
+  },
+  "outputs": {
+    "text": {"type": "string", "description": "Generated text from the workspace-routed LLM."},
+    "provider": {"type": "string", "description": "The provider selected by the workspace router."},
+    "model": {"type": "string", "description": "The model selected by the workspace router."},
+    "router_metadata": {"type": "object"}
+  },
+  "editor_integration": {
+    "panel": "generation_status",
+    "displays": ["provider", "model"],
+    "block_if_router_unavailable": false
+  }
+}

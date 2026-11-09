@@ -474,3 +474,89 @@ def build_policy_rule_corpus(
         implementation_status="implemented" if POLICY_RULES_AVAILABLE else "unavailable",
         extra_metadata={"backend": backend},
     )
+
+
+# ---------------------------------------------------------------------------
+# Deontic-norm policy checking
+# ---------------------------------------------------------------------------
+
+def check_policy_rules_with_deontic_norms(
+    text: str,
+    norms: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Check *text* against *norms* and locally-extracted policy rules.
+
+    Parameters
+    ----------
+    text:
+        The draft or complaint body to evaluate.
+    norms:
+        Pre-computed deontic norms (from ``legal_text_to_deontic``).  If
+        ``None``, the function extracts norms locally using the same regex
+        patterns as the deontic module.
+
+    Returns a summary with ``violations``, ``warnings``, and ``norms_applied``.
+    """
+    sentences = _split_sentences(text)
+    if norms is None:
+        norms = []
+        for sentence in sentences:
+            rule = _detect_rule(sentence)
+            if rule:
+                rule_type, modality = rule
+                norms.append(
+                    {
+                        "norm_type": rule_type,
+                        "modality": modality,
+                        "source_sentence": sentence,
+                        "formula": f"{modality.upper()[0]}(actor,action)",
+                    }
+                )
+
+    violations: List[Dict[str, Any]] = []
+    warnings_list: List[Dict[str, Any]] = []
+
+    prohibition_norms = [n for n in norms if str(n.get("norm_type") or "").lower() == "prohibition"]
+    obligation_norms = [n for n in norms if str(n.get("norm_type") or "").lower() == "obligation"]
+
+    for sentence in sentences:
+        lowered = sentence.lower()
+        for norm in prohibition_norms:
+            trigger = str(norm.get("trigger_keyword") or "").lower()
+            if trigger and trigger in lowered:
+                violations.append(
+                    {
+                        "violation_type": "prohibited_action_found",
+                        "norm": norm,
+                        "offending_sentence": sentence,
+                        "severity": "error",
+                    }
+                )
+
+    for norm in obligation_norms:
+        formula = str(norm.get("formula") or "")
+        action_text = str(norm.get("action_text") or "").lower().strip()
+        if action_text:
+            action_words = set(re.findall(r"[a-z]+", action_text))
+            fulfilled = any(
+                action_words.issubset(set(re.findall(r"[a-z]+", sentence.lower())))
+                for sentence in sentences
+            )
+            if not fulfilled:
+                warnings_list.append(
+                    {
+                        "warning_type": "obligation_not_satisfied",
+                        "norm": norm,
+                        "formula": formula,
+                        "severity": "warning",
+                    }
+                )
+
+    return {
+        "violations": violations,
+        "warnings": warnings_list,
+        "norms_applied": norms,
+        "violation_count": len(violations),
+        "warning_count": len(warnings_list),
+        "has_violations": bool(violations),
+    }

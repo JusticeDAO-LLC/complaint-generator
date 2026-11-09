@@ -151,6 +151,7 @@ def build_document_parse_contract(
             "status": "",
             "source": default_source,
             "chunk_count": 0,
+            "chunks": [],
             "text": "",
             "text_preview": "",
             "summary": {},
@@ -163,6 +164,11 @@ def build_document_parse_contract(
     summary = build_document_parse_summary_metadata(document_parse, default_source=default_source)
     storage_metadata = build_storage_parse_metadata(document_parse, default_source=default_source)
     text = str(document_parse.get("text") or "")
+    chunks = [
+        dict(chunk)
+        for chunk in list(document_parse.get("chunks", []) or [])
+        if isinstance(chunk, dict)
+    ]
     chunk_count = int(summary.get("chunk_count", len(document_parse.get("chunks", []) or [])) or 0)
     source = str(storage_metadata.get("source") or summary.get("source") or default_source or "")
     lineage = storage_metadata.get("transform_lineage")
@@ -175,6 +181,7 @@ def build_document_parse_contract(
         "status": str(document_parse.get("status") or summary.get("status") or ""),
         "source": source,
         "chunk_count": chunk_count,
+        "chunks": chunks,
         "text": text,
         "text_preview": text[: max(preview_length, 0)] if preview_length else "",
         "summary": summary,

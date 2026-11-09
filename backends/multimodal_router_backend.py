@@ -14,7 +14,7 @@ from .llm_router_backend import LLMRouterBackend
 
 
 class MultimodalRouterBackend(LLMRouterBackend):
-    """Backend that routes prompt + images through ipfs_datasets_py.multimodal_router."""
+    """Backend that routes prompt + images through the accelerate multimodal router."""
 
     def __call__(
         self,

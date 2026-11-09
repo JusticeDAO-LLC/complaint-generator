@@ -57,7 +57,9 @@ def _parse_iso_dt(s: str) -> Optional[datetime]:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
-    except Exception:
+    except ValueError:
+        # Provider timestamps are untrusted and may be malformed. Keep those
+        # inputs non-fatal, but allow unexpected parser defects to surface.
         return None
 
 
@@ -80,7 +82,9 @@ def _parse_codex_human_reset_at(msg: str) -> Optional[datetime]:
         try:
             dt = datetime.strptime(cleaned, fmt)
             return dt.replace(tzinfo=timezone.utc)
-        except Exception:
+        except ValueError:
+            # Provider reset messages are untrusted and may not match either
+            # supported format. Unexpected parser failures must remain visible.
             continue
     return None
 
@@ -137,12 +141,9 @@ def _extract_rate_limit_reset_info(msg: str) -> Tuple[Optional[int], Optional[da
             source = "try_again_at"
 
     if reset_at is not None and (reset_s is None or reset_s <= 0):
-        try:
-            remaining = int((reset_at - datetime.now(timezone.utc)).total_seconds())
-            if remaining > 0:
-                reset_s = remaining
-        except Exception:
-            pass
+        remaining = int((reset_at - datetime.now(timezone.utc)).total_seconds())
+        if remaining > 0:
+            reset_s = remaining
 
     return reset_s, reset_at, source
 
@@ -169,7 +170,11 @@ def _extract_first_error_message_from_exec_jsonl(path: str) -> Optional[str]:
                 if isinstance(obj, dict) and obj.get("type") == "error" and isinstance(obj.get("message"), str):
                     msg = str(obj.get("message") or "").strip()
                     return msg or None
-    except Exception:
+    except (OSError, UnicodeError):
+        # The exec artifact is optional and may disappear, become unreadable,
+        # or contain invalid text while a run is being inspected. Treat those
+        # input failures as a missing fallback, but do not hide unexpected
+        # failures in the extraction logic.
         return None
     return None
 
@@ -225,6 +230,17 @@ def _pick_reset_at_raw_from_rate_limit_artifact(data: Dict[str, Any]) -> Optiona
     if isinstance(reset_at_raw, str) and reset_at_raw.strip():
         return reset_at_raw.strip()
     return None
+
+
+def _write_rate_limit_artifact_payload(path: str, payload: Dict[str, Any]) -> None:
+    """Persist rate-limit metadata, surfacing failures to the caller.
+
+    Callers publish this path to users and orchestration processes, so silently
+    continuing after a failed write would falsely claim that resumable metadata
+    exists.
+    """
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
 
 
 def _find_session_jsons(run_dir: str) -> List[str]:
@@ -313,6 +329,17 @@ def _pick_worst_sessions(session_docs: List[Dict[str, Any]], k: int) -> List[Dic
     return sorted_docs[: max(0, int(k))]
 
 
+def _optimizer_count(optimizer: Dict[str, Any], key: str) -> int:
+    """Return a persisted optimizer count, defaulting malformed values to zero."""
+    value = optimizer.get(key)
+    if value is None:
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
 def _build_prompt(
     *,
     run_dir: str,
@@ -356,59 +383,77 @@ def _build_prompt(
     graphs_dynamics_health = cycle_summary.get("graphs_dynamics_health")
 
     focus: List[str] = []
+    kg_avg_entities_raw = optimizer.get("kg_avg_total_entities")
     try:
-        kg_with = int(optimizer.get("kg_sessions_with_data") or 0)
-        dg_with = int(optimizer.get("dg_sessions_with_data") or 0)
-        kg_empty = int(optimizer.get("kg_sessions_empty") or 0)
-        dg_empty = int(optimizer.get("dg_sessions_empty") or 0)
-        kg_avg_entities = optimizer.get("kg_avg_total_entities")
-        dg_avg_nodes = optimizer.get("dg_avg_total_nodes")
-        kg_d_entities = optimizer.get("kg_avg_entities_delta_per_iter")
-        kg_d_rels = optimizer.get("kg_avg_relationships_delta_per_iter")
-        kg_d_gaps = optimizer.get("kg_avg_gaps_delta_per_iter")
-        kg_not_reducing = int(optimizer.get("kg_sessions_gaps_not_reducing") or 0)
+        kg_avg_entities = float(kg_avg_entities_raw) if kg_avg_entities_raw is not None else None
+    except (TypeError, ValueError):
+        # Optimizer reports may contain missing or non-numeric metric values.
+        # Ignore only those expected conversion failures; unexpected defects
+        # must remain visible instead of being swallowed by best-effort focus
+        # generation below.
+        kg_avg_entities = None
 
-        if kg_with > 0 and kg_empty == kg_with:
-            focus.append("Knowledge graphs are empty across analyzed sessions")
-        elif kg_avg_entities is not None:
-            try:
-                if float(kg_avg_entities) < 2.0:
-                    focus.append("Knowledge graphs are very small on average")
-            except Exception:
-                pass
+    kg_d_entities_raw = optimizer.get("kg_avg_entities_delta_per_iter")
+    try:
+        kg_d_entities = float(kg_d_entities_raw) if kg_d_entities_raw is not None else None
+    except (TypeError, ValueError):
+        # Optimizer reports are persisted inputs and may contain non-numeric
+        # metric values. Ignore only expected conversion failures here so an
+        # unexpected runtime defect cannot be swallowed by the best-effort
+        # focus generation below.
+        kg_d_entities = None
 
-        # Dynamics: if gaps aren't shrinking or graphs aren't growing, steer to denoiser answer processing.
-        if kg_not_reducing > 0:
-            focus.append("Knowledge graph gaps are not reducing across iterations")
-        if kg_d_gaps is not None:
-            try:
-                if float(kg_d_gaps) >= 0.0:
-                    focus.append("Knowledge graph gaps are flat/increasing per iteration")
-            except Exception:
-                pass
-        if kg_d_entities is not None:
-            try:
-                if float(kg_d_entities) < 0.1:
-                    focus.append("Knowledge graph is not growing per iteration")
-            except Exception:
-                pass
-        if kg_d_rels is not None:
-            try:
-                if float(kg_d_rels) < 0.05:
-                    focus.append("Knowledge graph relationships are not growing per iteration")
-            except Exception:
-                pass
+    kg_d_rels_raw = optimizer.get("kg_avg_relationships_delta_per_iter")
+    try:
+        kg_d_rels = float(kg_d_rels_raw) if kg_d_rels_raw is not None else None
+    except (TypeError, ValueError):
+        # Persisted optimizer metrics can be malformed. Expected conversion
+        # errors simply omit this diagnostic; unexpected failures must remain
+        # visible rather than being swallowed by the focus-generation fallback.
+        kg_d_rels = None
 
-        if dg_with > 0 and dg_empty == dg_with:
-            focus.append("Dependency graphs are empty across analyzed sessions")
-        elif dg_avg_nodes is not None:
-            try:
-                if float(dg_avg_nodes) < 2.0:
-                    focus.append("Dependency graphs are very small on average")
-            except Exception:
-                pass
-    except Exception:
-        focus = focus
+    dg_avg_nodes_raw = optimizer.get("dg_avg_total_nodes")
+    try:
+        dg_avg_nodes = float(dg_avg_nodes_raw) if dg_avg_nodes_raw is not None else None
+    except (TypeError, ValueError):
+        # Persisted optimizer metrics can be malformed. Treat only expected
+        # numeric conversion failures as missing data; unexpected failures
+        # must remain observable instead of being hidden by prompt generation.
+        dg_avg_nodes = None
+
+    kg_with = _optimizer_count(optimizer, "kg_sessions_with_data")
+    dg_with = _optimizer_count(optimizer, "dg_sessions_with_data")
+    kg_empty = _optimizer_count(optimizer, "kg_sessions_empty")
+    dg_empty = _optimizer_count(optimizer, "dg_sessions_empty")
+    kg_d_gaps_raw = optimizer.get("kg_avg_gaps_delta_per_iter")
+    try:
+        kg_d_gaps = float(kg_d_gaps_raw) if kg_d_gaps_raw is not None else None
+    except (TypeError, ValueError, OverflowError):
+        # Persisted optimizer metrics can be malformed or outside the range
+        # accepted by float(). Omit only those expected input failures so
+        # unexpected conversion defects remain visible for diagnosis.
+        kg_d_gaps = None
+    kg_not_reducing = _optimizer_count(optimizer, "kg_sessions_gaps_not_reducing")
+
+    if kg_with > 0 and kg_empty == kg_with:
+        focus.append("Knowledge graphs are empty across analyzed sessions")
+    elif kg_avg_entities is not None and kg_avg_entities < 2.0:
+        focus.append("Knowledge graphs are very small on average")
+
+    # Dynamics: if gaps aren't shrinking or graphs aren't growing, steer to denoiser answer processing.
+    if kg_not_reducing > 0:
+        focus.append("Knowledge graph gaps are not reducing across iterations")
+    if kg_d_gaps is not None and kg_d_gaps >= 0.0:
+        focus.append("Knowledge graph gaps are flat/increasing per iteration")
+    if kg_d_entities is not None and kg_d_entities < 0.1:
+        focus.append("Knowledge graph is not growing per iteration")
+    if kg_d_rels is not None and kg_d_rels < 0.05:
+        focus.append("Knowledge graph relationships are not growing per iteration")
+
+    if dg_with > 0 and dg_empty == dg_with:
+        focus.append("Dependency graphs are empty across analyzed sessions")
+    elif dg_avg_nodes is not None and dg_avg_nodes < 2.0:
+        focus.append("Dependency graphs are very small on average")
 
     suspected_files: List[str] = []
     if any("Knowledge graph" in f for f in focus):
@@ -1645,7 +1690,9 @@ def _try_parse_json_object(text: str) -> Optional[Dict[str, Any]]:
         s = m.group(0)
     try:
         obj = json.loads(s)
-    except Exception:
+    except json.JSONDecodeError:
+        # Model output is untrusted and malformed JSON is an expected miss.
+        # Unexpected decoder/runtime failures must remain visible to callers.
         return None
     return obj if isinstance(obj, dict) else None
 
@@ -1658,6 +1705,26 @@ def _append_jsonl(path: str, obj: Dict[str, Any]) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+
+def _append_jsonl_best_effort(path: str, obj: Dict[str, Any], *, event_name: str) -> bool:
+    """Append an optional transcript event, warning on expected artifact failures.
+
+    Transcript events supplement the primary run artifacts, so an unavailable
+    transcript must not replace the operational error being reported.  Keep
+    expected filesystem and text-encoding failures non-fatal, but make them
+    visible and allow unexpected implementation failures to propagate.
+    """
+    try:
+        _append_jsonl(path, obj)
+    except (OSError, UnicodeError) as exc:
+        print(
+            f"Warning: could not append {event_name} event to transcript "
+            f"{os.path.abspath(path)}: {exc}",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
 
 def _utc_iso() -> str:
@@ -2564,28 +2631,22 @@ def main() -> int:
 
         suffix = "" if int(attempt_index) <= 0 else f"_retry{int(attempt_index):02d}"
         path = os.path.join(out_dir, f"codex_rate_limit_{ts}{suffix}.json")
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(payload, f, indent=2)
-        except Exception:
-            pass
+        _write_rate_limit_artifact_payload(path, payload)
 
-        try:
-            _append_jsonl(
-                transcript_path,
-                {
-                    "event": "rate_limit",
-                    "ts": payload["ts"],
-                    "resets_in_seconds": reset_s,
-                    "reset_at": reset_at,
-                    "provider_error_message": payload.get("provider_error_message"),
-                    "will_retry": bool(will_retry),
-                    "sleep_seconds": sleep_s,
-                    "artifact_path": os.path.abspath(path),
-                },
-            )
-        except Exception:
-            pass
+        _append_jsonl_best_effort(
+            transcript_path,
+            {
+                "event": "rate_limit",
+                "ts": payload["ts"],
+                "resets_in_seconds": reset_s,
+                "reset_at": reset_at,
+                "provider_error_message": payload.get("provider_error_message"),
+                "will_retry": bool(will_retry),
+                "sleep_seconds": sleep_s,
+                "artifact_path": os.path.abspath(path),
+            },
+            event_name="rate-limit",
+        )
 
         return path
 

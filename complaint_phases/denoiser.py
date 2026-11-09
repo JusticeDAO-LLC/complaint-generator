@@ -5,12 +5,15 @@ Iteratively asks questions to fill gaps in the knowledge graph and reduce
 noise/ambiguity in the complaint information.
 """
 
+import copy
 import hashlib
+import json
 import logging
 import re
 from typing import Dict, List, Any, Optional, Tuple, Set
 import os
 import random
+from lib.runtime_ownership import require_module_ownership
 from .knowledge_graph import KnowledgeGraph, Entity, Relationship
 from .dependency_graph import DependencyGraph
 from .intake_claim_registry import (
@@ -24,6 +27,630 @@ from .intake_claim_registry import (
 
 logger = logging.getLogger(__name__)
 
+_SUPPORT_STATE_NAMES = ("user_assertion", "corroboration", "candidate", "applicability", "proof")
+_SUPPORT_STATE_TOKENS = frozenset({
+    "unknown", "asserted", "unasserted", "corroborated", "uncorroborated",
+    "candidate", "not_candidate", "applicable", "inapplicable", "unproved",
+    "proved", "missing", "unavailable", "contradicted", "needs_review",
+    "admitted", "rejected", "recorded",
+})
+_PRIVATE_DIAGNOSTIC_KEYS = frozenset({
+    "narrative", "prompt", "answer", "question", "why_it_matters", "text", "wording",
+    "span_text", "quote", "secret", "passphrase", "content", "candidate",
+    "expected_information", "display", "password", "token", "recovery",
+})
+_CONDITION_COPY = {
+    "unknown_authority": (
+        "Admitted authority for this question is unknown.",
+        "identify_or_research_admitted_authority",
+    ),
+    "source_outage": (
+        "A legal source is unavailable. This outage is not legal sufficiency.",
+        "retry_when_source_available",
+    ),
+    "contradiction": (
+        "Accounts conflict. Neither account is treated as proved.",
+        "clarify_the_conflicting_accounts",
+    ),
+    "missing_definition": (
+        "The element definition is missing and still needs review.",
+        "review_the_element_definition",
+    ),
+    "missing_review": (
+        "A required review is missing.",
+        "complete_manual_review",
+    ),
+}
+_WHY_DISPLAY_CHAR_BUDGET = 3500
+_FIELD_CHAR_BUDGET = 160
+
+
+def _clip_public(value: Any, limit: int = _FIELD_CHAR_BUDGET) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) > limit:
+        return text[: limit - 3] + "..."
+    return text
+
+
+def _state_token(value: Any) -> str:
+    token = str(value or "").strip().lower().replace(" ", "_")
+    if token in _SUPPORT_STATE_TOKENS:
+        return token
+    return "recorded" if token else "unknown"
+
+
+def _mapping(value: Any) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _factual_target_view(inquiry: Dict[str, Any]) -> Dict[str, str]:
+    raw = _mapping(inquiry.get("factual_target"))
+    unresolved = _mapping(inquiry.get("unresolved_target"))
+    kind = str(raw.get("kind") or unresolved.get("target_kind") or inquiry.get("target_kind") or inquiry.get("gap_family") or "")
+    target_id = str(raw.get("target_id") or "").strip()
+    label = str(raw.get("label") or raw.get("name") or "").strip()
+    factual_kinds = {"factual", "factual_uncertainty", "timeline", "clarification"}
+    if not target_id and kind.strip().lower() in factual_kinds:
+        target_id = str(unresolved.get("target_id") or inquiry.get("target_id") or "").strip()
+    if not label and kind.strip().lower() in factual_kinds:
+        label = str(unresolved.get("label") or unresolved.get("name") or "").strip()
+    return {
+        "target_id": _clip_public(target_id) or "unknown",
+        "label": _clip_public(label) or "unknown",
+        "kind": "factual",
+    }
+
+
+def _law_requirement_view(inquiry: Dict[str, Any], factual: Dict[str, str]) -> Dict[str, str]:
+    raw = _mapping(inquiry.get("law_derived_requirement") or inquiry.get("legal_requirement"))
+    requirement_id = str(raw.get("requirement_id") or raw.get("element_id") or "").strip()
+    label = str(raw.get("label") or raw.get("name") or raw.get("element") or "").strip()
+    law_derived = raw.get("law_derived")
+    if law_derived is None:
+        law_derived = bool(requirement_id or label) or str(inquiry.get("gap_family") or "") == "legal_element_support"
+    if not requirement_id and str(inquiry.get("gap_family") or "") == "legal_element_support":
+        requirement_id = str(inquiry.get("requirement_id") or "").strip()
+    # A factual target id is not a law-derived requirement, even when it is the only id present.
+    if requirement_id and requirement_id == factual.get("target_id") and factual.get("target_id") != "unknown":
+        if not raw:
+            requirement_id = ""
+    if label and label == factual.get("label") and factual.get("label") != "unknown" and not raw:
+        label = ""
+    return {
+        "requirement_id": _clip_public(requirement_id) or "unknown",
+        "label": _clip_public(label) or "unknown",
+        "law_derived": "true" if law_derived and (requirement_id or label) else "false",
+    }
+
+
+def _admitted_authorities(inquiry: Dict[str, Any]) -> List[Dict[str, str]]:
+    raw = inquiry.get("admitted_authorities")
+    if not isinstance(raw, list):
+        raw = inquiry.get("authority_references")
+    if not isinstance(raw, list):
+        single = _mapping(inquiry.get("admitted_authority"))
+        raw = [single] if single else []
+    admitted: List[Dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status") or item.get("admission") or "").strip().lower()
+        if item.get("admitted") is False or status in {"rejected", "unknown", "candidate", "unavailable"}:
+            continue
+        if item.get("admitted") is not True and status not in {"admitted", "admitted_authority"}:
+            continue
+        citation = _clip_public(item.get("citation") or item.get("cite") or "")
+        version = _clip_public(item.get("version") or item.get("edition") or "")
+        span = _clip_public(item.get("span") or item.get("span_id") or item.get("span_ref") or "")
+        if not (citation or version or span):
+            continue
+        admitted.append({
+            "citation": citation or "unknown",
+            "version": version or "unknown",
+            "span": span or "unknown",
+        })
+        if len(admitted) >= 4:
+            break
+    return admitted
+
+
+def _support_states(inquiry: Dict[str, Any]) -> Dict[str, str]:
+    raw = _mapping(inquiry.get("support_states"))
+    states = {name: _state_token(raw.get(name, inquiry.get(name))) for name in _SUPPORT_STATE_NAMES}
+    score = inquiry.get("retrieval_score", inquiry.get("relevance_score"))
+    raw_proof = raw.get("proof", inquiry.get("proof"))
+    raw_proof_text = str(raw_proof).strip() if raw_proof is not None else ""
+    score_text = str(score).strip() if score is not None else ""
+    # A retrieval score never fills proof, including when a caller copies the score into proof.
+    if not raw_proof_text or (score_text and raw_proof_text == score_text):
+        states["proof"] = "unknown"
+    return states
+
+
+def _support_conditions(inquiry: Dict[str, Any], authorities: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    authority_status = str(inquiry.get("authority_status") or "").strip().lower()
+    source_status = str(inquiry.get("source_status") or inquiry.get("legal_source_status") or "").strip().lower()
+    definition_status = str(inquiry.get("definition_status") or "").strip().lower()
+    review_status = str(inquiry.get("review_status") or "").strip().lower()
+    reasons = {str(item).strip().lower() for item in (inquiry.get("unknown_reasons") or [])}
+    family = str(inquiry.get("gap_family") or "").strip().lower()
+    flags = {
+        "unknown_authority": (not authorities) or authority_status in {"unknown", "missing"},
+        "source_outage": source_status in {"outage", "unavailable", "source_outage"} or "source_outage" in reasons,
+        "contradiction": family == "contradiction" or bool(inquiry.get("contradiction")) or "contradiction" in reasons,
+        "missing_definition": definition_status in {"missing", "unknown"} or bool(inquiry.get("missing_definition")) or "missing_definition" in reasons,
+        "missing_review": review_status in {"missing", "needs_review"} or bool(inquiry.get("missing_review")) or "missing_review" in reasons,
+    }
+    # Unknown authority is the standing case. Other conditions appear only when the inquiry says so.
+    if authority_status in {"admitted", "known"} and authorities:
+        flags["unknown_authority"] = False
+    conditions: List[Dict[str, str]] = []
+    for kind, enabled in flags.items():
+        if not enabled:
+            continue
+        message, action = _CONDITION_COPY[kind]
+        conditions.append({"kind": kind, "message": message, "next_action": action})
+    return conditions
+
+
+def question_support_view(inquiry: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Separate factual, law-derived, authority, and support facts for /why.
+
+    Retrieval rank stays a retrieval fact. It is not proof, applicability, or admission.
+    """
+    record = inquiry if isinstance(inquiry, dict) else {}
+    factual = _factual_target_view(record)
+    requirement = _law_requirement_view(record, factual)
+    authorities = _admitted_authorities(record)
+    states = _support_states(record)
+    conditions = _support_conditions(record, authorities)
+    score = record.get("retrieval_score", record.get("relevance_score"))
+    score_text = "none"
+    if score is not None and str(score).strip():
+        score_text = _clip_public(score, 32)
+    return {
+        "factual_target": factual,
+        "law_derived_requirement": requirement,
+        "admitted_authorities": authorities,
+        "authority_status": "admitted" if authorities else "unknown",
+        "support_states": states,
+        "retrieval_score": score_text,
+        "retrieval_score_is_proof": False,
+        "conditions": conditions,
+        "legal_sufficiency": False,
+        "proof_established": states.get("proof") == "proved",
+    }
+
+
+def _support_display_lines(support: Dict[str, Any]) -> List[str]:
+    factual = support["factual_target"]
+    requirement = support["law_derived_requirement"]
+    lines = [
+        f"Factual target: {factual['label']} [{factual['target_id']}]",
+        (
+            "Law-derived requirement: "
+            f"{requirement['label']} [{requirement['requirement_id']}] "
+            f"law_derived={requirement['law_derived']}"
+        ),
+    ]
+    authorities = support["admitted_authorities"]
+    if authorities:
+        for item in authorities:
+            lines.append(
+                "Admitted authority: "
+                f"citation={item['citation']}; version={item['version']}; span={item['span']}"
+            )
+    else:
+        lines.append("Admitted authority: unknown")
+    state_text = "; ".join(f"{name}={support['support_states'][name]}" for name in _SUPPORT_STATE_NAMES)
+    lines.append(f"Support states: {state_text}")
+    lines.append(
+        f"Retrieval score: {support['retrieval_score']}. A retrieval score is not proof, corroboration, applicability, or admission."
+    )
+    for condition in support["conditions"]:
+        lines.append(f"Condition {condition['kind']}: {condition['message']}")
+        lines.append(f"Next action: {condition['next_action']}")
+    rendered: List[str] = []
+    budget = _WHY_DISPLAY_CHAR_BUDGET
+    for line in lines:
+        safe = line.encode("ascii", "replace").decode("ascii")
+        if budget <= 0:
+            rendered.append("Further support lines omitted to keep this explanation bounded.")
+            break
+        if len(safe) > budget:
+            safe = safe[: max(0, budget - 3)] + "..."
+        rendered.append(safe)
+        budget -= len(safe) + 1
+    return rendered
+
+
+def public_why_diagnostic_receipt(why: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Codes and references only. Question text and narrative stay out of the receipt."""
+    payload = why if isinstance(why, dict) else {}
+    support = payload.get("question_support") if isinstance(payload.get("question_support"), dict) else {}
+    factual = _mapping(support.get("factual_target"))
+    requirement = _mapping(support.get("law_derived_requirement"))
+    states = _mapping(support.get("support_states"))
+    conditions = [item for item in (support.get("conditions") or []) if isinstance(item, dict)]
+    authorities = [item for item in (support.get("admitted_authorities") or []) if isinstance(item, dict)]
+    return {
+        "schema": "why-diagnostic-receipt-v1",
+        "command": "/why",
+        "objective_id": _clip_public(payload.get("objective_id") or "unknown", 80) or "unknown",
+        "target_id": _clip_public(payload.get("target_id") or "unknown", 80) or "unknown",
+        "factual_target_id": _clip_public(factual.get("target_id") or "unknown", 80),
+        "law_requirement_id": _clip_public(requirement.get("requirement_id") or "unknown", 80),
+        "authority_status": "admitted" if authorities else "unknown",
+        "authority_count": len(authorities),
+        "authority_citations": [_clip_public(item.get("citation") or "unknown", 80) for item in authorities],
+        "support_states": {name: _state_token(states.get(name)) for name in _SUPPORT_STATE_NAMES},
+        "retrieval_score_is_proof": False,
+        "condition_kinds": [str(item.get("kind") or "") for item in conditions],
+        "next_actions": [str(item.get("next_action") or "") for item in conditions],
+        "legal_sufficiency": False,
+        "contains_private_content": False,
+        "awaiting_user": True,
+        "worker_stalled": False,
+    }
+
+
+def redact_diagnostic_value(value: Any) -> Any:
+    """Drop private complaint text from a diagnostic receipt before it is shown."""
+    if isinstance(value, dict):
+        redacted: Dict[str, Any] = {}
+        for key, item in value.items():
+            if str(key).strip().lower() in _PRIVATE_DIAGNOSTIC_KEYS:
+                continue
+            redacted[str(key)] = redact_diagnostic_value(item)
+        redacted.setdefault("contains_private_content", False)
+        return redacted
+    if isinstance(value, list):
+        return [redact_diagnostic_value(item) for item in value[:20]]
+    if isinstance(value, str):
+        if len(value) > 180:
+            return "[redacted]"
+        return value
+    return value
+
+
+def format_terminal_why(inquiry: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Render a /why explanation a person can read without seeing ranking internals."""
+    if not isinstance(inquiry, dict) or not (
+        str(inquiry.get("question") or "").strip() or str(inquiry.get("why_it_matters") or "").strip()
+    ):
+        support = question_support_view({})
+        display = (
+            "There is no current question to explain. "
+            "The interview is waiting for a selected gap, and this is not a stalled worker.\n"
+            + "\n".join(_support_display_lines(support))
+        )
+        payload = {
+            "command": "/why",
+            "display": display,
+            "stored_as_answer": False,
+            "awaiting_user": True,
+            "worker_stalled": False,
+            "inquiry": None,
+            "legal_sufficiency": False,
+            "question_support": support,
+        }
+        payload["diagnostic_receipt"] = public_why_diagnostic_receipt(payload)
+        return payload
+    why = str(inquiry.get("why_it_matters") or inquiry.get("question_reason") or "").strip()
+    if not why:
+        why = "This question asks for information that is still missing from the complaint record."
+    question = str(inquiry.get("question") or "").strip()
+    objective_id = str(inquiry.get("objective_id") or "")
+    target_id = str(inquiry.get("target_id") or inquiry.get("inquiry_id") or "")
+    answer_contract = inquiry.get("expected_answer_contract") if isinstance(inquiry.get("expected_answer_contract"), dict) else {}
+    update_contract = inquiry.get("expected_update_contract") if isinstance(inquiry.get("expected_update_contract"), dict) else {}
+    expected = str(
+        answer_contract.get("expected_information")
+        or inquiry.get("expected_information")
+        or "facts, dates, people, or documents you observed"
+    ).strip()
+    update_kind = str(update_contract.get("update_kind") or "record the answer against this target").replace("_", " ")
+    support = question_support_view(inquiry)
+    support_lines = "\n".join(_support_display_lines(support))
+    display = (
+        f"Why this question: {why}\n"
+        f"Question: {question}\n"
+        f"Objective id: {objective_id}\n"
+        f"Target id: {target_id}\n"
+        f"Expected answer: {expected}.\n"
+        f"Expected update: {update_kind} for this target. "
+        "An unknown, refused, or skipped answer is recorded as that response and does not satisfy the underlying legal requirement.\n"
+        f"{support_lines}"
+    )
+    if len(display) > _WHY_DISPLAY_CHAR_BUDGET:
+        display = display[: _WHY_DISPLAY_CHAR_BUDGET - 3] + "..."
+    payload = {
+        "command": "/why",
+        "display": display,
+        "stored_as_answer": False,
+        "awaiting_user": True,
+        "worker_stalled": False,
+        "objective_id": objective_id,
+        "target_id": target_id,
+        "why_it_matters": why,
+        "expected_answer_contract": answer_contract,
+        "expected_update_contract": update_contract,
+        "question_support": support,
+        "legal_sufficiency": False,
+    }
+    payload["diagnostic_receipt"] = public_why_diagnostic_receipt(payload)
+    return payload
+
+
+MODULE_OWNERSHIP = require_module_ownership("complaint_phases.denoiser")
+RUNTIME_ENTRYPOINT_ROLE = MODULE_OWNERSHIP.role
+
+# Question types that are inherently non-specific and should bypass objective-key deduplication.
+# These are open-ended or clarification asks that don't target a discrete legal element.
+_BYPASS_DEDUPLICATION_QUESTION_TYPES: frozenset = frozenset({
+    'clarification',
+    'general',
+    'open_ended',
+    'open-ended',
+    'general_intake_clarification',
+})
+
+
+def project_stopping_policy(
+    stop: Optional[Dict[str, Any]] = None,
+    *,
+    paused: bool = False,
+    needs_review: bool = False,
+) -> Dict[str, Any]:
+    """Public stopping outcome. Saturation never claims legal sufficiency or complete proof."""
+    payload = stop if isinstance(stop, dict) else {}
+    summary = payload.get("unresolved_issue_summary") if isinstance(payload.get("unresolved_issue_summary"), dict) else {}
+    items = [item for item in (summary.get("items") or []) if isinstance(item, dict)]
+    shortcuts = [str(item) for item in (summary.get("rejected_shortcuts") or [])]
+    state = str(payload.get("state") or "").strip()
+    try:
+        open_count = int(summary.get("open_answerable_count") or 0)
+    except (TypeError, ValueError):
+        open_count = 0
+    bound_hit = bool(
+        {"repeat_attempt_bound", "no_information_bound", "model_retry_bound"} & set(shortcuts)
+    )
+    if paused or state == "paused":
+        outcome = "paused"
+    elif state in {"provider_unavailable", "blocked_provider"}:
+        outcome = "blocked_provider"
+    elif state in {"limit_reached", "no_progress", "cancelled"} or bound_hit:
+        outcome = "no_progress"
+    elif state == "needs_answer" and open_count == 0 and shortcuts:
+        outcome = "no_progress"
+    elif state == "needs_review" or (needs_review and open_count == 0):
+        outcome = "needs_review"
+    elif state in {"deferred_unknown", "deferred_needs_evidence"}:
+        outcome = "deferred_needs_evidence"
+    elif state == "saturated" and needs_review:
+        outcome = "needs_review"
+    elif state == "saturated" and payload.get("intake_complete") and not items:
+        outcome = "complete"
+    elif state == "saturated":
+        outcome = "saturated"
+    elif state == "needs_answer" or open_count:
+        outcome = "awaiting_user"
+    else:
+        stored = str(payload.get("outcome") or "").strip()
+        outcome = stored if stored in {
+            "saturated", "complete", "paused", "awaiting_user",
+            "deferred_needs_evidence", "blocked_provider", "no_progress", "needs_review",
+        } else "awaiting_user"
+    if paused:
+        outcome = "paused"
+    stalled = bool(payload.get("worker_stalled"))
+    if stalled and outcome in {"awaiting_user", "paused"}:
+        outcome = "no_progress"
+    lane = str(payload.get("dependency_lane") or "").strip()
+    standing = {
+        "reason": "interview_stop_is_not_legal_sufficiency",
+        "legal_sufficiency": False,
+        "core_facts_complete": False,
+        "proof_requirements_satisfied": False,
+    }
+    remaining = [standing, *items]
+    next_actions = {
+        "paused": "resume_when_user_returns",
+        "awaiting_user": "answer_pending_question",
+        "deferred_needs_evidence": "collect_evidence_then_resume",
+        "blocked_provider": "retry_when_provider_available",
+        "no_progress": "review_unresolved_issues_then_resume",
+        "needs_review": "manual_review_then_resume",
+        "saturated": "review_unresolved_issues_then_resume",
+        "complete": "review_evidence_gaps_before_filing",
+    }
+    distinction = {
+        "awaiting_user": "awaiting_user",
+        "paused": "awaiting_user",
+        "deferred_needs_evidence": "evidence_request",
+        "blocked_provider": "unavailable_provider",
+        "no_progress": "no_progress",
+        "needs_review": "review",
+        "saturated": "saturated",
+        "complete": "complete",
+    }.get(outcome, outcome or "awaiting_user")
+    action = next_actions.get(outcome, "review_unresolved_issues_then_resume")
+    concrete = {
+        "source_research": "acquire_legal_sources",
+        "evidence_request": "ingest_private_evidence",
+        "review": "refresh_grounding",
+    }
+    if lane in concrete and outcome not in {"no_progress", "blocked_provider", "paused", "awaiting_user"}:
+        distinction = lane
+        action = concrete[lane]
+    elif outcome == "saturated" and lane == "source_research":
+        distinction = "source_research"
+        action = concrete["source_research"]
+    return {
+        "outcome": outcome,
+        "state": state or None,
+        "dependency_lane": lane or None,
+        "stopping_distinction": distinction,
+        "operation_terminated": outcome == "no_progress",
+        "busy_loop": False,
+        "reads_developer_stdin": False,
+        "remaining_issues": remaining,
+        "unresolved_issue_summary": summary,
+        "resumable_next_action": {
+            "action": action,
+            "resumable": outcome != "no_progress" or not stalled,
+            "reason": outcome,
+            "worker_stalled": stalled,
+            "supervisory_restart": False,
+            "reads_developer_stdin": False,
+            "busy_loop": False,
+        },
+        "legal_sufficiency": False,
+        "core_facts_complete": False,
+        "proof_requirements_satisfied": False,
+        "filing_ready": False,
+        "intake_complete": bool(payload.get("intake_complete")) and outcome == "complete",
+        "rejected_shortcuts": shortcuts,
+    }
+
+
+_DEPENDENCY_LANE_ALIASES = {
+    "source_research": "source_research",
+    "source": "source_research",
+    "legal_source": "source_research",
+    "authority": "source_research",
+    "evidence_request": "evidence_request",
+    "evidence": "evidence_request",
+    "proof": "evidence_request",
+    "review": "review",
+    "contradiction": "review",
+    "grounding": "review",
+}
+_DEPENDENCY_LANE_ACTIONS = {
+    "source_research": "acquire_legal_sources",
+    "evidence_request": "ingest_private_evidence",
+    "review": "refresh_grounding",
+}
+MAX_DEPENDENCY_ACTION_ATTEMPTS = 3
+
+
+def dependency_lane_for(item: Any) -> Optional[str]:
+    """Map one open dependency to a source, evidence, or review lane."""
+    if not isinstance(item, dict):
+        return None
+    for key in ("lane", "dependency_lane", "kind", "target_kind", "dependency_kind"):
+        token = str(item.get(key) or "").strip().lower()
+        if token in _DEPENDENCY_LANE_ALIASES:
+            return _DEPENDENCY_LANE_ALIASES[token]
+    disposition = str(item.get("disposition") or "").strip().lower()
+    if disposition == "contradictory":
+        return "review"
+    if item.get("needs_legal_source") or item.get("legal_source_open"):
+        return "source_research"
+    if item.get("needs_evidence") or item.get("evidence_open"):
+        return "evidence_request"
+    if item.get("needs_review"):
+        return "review"
+    return None
+
+
+def publish_authorized_dependency_action(
+    stop: Optional[Dict[str, Any]],
+    *,
+    attempt: int = 0,
+    context: Optional[Dict[str, Any]] = None,
+    hook_completed: bool = False,
+) -> Dict[str, Any]:
+    """Publish one authorized next action, or terminate when the bound is spent.
+
+    A completed hook, an empty question pool, and a stalled worker do not
+    establish factual, legal, proof, or filing sufficiency. This function
+    decides once. It does not loop and it does not read developer stdin.
+    """
+    payload = stop if isinstance(stop, dict) else {}
+    if payload.get("stopping_distinction"):
+        policy = payload
+    else:
+        policy = project_stopping_policy(payload)
+    distinction = str(policy.get("stopping_distinction") or "")
+    resumed = context if isinstance(context, dict) else {}
+    try:
+        used = int(attempt)
+    except (TypeError, ValueError):
+        used = 0
+    if used < 0:
+        used = 0
+    resumable_context = {
+        "case_id": resumed.get("case_id"),
+        "target_id": resumed.get("target_id"),
+        "target_revision": resumed.get("target_revision"),
+        "graph_revision": resumed.get("graph_revision"),
+        "session_revision": resumed.get("session_revision"),
+        "attempt": used,
+        "max_attempts": MAX_DEPENDENCY_ACTION_ATTEMPTS,
+    }
+    packet = {
+        "legal_sufficiency": False,
+        "core_facts_complete": False,
+        "proof_requirements_satisfied": False,
+        "filing_ready": False,
+        "hook_completed": bool(hook_completed),
+        "hook_completed_is_sufficiency": False,
+        "busy_loop": False,
+        "reads_developer_stdin": False,
+        "worker_stalled": bool((policy.get("resumable_next_action") or {}).get("worker_stalled")),
+        "awaiting_user": policy.get("outcome") in {"awaiting_user", "paused"} and not policy.get("operation_terminated"),
+        "attempt": used,
+        "max_attempts": MAX_DEPENDENCY_ACTION_ATTEMPTS,
+        "resumable_context": resumable_context,
+        "stopping_distinction": distinction or None,
+        "operation": _DEPENDENCY_LANE_ACTIONS.get(distinction),
+    }
+    if policy.get("operation_terminated") or distinction in {"no_progress", "unavailable_provider"}:
+        packet.update({
+            "status": "terminated" if distinction == "no_progress" or policy.get("operation_terminated") else "unavailable",
+            "published": False,
+            "authorized": False,
+            "awaiting_user": False,
+            "operation_terminated": distinction == "no_progress" or bool(policy.get("operation_terminated")),
+            "reason": distinction or "terminated",
+        })
+        return packet
+    if distinction not in _DEPENDENCY_LANE_ACTIONS:
+        packet.update({
+            "status": "withheld",
+            "published": False,
+            "authorized": False,
+            "operation": None,
+            "reason": distinction or "awaiting_user",
+        })
+        return packet
+    if used >= MAX_DEPENDENCY_ACTION_ATTEMPTS:
+        packet.update({
+            "status": "terminated",
+            "published": False,
+            "authorized": False,
+            "awaiting_user": False,
+            "operation_terminated": True,
+            "reason": "attempt_bound",
+        })
+        return packet
+    packet.update({
+        "status": "published",
+        "published": True,
+        "authorized": True,
+        "bounded": True,
+        "action": _DEPENDENCY_LANE_ACTIONS[distinction],
+        "operation": _DEPENDENCY_LANE_ACTIONS[distinction],
+        "reason": distinction,
+        "operation_terminated": False,
+    })
+    packet["resumable_context"]["attempt"] = used + 1
+    packet["attempt"] = used + 1
+    return packet
+
+
+from . import denoiser_questions
 
 class ComplaintDenoiser:
     """
@@ -37,6 +664,20 @@ class ComplaintDenoiser:
         self.mediator = mediator
         self.questions_asked = []
         self.questions_pool = []
+        self.source_operator_diagnostics: List[Dict[str, Any]] = []
+        self.target_dispositions: Dict[str, str] = {}
+        self.question_disposition_records: List[Dict[str, Any]] = []
+        self._question_scope_revision = "standard-intake"
+        self.objective_repeat_counts: Dict[str, int] = {}
+        self.semantic_repeat_counts: Dict[str, int] = {}
+        self.no_information_attempts = 0
+        self.model_retry_count = 0
+        self.presented_question_records: List[Dict[str, Any]] = []
+        self._presented_inquiry_ids: Set[str] = set()
+        self.explained_inquiry_pool: List[Dict[str, Any]] = []
+        self.current_explained_inquiry: Optional[Dict[str, Any]] = None
+        self.suppressed_semantic_duplicates: List[Dict[str, Any]] = []
+        self.retired_explained_targets: Set[str] = set()
 
         # Optional “policy” knobs for SGD-style exploration.
         # Default is deterministic/no-randomness.
@@ -1126,6 +1767,351 @@ class ComplaintDenoiser:
     def _normalize_question_text(self, text: str) -> str:
         return (text or "").strip().lower()
 
+    def _normalize_question_objective_token(self, value: Any) -> str:
+        cleaned = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+        return cleaned
+
+    def _question_similarity_tokens(self, text: str) -> Set[str]:
+        stop_words = {
+            "a", "an", "and", "are", "as", "at", "be", "by", "can", "did", "do", "does", "for",
+            "from", "have", "how", "i", "in", "is", "it", "of", "on", "or", "please", "that",
+            "the", "this", "to", "was", "were", "what", "when", "where", "which", "who", "why",
+            "with", "you", "your",
+        }
+        return {
+            token
+            for token in re.findall(r"[a-z0-9]+", str(text or "").lower())
+            if len(token) > 2 and token not in stop_words
+        }
+
+    def _question_text_similarity(self, left: str, right: str) -> float:
+        left_tokens = self._question_similarity_tokens(left)
+        right_tokens = self._question_similarity_tokens(right)
+        if not left_tokens or not right_tokens:
+            return 0.0
+        overlap = len(left_tokens.intersection(right_tokens))
+        union = len(left_tokens.union(right_tokens))
+        return float(overlap) / float(max(union, 1))
+
+    def _question_context(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
+        context = candidate.get("context") if isinstance(candidate, dict) else {}
+        return context if isinstance(context, dict) else {}
+
+    def _question_ranking_explanation(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
+        explanation = candidate.get("ranking_explanation") if isinstance(candidate, dict) else {}
+        return explanation if isinstance(explanation, dict) else {}
+
+    def _question_target_claim_type(self, candidate: Dict[str, Any]) -> str:
+        context = self._question_context(candidate)
+        explanation = self._question_ranking_explanation(candidate)
+        return self._normalize_question_objective_token(
+            candidate.get("target_claim_type")
+            or context.get("claim_type")
+            or context.get("claim_name")
+            or explanation.get("target_claim_type")
+        )
+
+    def _question_target_element_id(self, candidate: Dict[str, Any]) -> str:
+        context = self._question_context(candidate)
+        explanation = self._question_ranking_explanation(candidate)
+        return self._normalize_question_objective_token(
+            candidate.get("target_element_id")
+            or context.get("target_element_id")
+            or context.get("claim_element_id")
+            or context.get("requirement_id")
+            or explanation.get("target_element_id")
+        )
+
+    def _question_gap_id(self, candidate: Dict[str, Any]) -> str:
+        context = self._question_context(candidate)
+        return self._normalize_question_objective_token(
+            context.get("deterministic_update_key")
+            or context.get("gap_id")
+            or context.get("temporal_issue_id")
+            or context.get("issue_id")
+            or context.get("node_id")
+        )
+
+    def _question_expected_update_kind(self, candidate: Dict[str, Any]) -> str:
+        context = self._question_context(candidate)
+        explanation = self._question_ranking_explanation(candidate)
+        return self._normalize_question_objective_token(
+            candidate.get("expected_update_kind")
+            or context.get("expected_update_kind")
+            or explanation.get("expected_update_kind")
+        )
+
+    def _question_objective_value(self, candidate: Dict[str, Any]) -> str:
+        context = self._question_context(candidate)
+        explanation = self._question_ranking_explanation(candidate)
+        return self._normalize_question_objective_token(
+            candidate.get("question_objective")
+            or context.get("question_objective")
+            or explanation.get("question_objective")
+            or candidate.get("type")
+        )
+
+    def _question_extraction_target_signature(self, candidate: Dict[str, Any]) -> str:
+        context = self._question_context(candidate)
+        targets = [
+            self._normalize_question_objective_token(target)
+            for target in (
+                candidate.get("extraction_targets")
+                or context.get("extraction_targets")
+                or []
+            )
+            if str(target or "").strip()
+        ]
+        return "+".join(sorted(dict.fromkeys(targets))[:6])
+
+    def _question_coverage_key(self, candidate: Dict[str, Any]) -> str:
+        qtype = self._normalize_question_objective_token(candidate.get("type") if isinstance(candidate, dict) else "")
+        claim_type = self._question_target_claim_type(candidate)
+        element_id = self._question_target_element_id(candidate)
+        gap_id = self._question_gap_id(candidate)
+        update_kind = self._question_expected_update_kind(candidate)
+        objective = self._question_objective_value(candidate)
+        target_signature = self._question_extraction_target_signature(candidate)
+        if element_id:
+            return f"claim_element:{claim_type}:{element_id}"
+        if gap_id:
+            return f"gap:{claim_type}:{gap_id}"
+        if target_signature:
+            return f"targets:{claim_type}:{qtype}:{target_signature}"
+        return f"objective:{claim_type}:{qtype}:{objective}:{update_kind}"
+
+    def _question_objective_key(self, candidate: Dict[str, Any]) -> str:
+        qtype = self._normalize_question_objective_token(candidate.get("type") if isinstance(candidate, dict) else "")
+        objective = self._question_objective_value(candidate)
+        claim_type = self._question_target_claim_type(candidate)
+        element_id = self._question_target_element_id(candidate)
+        gap_id = self._question_gap_id(candidate)
+        update_kind = self._question_expected_update_kind(candidate)
+        target_signature = self._question_extraction_target_signature(candidate)
+        target_key = element_id or gap_id or target_signature or self._normalize_question_text(str(candidate.get("question", "")))[:80]
+        return "|".join(
+            value
+            for value in (qtype, objective, claim_type, target_key, update_kind)
+            if value
+        )
+
+    def _question_proof_objective_text(self, candidate: Dict[str, Any]) -> str:
+        objective = str(candidate.get("question_objective") or "").strip() or "clarify the intake record"
+        update_kind = str(candidate.get("expected_update_kind") or "").strip()
+        claim_type = str(candidate.get("target_claim_type") or self._question_context(candidate).get("claim_type") or "").strip()
+        element_id = str(candidate.get("target_element_id") or self._question_context(candidate).get("target_element_id") or "").strip()
+        target_bits = []
+        if claim_type:
+            target_bits.append(claim_type.replace("_", " "))
+        if element_id:
+            target_bits.append(element_id.replace("_", " "))
+        target_text = " / ".join(target_bits) if target_bits else "the current complaint record"
+        update_text = f" and should {update_kind.replace('_', ' ')}" if update_kind else ""
+        return f"{objective.replace('_', ' ')} for {target_text}{update_text}."
+
+    def _expected_proof_gain_score(self, value: Any) -> float:
+        if isinstance(value, (int, float)):
+            return max(0.0, min(1.0, float(value)))
+        normalized = str(value or "").strip().lower()
+        if normalized in {"critical", "very_high", "very high"}:
+            return 0.95
+        if normalized == "high":
+            return 0.82
+        if normalized == "medium":
+            return 0.56
+        if normalized == "low":
+            return 0.28
+        try:
+            return max(0.0, min(1.0, float(normalized)))
+        except Exception:
+            return 0.5
+
+    def _iter_asked_question_payloads(self) -> List[Dict[str, Any]]:
+        payloads: List[Dict[str, Any]] = []
+        for item in self.questions_asked:
+            if not isinstance(item, dict):
+                continue
+            question = item.get("question")
+            if isinstance(question, dict):
+                payloads.append(question)
+            elif "type" in item or "question" in item:
+                payloads.append(item)
+        return payloads
+
+    def _recent_question_objective_keys(self) -> Set[str]:
+        return {
+            self._question_objective_key(question)
+            for question in self._iter_asked_question_payloads()
+            if isinstance(question, dict)
+        }
+
+    def _candidate_novelty_metadata(
+        self,
+        candidate: Dict[str, Any],
+        *,
+        selected: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        selected = selected if isinstance(selected, list) else []
+        candidate_text = str(candidate.get("question") or "")
+        objective_key = self._question_objective_key(candidate)
+        coverage_key = self._question_coverage_key(candidate)
+        best_similarity = 0.0
+        best_source = ""
+        duplicate_objective = False
+
+        for source_name, questions in (
+            ("asked", self._iter_asked_question_payloads()),
+            ("selected", selected),
+        ):
+            for existing in questions:
+                if not isinstance(existing, dict):
+                    continue
+                if self._question_objective_key(existing) == objective_key:
+                    duplicate_objective = True
+                    best_source = source_name
+                    best_similarity = max(best_similarity, 1.0)
+                    continue
+                similarity = self._question_text_similarity(candidate_text, str(existing.get("question") or ""))
+                if similarity > best_similarity:
+                    best_similarity = similarity
+                    best_source = source_name
+
+        novelty_score = max(0.0, min(1.0, 1.0 - best_similarity))
+        if duplicate_objective:
+            novelty_score = min(novelty_score, 0.12)
+        return {
+            "novelty_score": round(float(novelty_score), 4),
+            "max_similarity": round(float(best_similarity), 4),
+            "duplicate_objective": bool(duplicate_objective),
+            "nearest_source": best_source,
+            "objective_key": objective_key,
+            "coverage_key": coverage_key,
+        }
+
+    def _annotate_proof_directed_candidate(
+        self,
+        candidate: Dict[str, Any],
+        *,
+        selected: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        if not isinstance(candidate, dict):
+            return candidate
+        enriched = dict(candidate)
+        explanation = dict(enriched.get("ranking_explanation", {}) if isinstance(enriched.get("ranking_explanation"), dict) else {})
+        question_reason = str(enriched.get("question_reason") or explanation.get("question_reason") or "").strip()
+        if not question_reason:
+            question_reason = "This question targets a remaining proof objective in the intake record."
+            enriched["question_reason"] = question_reason
+        enriched.setdefault("priority_reason", question_reason)
+        proof_objective_key = self._question_objective_key(enriched)
+        coverage_key = self._question_coverage_key(enriched)
+        proof_objective_text = str(enriched.get("proof_objective") or "").strip() or self._question_proof_objective_text(enriched)
+        novelty = self._candidate_novelty_metadata(enriched, selected=selected)
+        gain_score = self._expected_proof_gain_score(enriched.get("expected_proof_gain"))
+
+        enriched["proof_objective"] = proof_objective_text
+        enriched["proof_objective_id"] = proof_objective_key
+        enriched["question_objective_key"] = proof_objective_key
+        enriched["coverage_key"] = coverage_key
+        enriched["novelty_score"] = float(novelty["novelty_score"])
+        enriched["expected_proof_gain_score"] = gain_score
+        enriched["proof_gain_metadata"] = {
+            "expected_update_kind": str(enriched.get("expected_update_kind") or ""),
+            "expected_proof_gain": str(enriched.get("expected_proof_gain") or ""),
+            "expected_proof_gain_score": gain_score,
+            "claim_criticality": str(enriched.get("claim_criticality") or explanation.get("claim_criticality") or ""),
+            "contradiction_risk": "high" if str(enriched.get("type") or "").strip().lower() == "contradiction" else "normal",
+            "novelty_score": float(novelty["novelty_score"]),
+        }
+        enriched["novelty_metadata"] = novelty
+
+        explanation.setdefault("question_objective", str(enriched.get("question_objective") or ""))
+        explanation["proof_objective"] = proof_objective_text
+        explanation["proof_objective_id"] = proof_objective_key
+        explanation["question_objective_key"] = proof_objective_key
+        explanation["coverage_key"] = coverage_key
+        explanation["question_reason"] = question_reason
+        explanation["priority_reason"] = str(enriched.get("priority_reason") or "")
+        explanation["expected_proof_gain"] = str(enriched.get("expected_proof_gain") or "")
+        explanation["expected_proof_gain_score"] = gain_score
+        explanation["novelty_score"] = float(novelty["novelty_score"])
+        explanation["novelty_metadata"] = novelty
+        enriched["ranking_explanation"] = explanation
+
+        signals = dict(enriched.get("selector_signals", {}) if isinstance(enriched.get("selector_signals"), dict) else {})
+        signals.setdefault("question_objective", str(enriched.get("question_objective") or ""))
+        signals["proof_objective"] = proof_objective_text
+        signals["proof_objective_id"] = proof_objective_key
+        signals["question_objective_key"] = proof_objective_key
+        signals["coverage_key"] = coverage_key
+        signals["novelty_score"] = float(novelty["novelty_score"])
+        signals["expected_proof_gain_score"] = gain_score
+        enriched["selector_signals"] = signals
+        return enriched
+
+    def _select_proof_directed_candidates(
+        self,
+        candidates: List[Dict[str, Any]],
+        *,
+        max_questions: int,
+        preserve_order: bool = True,
+    ) -> List[Dict[str, Any]]:
+        if max_questions <= 0:
+            return []
+        ordered = [candidate for candidate in (candidates or []) if isinstance(candidate, dict)]
+        if not preserve_order:
+            ordered.sort(key=self._default_candidate_sort_key)
+
+        selected: List[Dict[str, Any]] = []
+        seen_text_keys: Set[Tuple[str, str]] = set()
+        seen_objective_keys: Set[str] = set(self._recent_question_objective_keys())
+        selected_objective_keys: Set[str] = set()
+        seen_coverage_keys: Set[str] = {
+            self._question_coverage_key(question)
+            for question in self._iter_asked_question_payloads()
+            if isinstance(question, dict)
+        }
+        suppressed_duplicates: List[Dict[str, Any]] = []
+
+        for raw_candidate in ordered:
+            candidate = self._annotate_proof_directed_candidate(raw_candidate, selected=selected)
+            qtype = self._normalize_question_objective_token(candidate.get("type"))
+            text_key = (self._normalize_question_text(str(candidate.get("question", ""))), qtype)
+            objective_key = str(candidate.get("question_objective_key") or self._question_objective_key(candidate))
+            coverage_key = str(candidate.get("coverage_key") or self._question_coverage_key(candidate))
+            bypass = qtype in _BYPASS_DEDUPLICATION_QUESTION_TYPES
+            exact_duplicate = text_key in seen_text_keys
+            repeated_objective = objective_key in seen_objective_keys or objective_key in selected_objective_keys
+            semantic_duplicate = any(
+                self._question_text_similarity(str(candidate.get("question") or ""), str(existing.get("question") or "")) >= 0.84
+                for existing in selected
+            )
+            preserves_new_coverage = bool(coverage_key and coverage_key not in seen_coverage_keys)
+
+            if exact_duplicate and not preserves_new_coverage:
+                suppressed_duplicates.append(candidate)
+                continue
+            if not bypass and (repeated_objective or semantic_duplicate) and not preserves_new_coverage:
+                suppressed_duplicates.append(candidate)
+                continue
+
+            seen_text_keys.add(text_key)
+            selected_objective_keys.add(objective_key)
+            if coverage_key:
+                seen_coverage_keys.add(coverage_key)
+            selected.append(candidate)
+            if len(selected) >= max_questions:
+                break
+
+        for candidate in selected:
+            signals = dict(candidate.get("selector_signals", {}) if isinstance(candidate.get("selector_signals"), dict) else {})
+            signals["suppressed_duplicate_candidate_count"] = len(suppressed_duplicates)
+            candidate["selector_signals"] = signals
+            explanation = dict(candidate.get("ranking_explanation", {}) if isinstance(candidate.get("ranking_explanation"), dict) else {})
+            explanation["suppressed_duplicate_candidate_count"] = len(suppressed_duplicates)
+            candidate["ranking_explanation"] = explanation
+        return selected[:max_questions]
+
     def _already_asked(self, question_text: str) -> bool:
         norm = self._normalize_question_text(question_text)
         for item in self.questions_asked:
@@ -1493,12 +2479,15 @@ class ComplaintDenoiser:
             'proof_priority': int(question_payload.get('proof_priority', self._phase1_proof_priority(question_type))),
             'blocking_level': str(question_payload.get('blocking_level') or ''),
             'phase1_section': str(question_payload.get('phase1_section') or ''),
+            'question_objective': str(question_payload.get('question_objective') or ''),
+            'question_reason': str(question_payload.get('question_reason') or ''),
             'question_goal': str(question_payload.get('question_goal') or question_payload.get('question_objective') or ''),
             'question_strategy': str(question_payload.get('question_strategy') or 'default_generation'),
             'target_claim_type': str(question_payload.get('target_claim_type') or ''),
             'target_element_id': str(question_payload.get('target_element_id') or ''),
             'target_fact_type': str(question_payload.get('target_fact_type') or ''),
             'expected_update_kind': str(question_payload.get('expected_update_kind') or ''),
+            'expected_proof_gain': str(question_payload.get('expected_proof_gain') or ''),
             'recommended_resolution_lane': str(question_payload.get('recommended_resolution_lane') or ''),
             'workflow_phase': str(question_payload.get('workflow_phase') or ''),
             'workflow_phase_rank': int(question_payload.get('workflow_phase_rank')) if question_payload.get('workflow_phase_rank') is not None else 99,
@@ -1506,7 +2495,7 @@ class ComplaintDenoiser:
             'patchability_markers': list(question_payload.get('patchability_markers') or []),
             'follow_up_tags': list(follow_up_tags),
         }
-        return question_payload
+        return self._bind_unresolved_target(self._annotate_proof_directed_candidate(question_payload))
 
     def _question_follow_up_tags(
         self,
@@ -1589,7 +2578,7 @@ class ComplaintDenoiser:
                 question_type='contradiction',
                 question_text=(
                     f"I have conflicting information about {left_name} and {right_name}. "
-                    "Which version is correct, and what details or records support it?"
+                    "What do you recall about each account, and what dates, documents, or records can you provide?"
                 ),
                 context={
                     'left_node_id': dependency.source_id,
@@ -2172,214 +3161,874 @@ class ComplaintDenoiser:
         self,
         max_questions: int,
     ) -> List[Dict[str, Any]]:
-        """Generate follow-up questions from prior low-specificity answers."""
-        if max_questions <= 0 or not self.questions_asked:
-            return []
+        return denoiser_questions._build_history_follow_up_questions(
+            self,
+            max_questions,
+        )
 
-        questions: List[Dict[str, Any]] = []
-        seen_keys: Set[str] = set()
-        recent_history = list(reversed(self.questions_asked[-12:]))
+    _LEGAL_CONTEXT_QUESTION_FIELDS = {
+        'legal_context.jurisdiction': 'jurisdiction',
+        'legal_context.event_dates': 'event_date',
+        'legal_context.applicable_law_date': 'applicable_law_date',
+        'legal_context.filing_reference_date': 'filing_reference_date',
+        'legal_context.claim_candidates': 'claim_candidates',
+    }
 
-        for entry in recent_history:
-            if len(questions) >= max_questions:
-                break
-            if not isinstance(entry, dict):
+    def _current_legal_context_question_targets(
+        self, knowledge_graph: KnowledgeGraph, intake_case_file: Optional[Dict[str, Any]],
+    ) -> Dict[str, Dict[str, Any]]:
+        """Rederive current open context fields without changing case or proof truth."""
+        if not isinstance(intake_case_file, dict):
+            return {}
+        import json
+        from complaint_phases.intake_case_file import refresh_explicit_legal_context
+        from integrations.ipfs_datasets.legal import intake_legal_selection
+
+        case = copy.deepcopy(intake_case_file)
+        context = refresh_explicit_legal_context(case)
+        claims = list(case.get('candidate_claims') or [])
+        if not claims:
+            claims = [
+                {'name': entity.name,
+                 'type': entity.attributes.get('claim_type', 'unknown'),
+                 'description': entity.attributes.get('description', '')}
+                for entity in (knowledge_graph.get_entities_by_type('claim') if knowledge_graph is not None else [])
+            ]
+        selection = intake_legal_selection(context, claims)
+        revision = context.get('context_revision')
+        if type(revision) is not int or revision < 0:
+            return {}
+        material = {
+            'context_revision': revision,
+            'jurisdiction': context.get('jurisdiction'),
+            'date_roles': {role: context.get(role) for role in (
+                'event_date', 'event_dates', 'applicable_law_date', 'filing_reference_date',
+            )},
+            'claim_candidates': selection.get('claim_candidates') or [],
+        }
+        try:
+            raw = json.dumps(material, sort_keys=True, separators=(',', ':'),
+                             ensure_ascii=False, allow_nan=False).encode('utf-8')
+        except (TypeError, ValueError):
+            return {}
+        target_revision = f"legal-context:{revision}:" + hashlib.sha256(raw).hexdigest()
+        targets: Dict[str, Dict[str, Any]] = {}
+        for question in selection.get('questions') or []:
+            if not isinstance(question, dict):
                 continue
-            question = entry.get('question')
-            question = question if isinstance(question, dict) else {}
-            answer_text = str(entry.get('answer') or '').strip()
-            if not answer_text:
+            question_id = str(question.get('question_id') or '')
+            field = self._LEGAL_CONTEXT_QUESTION_FIELDS.get(question_id)
+            if field is None or question.get('field') != field:
                 continue
+            prompt = str(question.get('prompt') or '').strip()
+            reason = str(question.get('reason') or '').strip()
+            if not prompt or not reason:
+                continue
+            targets[question_id] = {
+                'question_id': question_id, 'field': field, 'prompt': prompt,
+                'target_id': f"legal_context:{question_id}",
+                'target_revision': target_revision, 'target_kind': 'factual',
+                'provenance': {'candidate_source': 'canonical_legal_context',
+                               'question_id': question_id, 'field': field,
+                               'context_revision': revision},
+                'why_answer_helps': f"Clarifies the current unresolved intake context: {reason}.",
+                'expected_information': prompt, 'user_answerability': 'user_observable',
+                'dependency_impact': 3, 'uncertainty': 2,
+            }
+        return targets
 
-            qtype = str(question.get('type') or '').strip().lower()
-            needs_confirmation = self._contains_confirmation_placeholder(answer_text)
-            retaliation_context = self._contains_retaliation_context(answer_text)
-            causation_signal = self._contains_causation_signal(answer_text)
-            has_dates = bool(self._extract_date_strings(answer_text))
-            has_named_actors = bool(self._extract_named_role_people(answer_text) or self._extract_named_people_with_titles(answer_text))
-            has_documents = bool(self._extract_document_mentions(answer_text))
-            has_sequence = self._contains_sequence_signal(answer_text)
-            response_timings = self._extract_response_timing_phrases(answer_text)
-            has_document_precision = self._contains_document_precision_signal(answer_text)
-            has_adverse_action = self._contains_adverse_action_signal(answer_text)
+    def _bind_legal_context_question(
+        self, candidate: Dict[str, Any], targets: Optional[Dict[str, Dict[str, Any]]],
+    ) -> Dict[str, Any]:
+        """Accept only a currently open canonical field and refuse stale targets."""
+        enriched = dict(candidate)
+        question_id = str(enriched.get('question_id') or '')
+        current = (targets or {}).get(question_id)
+        prior = enriched.get('unresolved_target') if isinstance(enriched.get('unresolved_target'), dict) else {}
+        if (not current or enriched.get('field') != current['field']
+                or any(str(value) != current['target_revision'] for value in (
+                    enriched.get('target_revision'), prior.get('target_revision'),
+                ) if value not in (None, ''))
+                or (prior.get('target_id') not in (None, '', current['target_id']))):
+            enriched['unresolved_target'] = None
+            return enriched
+        target = {key: copy.deepcopy(value) for key, value in current.items()
+                  if key not in {'question_id', 'field', 'prompt'}}
+        # The current canonical prompt wins over caller text or assertion flags.
+        enriched.update({
+            'question': current['prompt'],
+            'candidate_source': 'canonical_legal_context',
+            'context': {'legal_context_field': current['field'],
+                        'question_id': question_id,
+                        'gap_id': current['target_id'] + '@' + current['target_revision'],
+                        'target_revision': current['target_revision']},
+            'unresolved_target': target,
+            **{key: target[key] for key in (
+                'target_id', 'target_revision', 'target_kind', 'why_answer_helps',
+                'expected_information', 'user_answerability', 'dependency_impact', 'uncertainty',
+            )},
+        })
+        explanation = dict(enriched.get('ranking_explanation') or {}) if isinstance(enriched.get('ranking_explanation'), dict) else {}
+        explanation['unresolved_target'] = copy.deepcopy(target)
+        enriched['ranking_explanation'] = explanation
+        return enriched
 
-            if needs_confirmation:
-                follow_ups = [
-                    (
-                        'timeline',
-                        "You noted details that still need confirmation. What is the most specific date (month/day/year) for the event, and who took the action on that date?",
-                        {
-                            'gap_type': 'missing_exact_action_dates',
-                            'follow_up_reason': 'needs_confirmation_placeholder',
-                            'workflow_phase': 'graph_analysis',
-                            'extraction_targets': ['exact_dates', 'actor_name', 'actor_role', 'event_order'],
-                            'patchability_markers': ['chronology_patch_anchor', 'actor_link_patch_anchor'],
-                        },
-                    ),
-                    (
-                        'evidence',
-                        "Which exact document, message, email, or notice can confirm that event, and what date appears on it?",
-                        {
-                            'gap_type': 'missing_written_notice',
-                            'follow_up_reason': 'needs_confirmation_placeholder',
-                            'workflow_phase': 'document_generation',
-                            'extraction_targets': ['document_type', 'document_date', 'document_owner'],
-                            'patchability_markers': ['support_patch_anchor', 'notice_chain_patch_anchor'],
-                        },
-                    ),
-                ]
-                for follow_type, follow_text, follow_context in follow_ups:
-                    key = f"{follow_type}:{self._normalize_question_text(follow_text)}"
-                    if key in seen_keys or self._already_asked(follow_text):
-                        continue
-                    seen_keys.add(key)
-                    questions.append(self._question_candidate(
-                        source='history_follow_up',
-                        question_type=follow_type,
-                        question_text=follow_text,
-                        context=follow_context,
-                        priority='high',
-                    ))
-                    if len(questions) >= max_questions:
-                        break
+    def _legal_context_case_file(self, source_context=None):
+        # Actual workflow state takes precedence over a caller's serialized case.
+        getter = getattr(getattr(self.mediator, 'phase_manager', None), 'get_phase_data', None)
+        if callable(getter):
+            from complaint_phases.phase_manager import ComplaintPhase
+            case = getter(ComplaintPhase.INTAKE, 'intake_case_file')
+            return case if isinstance(case, dict) else None
+        case = source_context.get('intake_case_file') if isinstance(source_context, dict) else None
+        return case if isinstance(case, dict) else None
 
-            if len(questions) >= max_questions:
-                break
-
-            chronology_gap = (
-                qtype in {'timeline', 'responsible_party', 'clarification', 'relationship', 'requirement'}
-                and (not has_dates or not has_sequence or not response_timings)
+    def _process_legal_context_answer(self, question, answer, knowledge_graph,
+                                      source_context, disposition, factual_action=None):
+        """Update an explicitly requested current context field, never a fact or law."""
+        case = self._legal_context_case_file(source_context)
+        current = self._current_legal_context_question_targets(knowledge_graph, case)
+        bound = self._bind_legal_context_question(question, current)
+        supplied = question.get('unresolved_target') if isinstance(question.get('unresolved_target'), dict) else {}
+        target = bound.get('unresolved_target') or {}
+        # An answer needs the exact target emitted by this current case. Raw
+        # coordinate labels alone do not authorize changing intake context.
+        if (not target or factual_action or supplied.get('target_id') != target.get('target_id')
+                or supplied.get('target_revision') != target.get('target_revision')
+                or self.is_question_target_closed(target.get('target_id'), target.get('target_revision'))):
+            updates = self._non_fact_answer_updates('invalidated', {})
+            updates['context_answer_status'] = 'stale_or_unbound_context_target'
+            return updates
+        record = self.record_question_disposition(
+            bound, answer, disposition=disposition, intake_case_file=case,
+            creates_fact=False, satisfies_requirement=False,
+        )
+        updates = self._non_fact_answer_updates(disposition, record)
+        updates['context_fields_updated'] = []
+        if disposition in self._NON_FACT_DISPOSITIONS:
+            return updates
+        field = bound['field']
+        value = str(answer or '').strip()
+        if field == 'claim_candidates':
+            # Preserve the user's explicit candidate label; it is not a
+            # promoted claim, source admission, or satisfied legal requirement.
+            case['candidate_claims'] = [{'claim_type': value, 'type': value,
+                                         'name': value, 'source': 'user_context_answer'}]
+        else:
+            apply_context = getattr(self.mediator, 'apply_explicit_legal_context', None)
+            if callable(apply_context):
+                apply_context(case, **{field: value})
+            else:
+                from complaint_phases.intake_case_file import apply_explicit_legal_context
+                apply_explicit_legal_context(case, **{field: value})
+        resolver = getattr(self.mediator, 'resolve_intake_legal_selection', None)
+        manager = getattr(self.mediator, 'phase_manager', None)
+        if callable(resolver) and manager is not None:
+            from complaint_phases.phase_manager import ComplaintPhase
+            claims = [
+                {'name': entity.name, 'type': entity.attributes.get('claim_type', 'unknown'),
+                 'description': entity.attributes.get('description', '')}
+                for entity in (knowledge_graph.get_entities_by_type('claim') if knowledge_graph is not None else [])
+            ]
+            selection = resolver(claims, case)
+            manager.update_phase_data(ComplaintPhase.INTAKE, 'intake_case_file', case)
+            manager.update_phase_data(ComplaintPhase.INTAKE, 'legal_selection', selection)
+        updates['context_fields_updated'] = [field]
+        unresolved = self._current_legal_context_question_targets(knowledge_graph, case).get(bound['question_id'])
+        if unresolved is not None:
+            # A partial or unrecognized value is new user input, not closure.
+            # Retain its disposition history and explicitly reopen this field.
+            reopened = self.reopen_disposed_question(
+                bound['target_id'], 'The explicit context answer leaves this field unresolved.',
+                target_revision=unresolved['target_revision'], intake_case_file=case,
+                evidence_change='explicit-context-answer:' + hashlib.sha256(value.encode('utf-8')).hexdigest(),
             )
-            if chronology_gap and len(questions) < max_questions:
-                chronology_text = (
-                    "Please list each key event in order with the exact date (month/day/year), "
-                    "who acted, and how long it took for the next response after your request or report."
-                )
-                key = f"timeline:{self._normalize_question_text(chronology_text)}"
-                if key not in seen_keys and not self._already_asked(chronology_text):
-                    seen_keys.add(key)
-                    questions.append(self._question_candidate(
-                        source='history_follow_up',
-                        question_type='timeline',
-                        question_text=chronology_text,
-                        context={
-                            'gap_type': 'missing_decision_timeline',
-                            'follow_up_reason': 'chronology_gap_closeout',
-                            'workflow_phase': 'graph_analysis',
-                            'extraction_targets': ['exact_dates', 'event_order', 'response_timing', 'actor_name', 'actor_role'],
-                            'patchability_markers': ['chronology_patch_anchor', 'chronology_response_patch_anchor', 'actor_link_patch_anchor'],
-                        },
-                        priority='high',
-                    ))
+            updates['context_answer_status'] = 'needs_context_clarification'
+            updates['question_reopened'] = reopened
+        else:
+            updates['context_answer_status'] = 'recorded_explicit_context'
+        return updates
 
-            should_probe_causation = (
-                retaliation_context
-                and (qtype in {'timeline', 'responsible_party', 'clarification', 'requirement', 'relationship'} or needs_confirmation)
-                and (not causation_signal or not has_dates or not has_named_actors)
+    _CLOSED_TARGET_DISPOSITIONS = {
+        'answered', 'unknown', 'declined', 'refused', 'skipped', 'deferred',
+        'invalidated', 'contradictory',
+    }
+    _NON_FACT_DISPOSITIONS = {'unknown', 'refused', 'skipped', 'deferred', 'invalidated', 'declined'}
+    _DISPOSITION_ALIASES = {
+        'answered': 'answered',
+        'answer': 'answered',
+        'unknown': 'unknown',
+        'do_not_know': 'unknown',
+        'dont_know': 'unknown',
+        'declined': 'refused',
+        'decline': 'refused',
+        'refused': 'refused',
+        'refuse': 'refused',
+        'refusal': 'refused',
+        'skipped': 'skipped',
+        'skip': 'skipped',
+        'deferred': 'deferred',
+        'defer': 'deferred',
+        'invalidated': 'invalidated',
+        'invalidate': 'invalidated',
+        'contradictory': 'contradictory',
+    }
+    _UNKNOWN_ANSWERS = {
+        'unknown', 'i do not know', "i don't know", 'i dont know', 'idk', 'not sure',
+        'unsure', 'no idea', 'do not know', "don't know", 'n/a', 'na', 'none',
+    }
+    _REFUSED_ANSWERS = {
+        'i refuse', 'i refuse to answer', 'refused', 'refuse', 'i decline',
+        'i decline to answer', 'declined', 'decline', 'prefer not to say',
+    }
+    _SKIPPED_ANSWERS = {'skip', 'skipped', 'skip this', 'skip this question'}
+    _DEFERRED_ANSWERS = {'defer', 'deferred', 'later', 'not now', 'ask me later'}
+    _INVALIDATED_ANSWERS = {'invalidated', 'invalidate', 'no longer applies'}
+    _OPERATOR_GAP_TOKENS = (
+        'prover', 'solver', 'huggingface', 'citation database', 'currentness',
+        'backend', 'model download', 'repair the', 'source outage', 'unavailable source',
+    )
+    _LEGAL_CONCLUSION_REWRITES = (
+        ('which version is correct', 'what do you recall about each account, and what dates, documents, or records can you provide'),
+        ('is this illegal', 'what events, dates, and documents did you observe'),
+        ('did they violate', 'what events, dates, and documents did you observe'),
+        ('do you have a legal claim', 'what events, dates, and documents can you describe'),
+        ('facts needed to win', 'events, dates, or documents you can share'),
+    )
+
+    def _target_rank_tuple(self, candidate: Dict[str, Any]) -> Tuple[int, int, int, str]:
+        if not isinstance(candidate, dict):
+            return (0, 0, 9, '')
+        target = candidate.get('unresolved_target') if isinstance(candidate.get('unresolved_target'), dict) else {}
+        answerability = str(target.get('user_answerability') or candidate.get('user_answerability') or 'user_observable')
+        answer_rank = {'user_observable': 0, 'partial': 1, 'not_answerable': 2, 'operator_only': 3}.get(answerability, 2)
+        try:
+            impact = int(target.get('dependency_impact') or candidate.get('dependency_impact') or 0)
+        except (TypeError, ValueError):
+            impact = 0
+        try:
+            uncertainty = int(target.get('uncertainty') or candidate.get('uncertainty') or 0)
+        except (TypeError, ValueError):
+            uncertainty = 0
+        return (-impact, -uncertainty, answer_rank, str(target.get('target_id') or ''))
+
+    def _normalize_disposition_token(self, value: Any) -> str:
+        token = " ".join(str(value or "").strip().lower().replace("_", " ").replace("-", " ").split())
+        key = token.replace(" ", "_")
+        if key in self._DISPOSITION_ALIASES:
+            return self._DISPOSITION_ALIASES[key]
+        compact = re.sub(r"[^a-z0-9' ]+", "", token).strip()
+        return compact
+
+    def classify_answer_disposition(self, answer: Any, explicit: Any = None) -> str:
+        """Classify an answer without turning a non-answer into a fact."""
+        if explicit not in (None, ""):
+            mapped = self._DISPOSITION_ALIASES.get(self._normalize_disposition_token(explicit).replace(" ", "_"))
+            if mapped:
+                return mapped
+            token = self._normalize_disposition_token(explicit)
+            if token in self._CLOSED_TARGET_DISPOSITIONS or token in self._NON_FACT_DISPOSITIONS:
+                return token
+        compact = self._normalize_disposition_token(answer)
+        if compact in self._UNKNOWN_ANSWERS:
+            return "unknown"
+        if compact in self._REFUSED_ANSWERS:
+            return "refused"
+        if compact in self._SKIPPED_ANSWERS:
+            return "skipped"
+        if compact in self._DEFERRED_ANSWERS:
+            return "deferred"
+        if compact in self._INVALIDATED_ANSWERS:
+            return "invalidated"
+        return "answered" if compact else "skipped"
+
+    def _standard_intake_slot(self, candidate: Dict[str, Any]) -> str:
+        if not isinstance(candidate, dict):
+            return ""
+        context = candidate.get("context") if isinstance(candidate.get("context"), dict) else {}
+        source = str(candidate.get("candidate_source") or context.get("candidate_source") or "").strip()
+        explicit = str(context.get("standard_intake_slot") or candidate.get("standard_intake_slot") or "").strip().lower()
+        if explicit in {"timeline", "impact", "notice"}:
+            return explicit
+        if source != "standard_intake_backstop":
+            return ""
+        text = str(candidate.get("question") or "").lower()
+        if any(token in text for token in ("harm", "remedy", "emotional", "financial", "damages")):
+            return "impact"
+        if any(token in text for token in ("notice", "letter", "email", "message", "who sent")):
+            return "notice"
+        if any(token in text for token in ("timeline", "key events", "who made", "what date")):
+            return "timeline"
+        return ""
+
+    def _target_identity(self, question: Dict[str, Any]) -> Tuple[str, str, str]:
+        target = question.get("unresolved_target") if isinstance(question, dict) and isinstance(question.get("unresolved_target"), dict) else {}
+        context = question.get("context") if isinstance(question, dict) and isinstance(question.get("context"), dict) else {}
+        target_id = str(target.get("target_id") or (question or {}).get("target_id") or "").strip()
+        revision = str(
+            target.get("target_revision")
+            or (question or {}).get("target_revision")
+            or context.get("target_revision")
+            or self._question_scope_revision
+            or "unresolved"
+        ).strip() or "unresolved"
+        kind = str(target.get("target_kind") or (question or {}).get("target_kind") or "").strip()
+        return target_id, revision, kind
+
+    def load_question_dispositions(self, intake_case_file: Optional[Dict[str, Any]]) -> None:
+        if isinstance(intake_case_file, dict):
+            scope = intake_case_file.get("question_scope_revision") or intake_case_file.get("scope_revision")
+            legal = intake_case_file.get("legal_context") if isinstance(intake_case_file.get("legal_context"), dict) else {}
+            scope = scope or legal.get("scope_revision")
+            if str(scope or "").strip():
+                self._question_scope_revision = str(scope).strip()
+        from complaint_phases.intake_case_file import question_disposition_records
+        incoming = question_disposition_records(intake_case_file)
+        seen = {
+            (
+                str(item.get("target_id") or ""),
+                str(item.get("target_revision") or ""),
+                str(item.get("disposition") or ""),
+                bool(item.get("reopened")),
+                str(item.get("reopen_reason") or ""),
             )
-            if should_probe_causation:
-                causation_text = (
-                    "Please identify the protected activity, the adverse action, the exact dates for each, "
-                    "and why you believe the adverse action happened because of the protected activity."
-                )
-                decision_actor_text = (
-                    "Who specifically made or approved the adverse decision (full name, title, and organization), "
-                    "and who communicated it to you?"
-                )
-                causation_items = [
-                    (
-                        'timeline',
-                        causation_text,
-                        {
-                            'gap_type': 'retaliation_missing_causation_link',
-                            'follow_up_reason': 'retaliation_causation_probe',
-                            'workflow_phase': 'graph_analysis',
-                            'extraction_targets': ['protected_activity', 'adverse_action', 'exact_dates', 'causation_link'],
-                            'patchability_markers': ['chronology_patch_anchor', 'causation_patch_anchor'],
-                        },
-                    ),
-                    (
-                        'responsible_party',
-                        decision_actor_text,
-                        {
-                            'gap_type': 'missing_staff_identity',
-                            'follow_up_reason': 'retaliation_decision_maker_probe',
-                            'workflow_phase': 'graph_analysis',
-                            'extraction_targets': ['actor_name', 'actor_role', 'decision_maker'],
-                            'patchability_markers': ['actor_link_patch_anchor', 'decision_actor_patch_anchor'],
-                        },
-                    ),
-                ]
-                for follow_type, follow_text, follow_context in causation_items:
-                    key = f"{follow_type}:{self._normalize_question_text(follow_text)}"
-                    if key in seen_keys or self._already_asked(follow_text):
-                        continue
-                    seen_keys.add(key)
-                    questions.append(self._question_candidate(
-                        source='history_follow_up',
-                        question_type=follow_type,
-                        question_text=follow_text,
-                        context=follow_context,
-                        priority='high',
-                    ))
-                    if len(questions) >= max_questions:
-                        break
-
-            if len(questions) >= max_questions:
-                break
-
-            needs_decision_precision = (
-                qtype in {'timeline', 'responsible_party', 'relationship', 'clarification', 'requirement'}
-                and (not has_named_actors or not has_adverse_action)
+            for item in self.question_disposition_records
+            if isinstance(item, dict)
+        }
+        for record in incoming:
+            key = (
+                record["target_id"],
+                record["target_revision"],
+                record["disposition"],
+                bool(record["reopened"]),
+                str(record.get("reopen_reason") or ""),
             )
-            if needs_decision_precision and len(questions) < max_questions:
-                decision_precision_text = (
-                    "Who exactly made the adverse decision, what was the specific adverse action, "
-                    "and what title and organization did that person have at the time?"
+            if key in seen:
+                continue
+            seen.add(key)
+            self.question_disposition_records.append(dict(record))
+
+    def is_question_target_closed(self, target_id: Any, target_revision: Any = None) -> bool:
+        wanted = str(target_id or "").strip()
+        if not wanted:
+            return False
+        revision = str(target_revision or "").strip()
+        blanket = str((self.target_dispositions or {}).get(wanted) or "").strip().lower()
+        if blanket in self._CLOSED_TARGET_DISPOSITIONS:
+            reopened = False
+            for record in self.question_disposition_records:
+                if not isinstance(record, dict) or str(record.get("target_id") or "") != wanted:
+                    continue
+                if record.get("reopened"):
+                    reopen_revision = str(record.get("target_revision") or "")
+                    if not revision or not reopen_revision or reopen_revision == revision:
+                        reopened = True
+            if not reopened:
+                return True
+        closed = False
+        for record in self.question_disposition_records:
+            if not isinstance(record, dict) or str(record.get("target_id") or "") != wanted:
+                continue
+            if record.get("reopened"):
+                reopen_revision = str(record.get("target_revision") or "")
+                if not revision or not reopen_revision or reopen_revision == revision:
+                    closed = False
+                continue
+            disposition = str(record.get("disposition") or "").strip().lower()
+            if disposition in self._CLOSED_TARGET_DISPOSITIONS or disposition in self._NON_FACT_DISPOSITIONS:
+                closed = True
+        return closed
+
+    def record_question_disposition(
+        self,
+        question: Dict[str, Any],
+        answer: Any = "",
+        *,
+        disposition: Any = None,
+        reason: Any = None,
+        intake_case_file: Optional[Dict[str, Any]] = None,
+        creates_fact: bool = False,
+        satisfies_requirement: bool = False,
+        contradictory_conclusion: bool = False,
+    ) -> Dict[str, Any]:
+        from complaint_phases.intake_case_file import record_question_disposition as persist_disposition
+        legal_targets = None
+        if isinstance(question, dict) and str(question.get('type') or '').lower() == 'legal_context':
+            case = intake_case_file if isinstance(intake_case_file, dict) else self._legal_context_case_file()
+            graph = None
+            manager = getattr(self.mediator, 'phase_manager', None)
+            if manager is not None:
+                from complaint_phases.phase_manager import ComplaintPhase
+                graph = manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
+            legal_targets = self._current_legal_context_question_targets(graph, case)
+        bound = self._bind_unresolved_target(question if isinstance(question, dict) else {},
+                                             legal_context_targets=legal_targets)
+        target_id, revision, kind = self._target_identity(bound if isinstance(bound, dict) else {})
+        if not target_id and isinstance(question, dict):
+            slot = self._standard_intake_slot(question)
+            if slot:
+                kind = "proof" if slot == "notice" else "factual"
+                target_id = f"{kind}:standard-intake:{slot}"
+                revision = revision or self._question_scope_revision
+        classified = self.classify_answer_disposition(answer, explicit=disposition)
+        non_fact = classified in self._NON_FACT_DISPOSITIONS
+        record = {
+            "target_id": target_id,
+            "target_revision": revision or self._question_scope_revision or "unresolved",
+            "target_kind": kind or None,
+            "disposition": classified,
+            "question": str((bound or question or {}).get("question") or "") or None,
+            "answer": None if non_fact else answer,
+            "reason": str(reason or "").strip() or None,
+            "creates_fact": False if non_fact else bool(creates_fact),
+            "satisfies_requirement": False if non_fact else bool(satisfies_requirement),
+            "contradictory_conclusion": False if non_fact else bool(contradictory_conclusion),
+            "reopened": False,
+            "status": "disposed",
+        }
+        if target_id:
+            self.objective_repeat_counts[target_id] = int(self.objective_repeat_counts.get(target_id) or 0) + 1
+        if classified in {"unknown", "skipped", "deferred"} or not str(answer or "").strip():
+            self.no_information_attempts = int(getattr(self, "no_information_attempts", 0) or 0) + 1
+        if target_id:
+            self.question_disposition_records = [
+                item for item in self.question_disposition_records
+                if not (
+                    isinstance(item, dict)
+                    and str(item.get("target_id") or "") == target_id
+                    and str(item.get("target_revision") or "") == record["target_revision"]
+                    and not item.get("reopened")
                 )
-                key = f"responsible_party:{self._normalize_question_text(decision_precision_text)}"
-                if key not in seen_keys and not self._already_asked(decision_precision_text):
-                    seen_keys.add(key)
-                    questions.append(self._question_candidate(
-                        source='history_follow_up',
-                        question_type='responsible_party',
-                        question_text=decision_precision_text,
-                        context={
-                            'gap_type': 'missing_staff_identity',
-                            'follow_up_reason': 'decision_precision_closeout',
-                            'workflow_phase': 'graph_analysis',
-                            'extraction_targets': ['actor_name', 'actor_role', 'decision_maker', 'adverse_action'],
-                            'patchability_markers': ['actor_link_patch_anchor', 'decision_actor_patch_anchor', 'adverse_action_patch_anchor'],
-                        },
-                        priority='high',
-                    ))
+            ]
+            self.question_disposition_records.append(dict(record))
+        case_file = intake_case_file if isinstance(intake_case_file, dict) else None
+        if case_file is None and self.mediator is not None:
+            phase_manager = getattr(self.mediator, "phase_manager", None)
+            getter = getattr(phase_manager, "get_phase_data", None)
+            if callable(getter):
+                try:
+                    from complaint_phases.phase_manager import ComplaintPhase
+                    loaded = getter(ComplaintPhase.INTAKE, "intake_case_file")
+                except Exception:
+                    loaded = None
+                if isinstance(loaded, dict):
+                    case_file = loaded
+        if isinstance(case_file, dict) and target_id:
+            persist_disposition(
+                case_file,
+                target_id=target_id,
+                target_revision=record["target_revision"],
+                disposition=classified,
+                target_kind=kind,
+                question=record["question"],
+                answer=record["answer"],
+                reason=record["reason"],
+                creates_fact=record["creates_fact"],
+                satisfies_requirement=record["satisfies_requirement"],
+                contradictory_conclusion=record["contradictory_conclusion"],
+            )
+        return record
 
-            if len(questions) >= max_questions:
-                break
+    def reopen_disposed_question(
+        self,
+        target_id: Any,
+        reason: Any,
+        *,
+        target_revision: Any = None,
+        intake_case_file: Optional[Dict[str, Any]] = None,
+        evidence_change: Any = None,
+        scope_change: Any = None,
+    ) -> Dict[str, Any]:
+        from complaint_phases.intake_case_file import reopen_question_disposition
+        why = str(reason or "").strip()
+        evidence = str(evidence_change or "").strip() or None
+        scope = str(scope_change or "").strip() or None
+        if not why:
+            raise ValueError("reopening a disposed question requires a reason")
+        if not evidence and not scope:
+            raise ValueError("reopening a disposed question requires new evidence or changed scope")
+        wanted = str(target_id or "").strip()
+        case_file = intake_case_file if isinstance(intake_case_file, dict) else None
+        if case_file is None and self.mediator is not None:
+            phase_manager = getattr(self.mediator, "phase_manager", None)
+            getter = getattr(phase_manager, "get_phase_data", None)
+            if callable(getter):
+                try:
+                    from complaint_phases.phase_manager import ComplaintPhase
+                    loaded = getter(ComplaintPhase.INTAKE, "intake_case_file")
+                except Exception:
+                    loaded = None
+                if isinstance(loaded, dict):
+                    case_file = loaded
+        if isinstance(case_file, dict):
+            reopened = reopen_question_disposition(
+                case_file,
+                wanted,
+                reason=why,
+                target_revision=target_revision,
+                evidence_change=evidence,
+                scope_change=scope,
+            )
+        else:
+            if not any(
+                isinstance(item, dict) and str(item.get("target_id") or "") == wanted and not item.get("reopened")
+                for item in self.question_disposition_records
+            ) and wanted not in (self.target_dispositions or {}):
+                raise ValueError("no disposed question matches that target")
+            reopened = {
+                "target_id": wanted,
+                "target_revision": str(target_revision or self._question_scope_revision or "unresolved"),
+                "disposition": str((self.target_dispositions or {}).get(wanted) or "unknown"),
+                "reopened": True,
+                "reopen_reason": why,
+                "evidence_change": evidence,
+                "scope_change": scope,
+                "status": "reopened",
+                "creates_fact": False,
+                "satisfies_requirement": False,
+                "contradictory_conclusion": False,
+            }
+        self.question_disposition_records.append(dict(reopened))
+        if wanted in self.target_dispositions:
+            self.target_dispositions.pop(wanted, None)
+        if scope:
+            self._question_scope_revision = scope
+        return reopened
 
-            # Ask for concrete documentary anchors if narrative detail exists but sources are absent.
-            if (retaliation_context or needs_confirmation or chronology_gap) and (not has_documents or not has_document_precision) and len(questions) < max_questions:
-                doc_text = (
-                    "What exact document or message records the decision (document type, date, sender, recipient, and how it was delivered)?"
-                )
-                key = f"evidence:{self._normalize_question_text(doc_text)}"
-                if key not in seen_keys and not self._already_asked(doc_text):
-                    seen_keys.add(key)
-                    questions.append(self._question_candidate(
-                        source='history_follow_up',
-                        question_type='evidence',
-                        question_text=doc_text,
-                        context={
-                            'gap_type': 'missing_written_notice',
-                            'follow_up_reason': 'document_anchor_probe',
-                            'workflow_phase': 'document_generation',
-                            'extraction_targets': ['document_type', 'document_date', 'document_owner', 'actor_name', 'actor_role'],
-                            'patchability_markers': ['support_patch_anchor', 'notice_chain_patch_anchor', 'decision_actor_patch_anchor', 'documentary_artifact_patch_anchor'],
-                        },
-                        priority='high',
-                    ))
+    def _non_fact_answer_updates(self, disposition: str, record: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "entities_updated": 0,
+            "relationships_added": 0,
+            "requirements_satisfied": 0,
+            "disposition": disposition,
+            "creates_fact": False,
+            "satisfies_requirement": False,
+            "contradictory_conclusion": False,
+            "question_disposition": record,
+        }
 
-        return questions[:max_questions]
+    def _target_was_reopened(self, target_id: str) -> bool:
+        wanted = str(target_id or "").strip()
+        reopened = False
+        for record in self.question_disposition_records:
+            if not isinstance(record, dict) or str(record.get("target_id") or "") != wanted:
+                continue
+            if record.get("reopened"):
+                reopened = True
+            elif str(record.get("disposition") or "").strip().lower() in self._CLOSED_TARGET_DISPOSITIONS:
+                reopened = False
+        return reopened
+
+    def _closed_target_ids(self) -> Set[str]:
+        closed: Set[str] = set()
+        for target_id, disposition in (self.target_dispositions or {}).items():
+            if str(disposition or '').strip().lower() in self._CLOSED_TARGET_DISPOSITIONS and str(target_id or '').strip():
+                if not self._target_was_reopened(str(target_id)):
+                    closed.add(str(target_id))
+        for record in self.question_disposition_records:
+            if not isinstance(record, dict):
+                continue
+            target_id = str(record.get("target_id") or "").strip()
+            disposition = str(record.get("disposition") or "").strip().lower()
+            if target_id and not record.get("reopened") and disposition in self._CLOSED_TARGET_DISPOSITIONS:
+                if not self._target_was_reopened(target_id):
+                    closed.add(target_id)
+        for item in self.questions_asked:
+            if not isinstance(item, dict):
+                continue
+            question = item.get('question') if isinstance(item.get('question'), dict) else {}
+            target = question.get('unresolved_target') if isinstance(question.get('unresolved_target'), dict) else {}
+            target_id = str(target.get('target_id') or question.get('target_id') or '').strip()
+            disposition = str(item.get('disposition') or item.get('answer_disposition') or question.get('disposition') or '').strip().lower()
+            answer = str(item.get('answer') or '').strip().lower()
+            if disposition in self._CLOSED_TARGET_DISPOSITIONS or any(
+                phrase in answer for phrase in ("don't know", 'do not know', 'i decline', 'declined', 'i refuse', 'refused')
+            ):
+                if target_id and not self._target_was_reopened(target_id):
+                    closed.add(target_id)
+        return closed
+
+    def _neutralize_question_text(self, question_text: str) -> str:
+        text = str(question_text or '').strip()
+        lowered = text.lower()
+        for phrase, replacement in self._LEGAL_CONCLUSION_REWRITES:
+            if phrase in lowered:
+                text = re.sub(re.escape(phrase), replacement, text, flags=re.IGNORECASE)
+                lowered = text.lower()
+        if text and not text.endswith('?'):
+            text = text.rstrip('.') + '?'
+        return text
+
+    def _is_operator_source_gap(self, candidate: Dict[str, Any]) -> bool:
+        context = candidate.get('context') if isinstance(candidate.get('context'), dict) else {}
+        status = str(
+            context.get('source_status')
+            or context.get('prover_status')
+            or context.get('capability_status')
+            or candidate.get('source_status')
+            or ''
+        ).strip().lower()
+        if status in {'unavailable', 'degraded', 'outage', 'missing'}:
+            return True
+        kind = str(candidate.get('target_kind') or context.get('target_kind') or '').strip().lower()
+        if kind == 'source_diagnostic':
+            return True
+        blob = ' '.join(
+            str(candidate.get(key) or '')
+            for key in ('question', 'question_reason', 'candidate_source')
+        ).lower()
+        return any(token in blob for token in self._OPERATOR_GAP_TOKENS) and any(
+            token in blob for token in ('unavailable', 'outage', 'failed', 'down', 'repair', 'missing')
+        )
+
+    def _record_source_capability_diagnostic(self, intake_case_file: Optional[Dict[str, Any]]) -> None:
+        if not isinstance(intake_case_file, dict):
+            return
+        status = intake_case_file.get('source_capability')
+        if status is None:
+            status = intake_case_file.get('prover_status')
+        detail = status if isinstance(status, dict) else {'status': status}
+        state = str(
+            (detail.get('status') if isinstance(detail, dict) else status) or ''
+        ).strip().lower()
+        if state not in {'unavailable', 'degraded', 'outage', 'missing'}:
+            return
+        diagnostic = {
+            'kind': 'source_operator_diagnostic',
+            'target_kind': 'source_diagnostic',
+            'status': state,
+            'audience': 'operator',
+            'user_question': None,
+            'detail': detail if isinstance(detail, dict) else {'status': state},
+            'message': (
+                'Legal citation, currentness, prover, or solver capability is unavailable. '
+                'Follow up with the source operator; do not ask the user to repair backend infrastructure.'
+            ),
+        }
+        if diagnostic not in self.source_operator_diagnostics:
+            self.source_operator_diagnostics.append(diagnostic)
+
+    def _record_operator_candidates(self, candidates: List[Dict[str, Any]]) -> None:
+        for candidate in candidates or []:
+            if not isinstance(candidate, dict) or not self._is_operator_source_gap(candidate):
+                continue
+            diagnostic = {
+                'kind': 'source_operator_diagnostic',
+                'target_kind': 'source_diagnostic',
+                'audience': 'operator',
+                'user_question': None,
+                'question': None,
+                'message': (
+                    'A legal citation, currentness, prover, or solver gap needs source or operator follow-up. '
+                    'No user question was emitted.'
+                ),
+                'detail': {
+                    'candidate_source': candidate.get('candidate_source'),
+                    'source_status': (candidate.get('context') or {}).get('source_status') if isinstance(candidate.get('context'), dict) else None,
+                },
+            }
+            if diagnostic not in self.source_operator_diagnostics:
+                self.source_operator_diagnostics.append(diagnostic)
+
+    def _bind_unresolved_target(self, candidate: Dict[str, Any], *,
+                                legal_context_targets: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
+        if not isinstance(candidate, dict):
+            return candidate
+        enriched = dict(candidate)
+        if str(enriched.get('type') or enriched.get('question_type') or '').strip().lower() == 'legal_context':
+            return self._bind_legal_context_question(enriched, legal_context_targets)
+        context = dict(enriched.get('context') or {}) if isinstance(enriched.get('context'), dict) else {}
+        enriched['question'] = self._neutralize_question_text(str(enriched.get('question') or ''))
+        if self._is_operator_source_gap(enriched):
+            enriched['user_answerability'] = 'operator_only'
+            enriched['target_kind'] = 'source_diagnostic'
+            enriched['unresolved_target'] = None
+            return enriched
+
+        question_type = str(enriched.get('type') or enriched.get('question_type') or '').strip().lower()
+        source = str(enriched.get('candidate_source') or context.get('candidate_source') or '').strip()
+        standard_slot = self._standard_intake_slot(enriched)
+        left_id = str(context.get('left_node_id') or '').strip()
+        right_id = str(context.get('right_node_id') or '').strip()
+        raw_id = str(
+            context.get('requirement_id')
+            or enriched.get('target_element_id')
+            or context.get('target_element_id')
+            or context.get('claim_element_id')
+            or context.get('entity_id')
+            or context.get('issue_id')
+            or context.get('gap_id')
+            or context.get('deterministic_update_key')
+            or context.get('node_id')
+            or context.get('claim_id')
+            or ''
+        ).strip()
+        if not raw_id and source == 'knowledge_graph_gap':
+            raw_id = 'kg:' + str(context.get('gap_type') or question_type or 'gap')
+        if standard_slot:
+            target_kind = 'proof' if standard_slot == 'notice' else 'factual'
+            target_id = f"{target_kind}:standard-intake:{standard_slot}"
+        elif question_type == 'contradiction' or (left_id and right_id and 'contradict' in source):
+            target_kind = 'contradiction'
+            pair = tuple(sorted([left_id or raw_id or 'left', right_id or 'right']))
+            target_id = f"contradiction:{pair[0]}:{pair[1]}"
+        elif question_type == 'requirement' or source in {'dependency_graph_requirement', 'intake_claim_element_gap'}:
+            target_kind = 'requirement'
+            target_id = f"requirement:{raw_id}" if raw_id else ''
+        elif question_type == 'evidence' or source in {'intake_proof_gap', 'history_follow_up'}:
+            target_kind = 'proof' if source == 'intake_proof_gap' or question_type == 'evidence' else 'factual'
+            if source == 'history_follow_up' and question_type != 'evidence':
+                target_kind = 'factual'
+            target_id = f"{target_kind}:{raw_id}" if raw_id else ''
+        elif raw_id:
+            target_kind = 'factual'
+            target_id = f"factual:{raw_id}"
+        else:
+            existing = enriched.get('unresolved_target') if isinstance(enriched.get('unresolved_target'), dict) else None
+            if not existing or not str(existing.get('target_id') or '').strip():
+                enriched['unresolved_target'] = None
+                return enriched
+            target_kind = str(existing.get('target_kind') or 'factual')
+            target_id = str(existing.get('target_id'))
+
+        if not target_id:
+            enriched['unresolved_target'] = None
+            return enriched
+
+        revision = str(
+            context.get('target_revision')
+            or context.get('revision')
+            or enriched.get('target_revision')
+            or 'unresolved'
+        ).strip() or 'unresolved'
+        priority = str(enriched.get('priority') or 'medium').strip().lower()
+        blocking = str(enriched.get('blocking_level') or context.get('blocking_level') or '').strip().lower()
+        dependency_impact = 3 if blocking == 'blocking' or priority == 'critical' else 2 if priority == 'high' else 1 if priority == 'medium' else 0
+        if target_kind == 'contradiction':
+            dependency_impact = max(dependency_impact, 3)
+        uncertainty = 3 if target_kind == 'contradiction' else 2 if priority in {'high', 'critical'} else 1
+        explicit_impact = context.get('dependency_impact', enriched.get('dependency_impact'))
+        explicit_uncertainty = context.get('uncertainty', enriched.get('uncertainty'))
+        if explicit_impact is not None:
+            try:
+                dependency_impact = int(explicit_impact)
+            except (TypeError, ValueError):
+                pass
+        if explicit_uncertainty is not None:
+            try:
+                uncertainty = int(explicit_uncertainty)
+            except (TypeError, ValueError):
+                pass
+        expected_information = str(
+            enriched.get('expected_information')
+            or context.get('expected_information')
+            or enriched.get('expected_proof_gain')
+            or 'Observed events, dates, people, or documents the user can recall or provide.'
+        ).strip()
+        why_answer_helps = str(
+            enriched.get('why_answer_helps')
+            or enriched.get('question_reason')
+            or context.get('why_answer_helps')
+            or 'The answer addresses an unresolved factual, requirement, or contradiction target without treating it as already proved.'
+        ).strip()
+        provenance = {
+            'candidate_source': source,
+            'requirement_id': str(context.get('requirement_id') or '') or None,
+            'proof_objective_id': str(enriched.get('proof_objective_id') or '') or None,
+            'entity_id': str(context.get('entity_id') or '') or None,
+            'claim_id': str(context.get('claim_id') or '') or None,
+            'left_node_id': left_id or None,
+            'right_node_id': right_id or None,
+            'node_id': str(context.get('node_id') or '') or None,
+        }
+        user_answerability = 'user_observable'
+        lowered = str(enriched.get('question') or '').lower()
+        if any(token in lowered for token in ('statute', 'case law', 'legal conclusion', 'liable', 'violation of law')):
+            user_answerability = 'not_answerable'
+        target = {
+            'target_id': target_id,
+            'target_revision': revision,
+            'target_kind': target_kind,
+            'provenance': provenance,
+            'why_answer_helps': why_answer_helps,
+            'expected_information': expected_information,
+            'user_answerability': user_answerability,
+            'dependency_impact': dependency_impact,
+            'uncertainty': uncertainty,
+        }
+        enriched['unresolved_target'] = target
+        enriched['target_id'] = target_id
+        enriched['target_revision'] = revision
+        enriched['target_kind'] = target_kind
+        enriched['why_answer_helps'] = why_answer_helps
+        enriched['expected_information'] = expected_information
+        enriched['user_answerability'] = user_answerability
+        enriched['dependency_impact'] = dependency_impact
+        enriched['uncertainty'] = uncertainty
+        explanation = dict(enriched.get('ranking_explanation') or {}) if isinstance(enriched.get('ranking_explanation'), dict) else {}
+        explanation['unresolved_target'] = target
+        explanation['dependency_impact'] = dependency_impact
+        explanation['uncertainty'] = uncertainty
+        explanation['user_answerability'] = user_answerability
+        enriched['ranking_explanation'] = explanation
+        return enriched
+
+    def _finalize_neutral_targeted_questions(self, questions: List[Dict[str, Any]], *,
+                                             legal_context_targets: Optional[Dict[str, Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+        """Keep only neutral user questions bound to an open unresolved target.
+
+        An empty result is not saturation. Source and prover gaps become operator
+        diagnostics and are not re-asked of the user.
+        """
+        closed = self._closed_target_ids()
+        kept: List[Dict[str, Any]] = []
+        seen_target_ids: Set[str] = set()
+        for raw in questions or []:
+            if not isinstance(raw, dict):
+                continue
+            candidate = self._bind_unresolved_target(raw, legal_context_targets=legal_context_targets)
+            if self._is_operator_source_gap(candidate) or candidate.get('user_answerability') == 'operator_only':
+                diagnostic = {
+                    'kind': 'source_operator_diagnostic',
+                    'target_kind': 'source_diagnostic',
+                    'audience': 'operator',
+                    'user_question': None,
+                    'question': None,
+                    'message': (
+                        'A legal citation, currentness, prover, or solver gap needs source or operator follow-up. '
+                        'No user question was emitted.'
+                    ),
+                    'detail': {
+                        'candidate_source': candidate.get('candidate_source'),
+                        'source_status': (candidate.get('context') or {}).get('source_status') if isinstance(candidate.get('context'), dict) else None,
+                    },
+                }
+                if diagnostic not in self.source_operator_diagnostics:
+                    self.source_operator_diagnostics.append(diagnostic)
+                continue
+            target = candidate.get('unresolved_target') if isinstance(candidate.get('unresolved_target'), dict) else None
+            if not target or not str(target.get('target_id') or '').strip():
+                continue
+            if str(target.get('target_kind') or '') not in {'factual', 'requirement', 'contradiction', 'proof'}:
+                continue
+            if target.get('user_answerability') != 'user_observable':
+                continue
+            if str(target.get('target_id')) in closed or self.is_question_target_closed(
+                target.get('target_id'),
+                target.get('target_revision'),
+            ):
+                continue
+            if str(target.get('target_id')) in seen_target_ids:
+                continue
+            seen_target_ids.add(str(target.get('target_id')))
+            required = (
+                'target_id', 'target_revision', 'target_kind', 'provenance',
+                'why_answer_helps', 'expected_information', 'user_answerability',
+            )
+            if any(not target.get(field) for field in required):
+                continue
+            kept.append(candidate)
+        return kept
 
     def collect_question_candidates(
         self,
@@ -2388,191 +4037,13 @@ class ComplaintDenoiser:
         max_questions: int = 10,
         intake_case_file: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """Collect ranked question candidates before final rendering/exploration."""
-        questions: List[Dict[str, Any]] = []
-
-        contradiction_questions = self._build_contradiction_questions(dependency_graph, max_questions)
-        questions.extend(contradiction_questions)
-
-        claim_element_questions = self._build_claim_element_questions(
+        return denoiser_questions.collect_question_candidates(
+            self,
+            knowledge_graph,
+            dependency_graph,
+            max_questions,
             intake_case_file,
-            max(0, max_questions - len(questions)),
         )
-        questions.extend(claim_element_questions[:max(0, max_questions - len(questions))])
-
-        proof_lead_questions = self._build_proof_lead_questions(
-            intake_case_file,
-            max(0, max_questions - len(questions)),
-        )
-        questions.extend(proof_lead_questions[:max(0, max_questions - len(questions))])
-
-        temporal_gap_questions = self._build_claim_temporal_gap_questions(
-            intake_case_file,
-            max(0, max_questions - len(questions)),
-        )
-        questions.extend(temporal_gap_questions[:max(0, max_questions - len(questions))])
-
-        history_follow_up_questions = self._build_history_follow_up_questions(
-            max(0, max_questions - len(questions)),
-        )
-        questions.extend(history_follow_up_questions[:max(0, max_questions - len(questions))])
-
-        kg_gaps = knowledge_graph.find_gaps()
-        for gap in kg_gaps[:max(0, max_questions - len(questions))]:
-            if gap['type'] == 'low_confidence_entity':
-                questions.append(self._question_candidate(
-                    source='knowledge_graph_gap',
-                    question_type='clarification',
-                    question_text=gap['suggested_question'],
-                    context={
-                        'entity_id': gap['entity_id'],
-                        'entity_name': gap['entity_name'],
-                        'confidence': gap['confidence']
-                    },
-                    priority='medium',
-                ))
-            elif gap['type'] == 'unsupported_claim':
-                questions.append(self._question_candidate(
-                    source='knowledge_graph_gap',
-                    question_type='evidence',
-                    question_text=gap['suggested_question'],
-                    context={
-                        'claim_id': gap['entity_id'],
-                        'claim_name': gap['claim_name']
-                    },
-                    priority='high',
-                ))
-            elif gap['type'] == 'isolated_entity':
-                questions.append(self._question_candidate(
-                    source='knowledge_graph_gap',
-                    question_type='relationship',
-                    question_text=gap['suggested_question'],
-                    context={
-                        'entity_id': gap['entity_id'],
-                        'entity_name': gap['entity_name']
-                    },
-                    priority='low',
-                ))
-            elif gap['type'] == 'missing_timeline':
-                questions.append(self._question_candidate(
-                    source='knowledge_graph_gap',
-                    question_type='timeline',
-                    question_text=gap['suggested_question'],
-                    context={},
-                    priority='high',
-                ))
-            elif gap['type'] == 'missing_responsible_party':
-                questions.append(self._question_candidate(
-                    source='knowledge_graph_gap',
-                    question_type='responsible_party',
-                    question_text=gap['suggested_question'],
-                    context={},
-                    priority='high',
-                ))
-            elif gap['type'] == 'missing_impact_remedy':
-                questions.append(self._question_candidate(
-                    source='knowledge_graph_gap',
-                    question_type='impact',
-                    question_text=gap['suggested_question'],
-                    context={
-                        'missing_impact': gap.get('missing_impact'),
-                        'missing_remedy': gap.get('missing_remedy'),
-                        'gap_type': gap.get('type'),
-                    },
-                    priority='high',
-                ))
-            elif gap['type'] in {'missing_written_notice', 'missing_response_dates'}:
-                questions.append(self._question_candidate(
-                    source='knowledge_graph_gap',
-                    question_type='evidence',
-                    question_text=gap['suggested_question'],
-                    context={'gap_type': gap.get('type')},
-                    priority='high',
-                ))
-            elif gap['type'] in {'missing_hearing_request_date', 'missing_decision_timeline', 'missing_exact_action_dates'}:
-                questions.append(self._question_candidate(
-                    source='knowledge_graph_gap',
-                    question_type='timeline',
-                    question_text=gap['suggested_question'],
-                    context={'gap_type': gap.get('type')},
-                    priority='high',
-                ))
-            elif gap['type'] in {'missing_staff_identity', 'missing_staff_title'}:
-                questions.append(self._question_candidate(
-                    source='knowledge_graph_gap',
-                    question_type='responsible_party',
-                    question_text=gap['suggested_question'],
-                    context={'gap_type': gap.get('type')},
-                    priority='high',
-                ))
-            elif gap['type'] in {'retaliation_missing_causation', 'retaliation_missing_causation_link', 'retaliation_missing_sequencing_dates'}:
-                questions.append(self._question_candidate(
-                    source='knowledge_graph_gap',
-                    question_type='timeline',
-                    question_text=gap['suggested_question'],
-                    context={'gap_type': gap.get('type')},
-                    priority='high',
-                ))
-
-        unsatisfied = dependency_graph.find_unsatisfied_requirements()
-        for req in unsatisfied[:max(0, max_questions - len(questions))]:
-            missing_deps = req.get('missing_dependencies', [])
-            for dep in missing_deps[:2]:
-                questions.append(self._question_candidate(
-                    source='dependency_graph_requirement',
-                    question_type='requirement',
-                    question_text=f"To support the claim '{req['node_name']}', can you provide information about: {dep['source_name']}?",
-                    context={
-                        'claim_id': req['node_id'],
-                        'claim_name': req['node_name'],
-                        'requirement_id': dep['source_node_id'],
-                        'requirement_name': dep['source_name']
-                    },
-                    priority='high',
-                ))
-                if len(questions) >= max_questions:
-                    break
-            if len(questions) >= max_questions:
-                break
-
-        blocker_issues = []
-        if hasattr(dependency_graph, 'get_blocker_follow_up_issues'):
-            try:
-                blocker_issues = dependency_graph.get_blocker_follow_up_issues()
-            except Exception:
-                blocker_issues = []
-        for issue in blocker_issues[:max(0, max_questions - len(questions))]:
-            if not isinstance(issue, dict):
-                continue
-            questions.append(self._question_candidate(
-                source='dependency_graph_requirement',
-                question_type=str(issue.get('question_type') or 'timeline'),
-                question_text=str(issue.get('suggested_question') or 'Can you provide the missing follow-up details for this blocker?'),
-                context={
-                    'issue_id': issue.get('issue_id'),
-                    'issue_type': issue.get('issue_type'),
-                    'node_id': issue.get('node_id'),
-                    'node_name': issue.get('node_name'),
-                    'gap_type': issue.get('issue_type'),
-                    'recommended_resolution_lane': issue.get('recommended_resolution_lane'),
-                    'workflow_phase': issue.get('workflow_phase'),
-                    'workflow_phase_rank': issue.get('workflow_phase_rank'),
-                    'extraction_targets': list(issue.get('extraction_targets') or []),
-                    'patchability_markers': list(issue.get('patchability_markers') or []),
-                },
-                priority='high' if str(issue.get('severity') or '').lower() == 'blocking' else 'medium',
-            ))
-            if len(questions) >= max_questions:
-                break
-
-        priority_order = {'high': 0, 'medium': 1, 'low': 2}
-        questions.sort(
-            key=lambda q: (
-                int(q.get('proof_priority', self._phase1_proof_priority(q.get('type', '')))),
-                priority_order.get(q.get('priority', 'low'), 3),
-            )
-        )
-        return questions[:max_questions]
 
     def _default_candidate_sort_key(self, candidate: Dict[str, Any]) -> Tuple[int, int, int]:
         priority_order = {'high': 0, 'medium': 1, 'low': 2}
@@ -2582,7 +4053,7 @@ class ComplaintDenoiser:
             int(candidate.get('proof_priority', self._phase1_proof_priority(candidate.get('type', '')))),
             priority_order.get(candidate.get('priority', 'low'), 3),
             int(candidate.get('workflow_phase_rank', 99) or 99),
-        )
+        ) + self._target_rank_tuple(candidate)
 
     def _actor_score_candidate(self, candidate: Dict[str, Any]) -> float:
         if not isinstance(candidate, dict):
@@ -2824,9 +4295,14 @@ class ComplaintDenoiser:
         *,
         max_questions: int = 10,
         selector: Any = None,
+        legal_context_targets: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         """Select final question candidates, allowing a router/prover override."""
-        normalized_candidates = [candidate for candidate in (candidates or []) if isinstance(candidate, dict)]
+        normalized_candidates = [
+            self._bind_unresolved_target(candidate, legal_context_targets=legal_context_targets)
+            for candidate in (candidates or [])
+            if isinstance(candidate, dict)
+        ]
         if not normalized_candidates or max_questions <= 0:
             return []
         normalized_candidates = self._annotate_actor_critic_scores(normalized_candidates)
@@ -2834,21 +4310,15 @@ class ComplaintDenoiser:
         def _finalize(items: Any, *, dedupe: bool) -> List[Dict[str, Any]]:
             normalized_items = [candidate for candidate in (items or []) if isinstance(candidate, dict)]
             if not dedupe:
-                return normalized_items[:max_questions]
-            seen_keys = set()
-            finalized: List[Dict[str, Any]] = []
-            for candidate in normalized_items:
-                candidate_key = (
-                    self._normalize_question_text(str(candidate.get('question', ''))),
-                    str(candidate.get('type', '')).strip().lower(),
-                )
-                if candidate_key in seen_keys:
-                    continue
-                seen_keys.add(candidate_key)
-                finalized.append(candidate)
-                if len(finalized) >= max_questions:
-                    break
-            return finalized
+                return [
+                    self._annotate_proof_directed_candidate(candidate)
+                    for candidate in normalized_items[:max_questions]
+                ]
+            return self._select_proof_directed_candidates(
+                normalized_items,
+                max_questions=max_questions,
+                preserve_order=True,
+            )
 
         selected: Any = None
         if callable(selector):
@@ -2894,6 +4364,7 @@ class ComplaintDenoiser:
                     fallback_candidates.sort(
                         key=lambda candidate: (
                             -float(candidate.get('actor_critic_score', 0.0) or 0.0),
+                            -float(candidate.get('novelty_score', 1.0) or 0.0),
                             self._default_candidate_sort_key(candidate),
                         )
                     )
@@ -2922,6 +4393,7 @@ class ComplaintDenoiser:
                 fallback_candidates.sort(
                     key=lambda candidate: (
                         -float(candidate.get('actor_critic_score', 0.0) or 0.0),
+                        -float(candidate.get('novelty_score', 1.0) or 0.0),
                         self._default_candidate_sort_key(candidate),
                     )
                 )
@@ -2931,6 +4403,7 @@ class ComplaintDenoiser:
             normalized_candidates.sort(
                 key=lambda candidate: (
                     -float(candidate.get('actor_critic_score', 0.0) or 0.0),
+                    -float(candidate.get('novelty_score', 1.0) or 0.0),
                     self._default_candidate_sort_key(candidate),
                 )
             )
@@ -2938,24 +4411,353 @@ class ComplaintDenoiser:
             normalized_candidates.sort(key=self._default_candidate_sort_key)
         return _finalize(normalized_candidates, dedupe=True)
 
+    SEMANTIC_DUPLICATE_REPEAT_LIMIT = 2
+    _EXPLAINED_GAP_FAMILIES = frozenset({
+        "factual_uncertainty",
+        "legal_element_support",
+        "contradiction",
+        "evidence",
+    })
+    _SEMANTIC_DUPLICATE_SIMILARITY = 0.84
+
+    def _explained_gap_family(self, candidate: Dict[str, Any]) -> str:
+        source = str(candidate.get("candidate_source") or "").strip().lower()
+        question_type = str(candidate.get("type") or candidate.get("question_type") or "").strip().lower()
+        kind = str(candidate.get("target_kind") or "").strip().lower()
+        if kind == "contradiction" or question_type == "contradiction" or "contradict" in source:
+            return "contradiction"
+        if source == "intake_claim_element_gap" or question_type == "requirement" or kind == "requirement" or source == "dependency_graph_requirement":
+            return "legal_element_support"
+        if question_type == "evidence" or kind == "proof" or source == "intake_proof_gap":
+            return "evidence"
+        if kind == "factual" or source == "knowledge_graph_gap" or question_type in {
+            "clarification", "timeline", "relationship", "responsible_party", "impact", "remedy",
+        }:
+            return "factual_uncertainty"
+        return ""
+
+    def _stable_explained_id(self, prefix: str, *parts: Any) -> str:
+        material = "|".join(str(part or "").strip() for part in parts)
+        digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:20]
+        return f"{prefix}-{digest}"
+
+    def _explained_inquiry_from_candidate(self, candidate: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not isinstance(candidate, dict):
+            return None
+        family = self._explained_gap_family(candidate)
+        if family not in self._EXPLAINED_GAP_FAMILIES:
+            return None
+        if self._is_operator_source_gap(candidate) or candidate.get("user_answerability") == "operator_only":
+            return None
+        target = candidate.get("unresolved_target") if isinstance(candidate.get("unresolved_target"), dict) else {}
+        target_id = str(target.get("target_id") or candidate.get("target_id") or "").strip()
+        if not target_id:
+            return None
+        if target_id in self.retired_explained_targets or self.is_question_target_closed(
+            target_id, target.get("target_revision") or candidate.get("target_revision"),
+        ):
+            return None
+        if str(target.get("user_answerability") or candidate.get("user_answerability") or "user_observable") != "user_observable":
+            return None
+        question = str(candidate.get("question") or "").strip()
+        if not question:
+            return None
+        objective_key = str(candidate.get("proof_objective_id") or candidate.get("question_objective_key") or self._question_objective_key(candidate))
+        objective_id = self._stable_explained_id("obj", objective_key)
+        semantic_key = str(candidate.get("coverage_key") or self._question_coverage_key(candidate) or objective_id)
+        why = str(
+            candidate.get("why_answer_helps")
+            or candidate.get("question_reason")
+            or (target.get("why_answer_helps") if isinstance(target, dict) else "")
+            or ""
+        ).strip()
+        if not why:
+            why = "This question asks for an unresolved fact, conflict, legal-element detail, or evidence lead."
+        expected_information = str(
+            candidate.get("expected_information")
+            or (target.get("expected_information") if isinstance(target, dict) else "")
+            or "Observed events, dates, people, or documents you can recall."
+        ).strip()
+        update_kind = str(candidate.get("expected_update_kind") or self._question_expected_update_kind(candidate) or "clarify_record")
+        inquiry_id = self._stable_explained_id("inq", objective_id, target_id)
+        family_reason = {
+            "factual_uncertainty": "A factual detail is still uncertain, so later review cannot treat it as established.",
+            "legal_element_support": "A legal element still lacks support. The element definition itself is not changed by the answer.",
+            "contradiction": "Two accounts conflict, and neither account is treated as proved until you clarify it.",
+            "evidence": "A proof lead is still missing, so the element cannot be treated as documented.",
+        }[family]
+        why_it_matters = f"{why} {family_reason}".strip()
+        answer_contract = {
+            "objective_id": objective_id,
+            "target_id": target_id,
+            "expected_information": expected_information,
+            "accepts": ["observed_fact", "date", "person", "document_reference"],
+            "non_answers": ["unknown", "refused", "skipped"],
+            "non_answer_effect": "record_disposition_without_satisfying_legal_requirement",
+        }
+        update_contract = {
+            "objective_id": objective_id,
+            "target_id": target_id,
+            "target_revision": str(target.get("target_revision") or candidate.get("target_revision") or "unresolved"),
+            "update_kind": update_kind,
+            "on_answer": "update_or_remove_candidate",
+            "on_non_answer": "record_disposition_and_select_next_candidate",
+            "satisfies_legal_requirement_on_non_answer": False,
+        }
+        return {
+            "inquiry_id": inquiry_id,
+            "objective_id": objective_id,
+            "semantic_key": semantic_key,
+            "target_id": target_id,
+            "target_revision": update_contract["target_revision"],
+            "target_kind": str(target.get("target_kind") or candidate.get("target_kind") or ""),
+            "gap_family": family,
+            "question": question,
+            "why_it_matters": why_it_matters,
+            "expected_information": expected_information,
+            "expected_answer_contract": answer_contract,
+            "expected_update_contract": update_contract,
+            "candidate": candidate,
+        }
+
+    def _semantic_repeat_count(self, inquiry: Dict[str, Any], running: Dict[str, int], kept: List[Dict[str, Any]]) -> int:
+        keys = [str(inquiry.get("objective_id") or ""), str(inquiry.get("semantic_key") or "")]
+        count = max(int(running.get(key, 0) or 0) for key in keys)
+        question = str(inquiry.get("question") or "")
+        compared = list(self.presented_question_records) + list(kept)
+        for prior in compared:
+            if not isinstance(prior, dict):
+                continue
+            prior_question = str(prior.get("question") or "")
+            if not prior_question:
+                continue
+            same_objective = str(prior.get("objective_id") or "") == str(inquiry.get("objective_id") or "")
+            same_semantic = str(prior.get("semantic_key") or "") == str(inquiry.get("semantic_key") or "")
+            similar = self._question_text_similarity(question, prior_question) >= self._SEMANTIC_DUPLICATE_SIMILARITY
+            if not (same_objective or same_semantic or similar):
+                continue
+            prior_count = int(prior.get("repeat_count") or running.get(str(prior.get("semantic_key") or ""), 0) or 0)
+            if prior in kept:
+                prior_count = max(prior_count, 1)
+            count = max(count, prior_count if (same_objective or same_semantic or similar) else 0)
+            if similar or same_objective or same_semantic:
+                count = max(count, int(running.get(str(prior.get("objective_id") or ""), 0) or 0))
+                count = max(count, int(running.get(str(prior.get("semantic_key") or ""), 0) or 0))
+        return count
+
+    def apply_semantic_duplicate_repeat_policy(
+        self,
+        inquiries: List[Dict[str, Any]],
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Allow a bounded number of semantically duplicate objectives, then stop repeating them."""
+        running = dict(self.semantic_repeat_counts)
+        for objective_id, count in self.objective_repeat_counts.items():
+            running[str(objective_id)] = max(int(running.get(str(objective_id), 0) or 0), int(count or 0))
+        kept: List[Dict[str, Any]] = []
+        suppressed: List[Dict[str, Any]] = []
+        for inquiry in inquiries or []:
+            if not isinstance(inquiry, dict):
+                continue
+            count = self._semantic_repeat_count(inquiry, running, kept)
+            if count >= self.SEMANTIC_DUPLICATE_REPEAT_LIMIT:
+                suppressed.append({
+                    "inquiry_id": inquiry.get("inquiry_id"),
+                    "objective_id": inquiry.get("objective_id"),
+                    "semantic_key": inquiry.get("semantic_key"),
+                    "target_id": inquiry.get("target_id"),
+                    "question": inquiry.get("question"),
+                    "repeat_count": count,
+                    "repeat_limit": self.SEMANTIC_DUPLICATE_REPEAT_LIMIT,
+                    "suppressed_reason": "semantic_duplicate_repeat_limit",
+                })
+                continue
+            kept.append(inquiry)
+            for key in (inquiry.get("objective_id"), inquiry.get("semantic_key")):
+                if key:
+                    running[str(key)] = max(int(running.get(str(key), 0) or 0), count) + 1
+        return kept, suppressed
+
+    def _mark_explained_inquiry_presented(self, inquiry: Optional[Dict[str, Any]]) -> None:
+        if not isinstance(inquiry, dict):
+            return
+        inquiry_id = str(inquiry.get("inquiry_id") or "")
+        if not inquiry_id or inquiry_id in self._presented_inquiry_ids:
+            return
+        self._presented_inquiry_ids.add(inquiry_id)
+        for key_name, store in (
+            ("objective_id", self.objective_repeat_counts),
+            ("semantic_key", self.semantic_repeat_counts),
+        ):
+            key = str(inquiry.get(key_name) or "")
+            if key:
+                store[key] = int(store.get(key, 0) or 0) + 1
+        self.presented_question_records.append({
+            "inquiry_id": inquiry_id,
+            "objective_id": inquiry.get("objective_id"),
+            "semantic_key": inquiry.get("semantic_key"),
+            "question": inquiry.get("question"),
+            "repeat_count": int(self.objective_repeat_counts.get(str(inquiry.get("objective_id") or ""), 1) or 1),
+        })
+
+    def select_explained_gap_inquiries(
+        self,
+        knowledge_graph: KnowledgeGraph,
+        dependency_graph: DependencyGraph,
+        *,
+        intake_case_file: Optional[Dict[str, Any]] = None,
+        max_questions: int = 8,
+    ) -> List[Dict[str, Any]]:
+        """Select explained questions from actionable graph gaps.
+
+        Candidate text comes from ``collect_question_candidates`` and
+        ``select_question_candidates``. This method adds stable objective and
+        target ids, why the question matters, and the answer/update contract.
+        """
+        self.load_question_dispositions(intake_case_file)
+        budget = max(int(max_questions or 0), 0)
+        if budget <= 0:
+            self.explained_inquiry_pool = []
+            self.current_explained_inquiry = None
+            self.suppressed_semantic_duplicates = []
+            return []
+        raw_candidates = self.collect_question_candidates(
+            knowledge_graph,
+            dependency_graph,
+            max_questions=budget,
+            intake_case_file=intake_case_file,
+        )
+        selected = self.select_question_candidates(
+            raw_candidates,
+            max_questions=max(budget * 4, budget),
+        )
+        shaped = []
+        for candidate in selected:
+            inquiry = self._explained_inquiry_from_candidate(candidate)
+            if inquiry is not None:
+                shaped.append(inquiry)
+        admitted, suppressed = self.apply_semantic_duplicate_repeat_policy(shaped)
+        self.suppressed_semantic_duplicates = suppressed
+        self.explained_inquiry_pool = admitted[:budget]
+        self.current_explained_inquiry = self.explained_inquiry_pool[0] if self.explained_inquiry_pool else None
+        self._mark_explained_inquiry_presented(self.current_explained_inquiry)
+        return list(self.explained_inquiry_pool)
+
+    def apply_explained_inquiry_answer(
+        self,
+        answer: Any,
+        knowledge_graph: KnowledgeGraph,
+        dependency_graph: DependencyGraph,
+        *,
+        intake_case_file: Optional[Dict[str, Any]] = None,
+        inquiry: Optional[Dict[str, Any]] = None,
+        disposition: Any = None,
+        max_questions: int = 8,
+    ) -> Dict[str, Any]:
+        """Record one answer, retire that candidate, and select the next gap."""
+        current = inquiry if isinstance(inquiry, dict) else self.current_explained_inquiry
+        if not isinstance(current, dict):
+            raise ValueError("no current explained inquiry")
+        question = current.get("candidate") if isinstance(current.get("candidate"), dict) else {}
+        classified = self.classify_answer_disposition(answer, explicit=disposition)
+        updates = self.process_answer(
+            question,
+            "" if answer is None else str(answer),
+            knowledge_graph,
+            dependency_graph,
+            source_context={
+                "intake_case_file": intake_case_file,
+                "disposition": classified,
+            },
+        )
+        if not isinstance(updates, dict):
+            updates = {}
+        non_fact = classified in self._NON_FACT_DISPOSITIONS
+        if non_fact or not updates.get("question_disposition"):
+            self.record_question_disposition(
+                question,
+                answer,
+                disposition=classified,
+                intake_case_file=intake_case_file,
+                creates_fact=False if non_fact else bool(updates.get("creates_fact")),
+                satisfies_requirement=False if non_fact else bool(updates.get("satisfies_requirement")),
+            )
+        satisfies_requirement = False if non_fact else bool(updates.get("satisfies_requirement"))
+        target_id = str(current.get("target_id") or "")
+        if target_id:
+            self.retired_explained_targets.add(target_id)
+        self._mark_explained_inquiry_presented(current)
+        self.explained_inquiry_pool = [
+            item for item in self.explained_inquiry_pool
+            if str(item.get("target_id") or "") != target_id
+        ]
+        refreshed = self.select_explained_gap_inquiries(
+            knowledge_graph,
+            dependency_graph,
+            intake_case_file=intake_case_file,
+            max_questions=max_questions,
+        )
+        next_inquiry = self.current_explained_inquiry
+        if isinstance(next_inquiry, dict) and str(next_inquiry.get("target_id") or "") == target_id:
+            alternatives = [item for item in refreshed if str(item.get("target_id") or "") != target_id]
+            if alternatives:
+                next_inquiry = alternatives[0]
+                self.current_explained_inquiry = next_inquiry
+                self.explained_inquiry_pool = alternatives
+            else:
+                revised = dict(next_inquiry)
+                revised["target_revision"] = str(int(str(revised.get("target_revision") or "0") or 0) + 1) if str(revised.get("target_revision") or "").isdigit() else str(revised.get("target_revision") or "unresolved") + ":updated"
+                revised["why_it_matters"] = str(revised.get("why_it_matters") or "") + " The previous answer changed this candidate, and it remains open."
+                next_inquiry = revised
+                self.current_explained_inquiry = revised
+        return {
+            "disposition": classified,
+            "recorded_as": classified if non_fact else "answered",
+            "satisfies_requirement": satisfies_requirement,
+            "removed_target_id": target_id,
+            "objective_id": current.get("objective_id"),
+            "inquiry_id": current.get("inquiry_id"),
+            "next_inquiry": next_inquiry,
+            "inquiries": list(self.explained_inquiry_pool),
+            "updates": {
+                "disposition": updates.get("disposition", classified),
+                "creates_fact": False if non_fact else bool(updates.get("creates_fact")),
+                "satisfies_requirement": satisfies_requirement,
+                "requirements_satisfied": 0 if non_fact else int(updates.get("requirements_satisfied") or 0),
+            },
+        }
+
     def _ensure_standard_intake_questions(self, questions: List[Dict[str, Any]], max_questions: int) -> List[Dict[str, Any]]:
         if len(questions) >= max_questions:
             return questions
 
         existing_text = " ".join([q.get('question', '') for q in questions]).lower()
         added: List[Dict[str, Any]] = []
+        revision = self._question_scope_revision or "standard-intake"
+
+        def _slot_open(slot: str, kind: str) -> bool:
+            target_id = f"{kind}:standard-intake:{slot}"
+            if any(
+                str((q.get("unresolved_target") or {}).get("target_id") or q.get("target_id") or "") == target_id
+                for q in questions + added
+                if isinstance(q, dict)
+            ):
+                return False
+            return not self.is_question_target_closed(target_id, revision)
 
         timeline_text = (
             'What is the timeline of key events, including dates, who made each decision, what notice or communication you received, and when you requested help or accommodation?'
         )
         if len(questions) + len(added) < max_questions:
             if not any(q.get('type') == 'timeline' for q in questions) and not any(k in existing_text for k in ['timeline', 'when did', 'what date', 'dates', 'notice', 'who made']):
-                if not self._already_asked(timeline_text):
+                if not self._already_asked(timeline_text) and _slot_open("timeline", "factual"):
                     added.append(self._question_candidate(
                         source='standard_intake_backstop',
                         question_type='timeline',
                         question_text=timeline_text,
-                        context={},
+                        context={
+                            "standard_intake_slot": "timeline",
+                            "target_revision": revision,
+                        },
                         priority='high',
                     ))
 
@@ -2964,12 +4766,15 @@ class ComplaintDenoiser:
         )
         if len(questions) + len(added) < max_questions:
             if not any(q.get('type') in {'impact', 'remedy'} for q in questions) and not any(k in existing_text for k in ['harm', 'damages', 'remedy', 'seeking', 'notice', 'letter', 'message']):
-                if not self._already_asked(impact_text):
+                if not self._already_asked(impact_text) and _slot_open("impact", "factual"):
                     added.append(self._question_candidate(
                         source='standard_intake_backstop',
                         question_type='impact',
                         question_text=impact_text,
-                        context={},
+                        context={
+                            "standard_intake_slot": "impact",
+                            "target_revision": revision,
+                        },
                         priority='high',
                     ))
 
@@ -2978,12 +4783,15 @@ class ComplaintDenoiser:
             )
             if len(questions) + len(added) < max_questions:
                 if not any(q.get('type') == 'evidence' for q in questions) and not any(k in existing_text for k in ['notice', 'letter', 'email', 'message', 'sent it']):
-                    if not self._already_asked(notice_text):
+                    if not self._already_asked(notice_text) and _slot_open("notice", "proof"):
                         added.append(self._question_candidate(
                             source='standard_intake_backstop',
                             question_type='evidence',
                             question_text=notice_text,
-                            context={},
+                            context={
+                                "standard_intake_slot": "notice",
+                                "target_revision": revision,
+                            },
                             priority='high',
                         ))
 
@@ -3050,6 +4858,43 @@ class ComplaintDenoiser:
             'suppression_key': self._normalize_question_text(normalized_text),
         }
 
+    @staticmethod
+    def _primary_quality_signal_for_summary(quality_summary: Dict[str, Any]) -> Dict[str, Any]:
+        signal_counts = (
+            quality_summary.get('quality_signal_counts', {})
+            if isinstance(quality_summary.get('quality_signal_counts'), dict)
+            else {}
+        )
+        prioritized = [
+            ('structurally_missing_support', 'missing_element', 'collect_initial_support'),
+            ('weak_graph_connectivity', 'graph_quality_gap', 'persist_or_query_graph_support'),
+            ('weak_source_quality', 'source_quality_gap', 'improve_source_parse_quality'),
+            ('duplicate_support', 'duplicate_support', 'collect_independent_support'),
+            ('weak_support_path', 'support_quality_gap', 'strengthen_support_path'),
+        ]
+        for signal, lane, action in prioritized:
+            count = int(signal_counts.get(signal, 0) or 0)
+            if signal == 'structurally_missing_support':
+                count = max(count, int(quality_summary.get('structurally_missing_path_count', 0) or 0))
+            if signal == 'weak_support_path':
+                count = max(count, int(quality_summary.get('weak_support_path_count', 0) or 0))
+            if count > 0:
+                return {
+                    'signal_type': signal,
+                    'question_lane': lane,
+                    'follow_up_action': action,
+                    'count': count,
+                }
+        recommended_action = str(quality_summary.get('recommended_quality_action') or '')
+        if recommended_action:
+            return {
+                'signal_type': 'recommended_quality_action',
+                'question_lane': 'support_quality_gap',
+                'follow_up_action': recommended_action,
+                'count': 1,
+            }
+        return {}
+
     def generate_review_question_recommendations(
         self,
         claim_type: str,
@@ -3077,8 +4922,8 @@ class ComplaintDenoiser:
                 target_claim_element_id=element_id,
                 target_claim_element_text=element_text,
                 question_text=(
-                    f"The current support for {element_text} conflicts. Which version is correct, "
-                    "and what source best supports it?"
+                    f"The current support for {element_text} conflicts. "
+                    "What do you recall about each account, and what dates, documents, or records can you provide?"
                 ),
                 question_reason=(
                     f"Resolve a contradiction before collecting more support for {element_text}. "
@@ -3113,10 +4958,29 @@ class ComplaintDenoiser:
             total_links = int(element.get('total_links', 0) or 0)
             fact_count = int(element.get('fact_count', 0) or 0)
             recommended_action = str(element.get('recommended_action') or '')
+            support_quality_summary = (
+                element.get('support_quality_summary', {})
+                if isinstance(element.get('support_quality_summary'), dict)
+                else {}
+            )
+            quality_signal_counts = (
+                support_quality_summary.get('quality_signal_counts', {})
+                if isinstance(support_quality_summary.get('quality_signal_counts'), dict)
+                else {}
+            )
 
             lane = 'testimony'
             if recommended_action == 'improve_parse_quality':
                 lane = 'document_request'
+            elif int(quality_signal_counts.get('weak_source_quality', 0) or 0) > 0:
+                lane = 'document_request'
+            elif int(quality_signal_counts.get('duplicate_support', 0) or 0) > 0:
+                lane = 'document_request'
+            elif (
+                recommended_action in {'strengthen_support_path', 'review_support_quality'}
+                or int(quality_signal_counts.get('weak_graph_connectivity', 0) or 0) > 0
+            ):
+                lane = 'testimony'
             elif missing_support_kinds == ['authority']:
                 lane = 'authority_clarification'
             elif 'evidence' in missing_support_kinds or total_links == 0 or fact_count == 0:
@@ -3125,14 +4989,32 @@ class ComplaintDenoiser:
                 lane = 'authority_clarification'
 
             if lane == 'document_request':
-                question_text = f"Do you have a document, message, timeline, or record that supports {element_text}?"
-                question_reason = (
-                    f"{element_text} has some support, but the current records indicate a parse or source-quality gap."
-                )
+                if int(quality_signal_counts.get('duplicate_support', 0) or 0) > 0:
+                    question_text = f"Do you have an independent document, message, witness, or record that separately supports {element_text}?"
+                    question_reason = (
+                        f"{element_text} appears to rely on duplicate or non-independent support, so a distinct source would strengthen the proof path."
+                    )
+                else:
+                    question_text = f"Do you have a clearer document, message, timeline, or record that supports {element_text}?"
+                    question_reason = (
+                        f"{element_text} has some support, but the current records indicate a parse, source-quality, or document-quality gap."
+                    )
             elif lane == 'authority_clarification':
                 question_text = f"Is there a rule, policy, statute, or case that clearly supports {element_text}?"
                 question_reason = (
                     f"{element_text} is still missing authority support needed for legal review."
+                )
+            elif (
+                recommended_action in {'strengthen_support_path', 'review_support_quality'}
+                or int(quality_signal_counts.get('weak_graph_connectivity', 0) or 0) > 0
+            ):
+                question_text = (
+                    f"What additional facts, source details, or relationships connect the current support "
+                    f"more directly to {element_text}?"
+                )
+                question_reason = (
+                    f"{element_text} has support, but GraphRAG support-path scoring found a structural quality gap "
+                    "such as weak graph connectivity or an indirect support path."
                 )
             else:
                 question_text = f"What specific facts can you provide to support {element_text}?"
@@ -3155,6 +5037,11 @@ class ComplaintDenoiser:
                 current_status=status,
                 missing_support_kinds=missing_support_kinds,
             )
+            recommendation['support_quality_summary'] = support_quality_summary
+            recommendation['quality_signal_counts'] = dict(quality_signal_counts)
+            primary_quality_signal = self._primary_quality_signal_for_summary(support_quality_summary)
+            recommendation['primary_quality_signal'] = primary_quality_signal
+            recommendation['quality_follow_up_action'] = primary_quality_signal.get('follow_up_action', '')
             if recommendation['suppression_key'] in seen_keys:
                 continue
             seen_keys.add(recommendation['suppression_key'])
@@ -3168,7 +5055,8 @@ class ComplaintDenoiser:
                           knowledge_graph: KnowledgeGraph,
                           dependency_graph: DependencyGraph,
                           max_questions: int = 10,
-                          intake_case_file: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+                          intake_case_file: Optional[Dict[str, Any]] = None,
+                          additional_candidates: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
         """
         Generate questions to denoise the complaint.
         
@@ -3180,17 +5068,39 @@ class ComplaintDenoiser:
         Returns:
             List of question dictionaries with type, question text, and context
         """
+        self.load_question_dispositions(intake_case_file)
+        legal_context_targets = self._current_legal_context_question_targets(knowledge_graph, intake_case_file)
+        # Subsequent public answer turns do not pass additional_candidates.
+        # Rederive their open context prompts instead of losing them after turn one.
+        if additional_candidates is None:
+            additional_candidates = [
+                {'type': 'legal_context', 'question_id': item['question_id'],
+                 'field': item['field'], 'question': item['prompt'], 'priority': 'critical'}
+                for item in legal_context_targets.values()
+            ]
         questions = self.collect_question_candidates(
             knowledge_graph,
             dependency_graph,
             max_questions=max_questions,
             intake_case_file=intake_case_file,
         )
+        # Context questions join the same selection pass as graph questions.
+        questions = [candidate for candidate in (additional_candidates or [])
+                     if isinstance(candidate, dict)] + questions
+        prepared = []
+        for candidate in questions:
+            if str(candidate.get('type') or candidate.get('question_type') or '').strip().lower() == 'legal_context':
+                candidate = self._bind_unresolved_target(candidate, legal_context_targets=legal_context_targets)
+                if not candidate.get('unresolved_target'):
+                    continue
+            prepared.append(candidate)
+        questions = prepared
         selector = getattr(self.mediator, 'select_intake_question_candidates', None) if self.mediator else None
         questions = self.select_question_candidates(
             questions,
             max_questions=max_questions,
             selector=selector,
+            legal_context_targets=legal_context_targets,
         )
 
         # Ensure we cover basic intake dimensions beyond evidence-only prompts.
@@ -3204,15 +5114,26 @@ class ComplaintDenoiser:
             qtype = q.get('type', '')
             qtext = q.get('question', '')
             q['question'] = self._with_empathy(qtext, qtype)
-        
+
+        self._record_source_capability_diagnostic(intake_case_file)
+        self._record_operator_candidates(list(additional_candidates or []) + list(questions))
+        questions = self._finalize_neutral_targeted_questions(questions, legal_context_targets=legal_context_targets)
+
         # Track questions in pool
         self.questions_pool.extend(questions[:max_questions])
-        
+
         return questions[:max_questions]
     
     def process_answer(self, question: Dict[str, Any], answer: str,
                       knowledge_graph: KnowledgeGraph,
-                      dependency_graph: Optional[DependencyGraph] = None) -> Dict[str, Any]:
+                      dependency_graph: Optional[DependencyGraph] = None,
+                      *,
+                      answer_event_id: Optional[str] = None,
+                      source_context: Optional[Dict[str, Any]] = None,
+                      factual_action: Optional[str] = None,
+                      supersedes_stable_id: Optional[str] = None,
+                      retracts_stable_id: Optional[str] = None,
+                      contradicts_stable_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Process an answer to a denoising question.
 
@@ -3225,6 +5146,96 @@ class ComplaintDenoiser:
         Returns:
             Information about what was updated
         """
+        from complaint_phases.knowledge_graph import answer_event_payload
+
+        event_payload = answer_event_payload(
+            question=question,
+            answer=answer,
+            source_context=source_context,
+            factual_action=factual_action,
+            supersedes_stable_id=supersedes_stable_id,
+            retracts_stable_id=retracts_stable_id,
+            contradicts_stable_id=contradicts_stable_id,
+        )
+        if answer_event_id and knowledge_graph is not None:
+            prior = knowledge_graph.begin_answer_event(answer_event_id, event_payload)
+            if prior is not None and prior.get("denoiser_updates") is not None:
+                return dict(prior["denoiser_updates"])
+        explicit_disposition = None
+        if isinstance(question, dict):
+            explicit_disposition = question.get("disposition") or question.get("answer_disposition")
+        if explicit_disposition in (None, "") and isinstance(source_context, dict):
+            explicit_disposition = source_context.get("disposition") or source_context.get("answer_disposition")
+        # A stored question label cannot turn "I don't know" or a refusal into a fact.
+        answer_disposition = self.classify_answer_disposition(answer)
+        if answer_disposition in self._NON_FACT_DISPOSITIONS:
+            classified_disposition = answer_disposition
+        else:
+            classified_disposition = self.classify_answer_disposition(answer, explicit=explicit_disposition)
+        if isinstance(question, dict) and str(question.get('type') or '').strip().lower() == 'legal_context':
+            updates = self._process_legal_context_answer(
+                question, answer, knowledge_graph, source_context,
+                classified_disposition, factual_action=factual_action,
+            )
+            self.questions_asked.append({'question': question, 'answer': answer,
+                                         'answer_event_id': answer_event_id,
+                                         'disposition': updates['disposition'],
+                                         'creates_fact': False, 'satisfies_requirement': False})
+            if answer_event_id and knowledge_graph is not None:
+                knowledge_graph.finish_answer_event(answer_event_id, event_payload,
+                                                    denoiser_updates=dict(updates))
+            return updates
+        if classified_disposition in self._NON_FACT_DISPOSITIONS:
+            record = self.record_question_disposition(
+                question if isinstance(question, dict) else {},
+                answer,
+                disposition=classified_disposition,
+                intake_case_file=(source_context or {}).get("intake_case_file") if isinstance(source_context, dict) else None,
+            )
+            updates = self._non_fact_answer_updates(classified_disposition, record)
+            self.questions_asked.append({
+                'question': question,
+                'answer': answer,
+                'answer_event_id': answer_event_id,
+                'disposition': classified_disposition,
+                'creates_fact': False,
+                'satisfies_requirement': False,
+                'contradictory_conclusion': False,
+            })
+            if answer_event_id and knowledge_graph is not None:
+                knowledge_graph.finish_answer_event(
+                    answer_event_id,
+                    event_payload,
+                    denoiser_updates=dict(updates),
+                )
+            return updates
+        if factual_action:
+            updates = self._process_factual_revision(
+                question,
+                answer,
+                knowledge_graph,
+                dependency_graph=dependency_graph,
+                factual_action=factual_action,
+                source_context=source_context,
+                supersedes_stable_id=supersedes_stable_id,
+                retracts_stable_id=retracts_stable_id,
+                contradicts_stable_id=contradicts_stable_id,
+                answer_event_id=answer_event_id,
+            )
+            self.questions_asked.append({
+                'question': question,
+                'answer': answer,
+                'answer_event_id': answer_event_id,
+                'factual_action': factual_action,
+            })
+            if answer_event_id and knowledge_graph is not None:
+                knowledge_graph.finish_answer_event(
+                    answer_event_id,
+                    event_payload,
+                    denoiser_updates=dict(updates),
+                )
+            return updates
+
         self.questions_asked.append({
             'question': question,
             'answer': answer
@@ -4953,6 +6964,21 @@ class ComplaintDenoiser:
             _mark_dependency_gap_satisfied()
 
         logger.info(f"Processed answer: {updates}")
+        answered_record = self.record_question_disposition(
+            question if isinstance(question, dict) else {},
+            answer,
+            disposition="answered",
+            intake_case_file=(source_context or {}).get("intake_case_file") if isinstance(source_context, dict) else None,
+            creates_fact=bool(updates.get("entities_updated") or updates.get("relationships_added")),
+            satisfies_requirement=bool(updates.get("requirements_satisfied")),
+            contradictory_conclusion=False,
+        )
+        updates["disposition"] = "answered"
+        updates["creates_fact"] = answered_record["creates_fact"]
+        updates["satisfies_requirement"] = bool(updates.get("requirements_satisfied"))
+        updates["contradictory_conclusion"] = False
+        updates["question_disposition"] = answered_record
+        self.questions_asked[-1]["disposition"] = "answered"
 
         try:
             gain = self._compute_gain(updates)
@@ -4964,7 +6990,214 @@ class ComplaintDenoiser:
         except Exception:
             pass
 
+        if answer_event_id and knowledge_graph is not None:
+            knowledge_graph.finish_answer_event(
+                answer_event_id,
+                event_payload,
+                denoiser_updates=dict(updates),
+            )
         return updates
+
+    def _process_factual_revision(
+        self,
+        question: Dict[str, Any],
+        answer: str,
+        knowledge_graph: KnowledgeGraph,
+        *,
+        dependency_graph: Optional[DependencyGraph] = None,
+        factual_action: str,
+        source_context: Optional[Dict[str, Any]],
+        supersedes_stable_id: Optional[str],
+        retracts_stable_id: Optional[str],
+        contradicts_stable_id: Optional[str],
+        answer_event_id: Optional[str],
+    ) -> Dict[str, Any]:
+        """Append a sourced correction, retraction, or contradiction without editing history."""
+        from integrations.ipfs_datasets.types import build_user_assertion_envelope, locate_unique_byte_span
+
+        action = str(factual_action or "").strip().lower()
+        if action not in {"assert", "correct", "retract", "contradict"}:
+            raise ValueError(f"unsupported factual action {factual_action}")
+        context = dict(source_context or {})
+        source_text = context.get("source_text")
+        if not isinstance(source_text, str) or source_text == "":
+            raise ValueError("a factual revision requires a new validated user source")
+        span = context.get("source_span") if isinstance(context.get("source_span"), dict) else None
+        if span is None:
+            located = locate_unique_byte_span(source_text, str(answer or ""))
+            if located.deficiency or located.start is None or located.end is None:
+                raise ValueError(located.deficiency or "missing_source_span")
+            span = {"start": located.start, "end": located.end, "text": located.text}
+        envelope = build_user_assertion_envelope(
+            source_text=source_text,
+            source_kind=str(context.get("source_kind") or ""),
+            source_id=str(context.get("source_id") or ""),
+            message_id=str(context.get("message_id") or ""),
+            document_id=str(context.get("document_id") or ""),
+            assertion_status=str(context.get("assertion_status") or ""),
+            extractor_version=str(context.get("extractor_version") or ""),
+            source_hash=str(context.get("source_hash") or ""),
+            source_span=span,
+            role="fact",
+            subject_key=str(context.get("subject_key") or "fact"),
+            confidence=context.get("confidence"),
+        )
+        if not envelope.is_asserted_user_fact:
+            raise ValueError(
+                "a factual revision requires its own validated user source: "
+                + ",".join(envelope.deficiencies)
+            )
+        target_id = {
+            "correct": supersedes_stable_id,
+            "retract": retracts_stable_id,
+            "contradict": contradicts_stable_id,
+        }.get(action)
+        previous = None
+        if action != "assert":
+            # All source and target admission precedes entity/ledger mutation.
+            previous = knowledge_graph.require_revision_target(target_id or "", envelope)
+        span_text = envelope.source_span_text
+        from integrations.ipfs_datasets.graphs import classify_epistemic_class
+        question_context = question.get("context") if isinstance(question.get("context"), dict) else {}
+        requested_class = str(question_context.get("epistemic_class") or "")
+        if requested_class == "legal_authority":
+            requested_class = ""
+        epistemic_class = classify_epistemic_class(span_text, explicit=requested_class)
+        entity = Entity(
+            id=self._next_entity_id(knowledge_graph),
+            type="fact",
+            name=span_text,
+            attributes={
+                "description": span_text,
+                "fact_type": str((question.get("context") or {}).get("fact_type") or "clarification")
+                if isinstance(question.get("context"), dict) else "clarification",
+                "factual_action": action,
+                "epistemic_class": epistemic_class,
+                "value_status": "contradiction" if action == "contradict" else "stated",
+            },
+            confidence=float(envelope.confidence if envelope.confidence is not None else 1.0),
+            source="complaint",
+            provenance={"user_assertion": envelope.as_dict()},
+        )
+        knowledge_graph.add_entity(entity)
+        knowledge_graph.register_assertion(entity, envelope, status="active", event_id=answer_event_id or "")
+        updates = {
+            "entities_updated": 1,
+            "relationships_added": 0,
+            "requirements_satisfied": 0,
+            "factual_action": action,
+            "stable_id": envelope.stable_id,
+            "entity_id": entity.id,
+            "invalidated_support": [],
+        }
+        if action == "correct":
+            if not supersedes_stable_id:
+                raise ValueError("correction requires the assertion it supersedes")
+            revision = knowledge_graph.supersede_assertion(
+                supersedes_stable_id,
+                entity,
+                envelope,
+                event_id=answer_event_id or "",
+            )
+            updates["revision"] = revision["revision_index"]
+            updates["superseded_stable_id"] = supersedes_stable_id
+        elif action == "retract":
+            if not retracts_stable_id:
+                raise ValueError("retraction requires the assertion it retracts")
+            revision = knowledge_graph.retract_assertion(
+                retracts_stable_id,
+                entity,
+                envelope,
+                event_id=answer_event_id or "",
+            )
+            updates["revision"] = revision["revision_index"]
+            updates["retracted_stable_id"] = retracts_stable_id
+        elif action == "contradict":
+            if not contradicts_stable_id:
+                raise ValueError("contradiction requires the assertion it conflicts with")
+            prior = knowledge_graph.entity_for_stable_id(contradicts_stable_id)
+            revision = knowledge_graph.record_assertion_conflict(
+                contradicts_stable_id,
+                envelope.stable_id,
+                event_id=answer_event_id or "",
+                left_entity_id=prior.id if prior is not None else "",
+                right_entity_id=entity.id,
+            )
+            updates["revision"] = revision["revision_index"]
+            updates["conflict_stable_ids"] = [contradicts_stable_id, envelope.stable_id]
+        else:
+            knowledge_graph.append_revision({
+                "action": "assert",
+                "event_id": answer_event_id or "",
+                "new_stable_id": envelope.stable_id,
+                "new_entity_id": entity.id,
+                "new_envelope": envelope.as_dict(),
+            })
+        updates["invalidated_support"] = [
+            relationship.id
+            for relationship in knowledge_graph.relationships.values()
+            if (relationship.attributes or {}).get("activity_status") == "invalidated"
+        ]
+        if previous is not None and dependency_graph is not None:
+            updates["dependency_nodes_invalidated"] = self._invalidate_factual_dependency_support(
+                dependency_graph, question, previous, target_id or "", action,
+                answer_event_id or "",
+            )
+        return updates
+
+    @staticmethod
+    def _invalidate_factual_dependency_support(
+        dependency_graph: DependencyGraph, question: Dict[str, Any], previous: Entity,
+        stable_id: str, reason: str, event_id: str,
+    ) -> List[str]:
+        """Reopen dependency state bound to a withdrawn or disputed source."""
+        context = question.get("context") if isinstance(question.get("context"), dict) else {}
+        target_ids = {str(context.get(key) or "") for key in
+                      ("requirement_id", "node_id", "target_element_id")}
+        previous_text = " ".join(str((previous.attributes or {}).get("description") or previous.name).split())
+        invalidated = set()
+        for node in dependency_graph.nodes.values():
+            attrs = node.attributes if isinstance(node.attributes, dict) else {}
+            refs = set()
+            for key in ("source_entity_id", "fact_id", "source_fact_id", "assertion_stable_id"):
+                value = attrs.get(key)
+                if isinstance(value, str):
+                    refs.add(value)
+            for key in ("source_fact_ids", "supporting_fact_ids", "satisfied_fact_bundle", "event_support_refs"):
+                values = attrs.get(key)
+                if isinstance(values, list):
+                    refs.update(value for value in values if isinstance(value, str))
+            answer_text = " ".join(str(attrs.get("satisfied_answer_text") or "").split())
+            if (node.id in target_ids or previous.id in refs or stable_id in refs
+                    or (answer_text and answer_text == previous_text)):
+                invalidated.add(node.id)
+        # Dependents cannot retain derived satisfaction after their premise changes.
+        pending = list(invalidated)
+        while pending:
+            source = pending.pop()
+            for edge in dependency_graph.dependencies.values():
+                kind = getattr(edge.dependency_type, "value", edge.dependency_type)
+                if (kind in {"requires", "supports", "implies", "depends_on"}
+                        and edge.source_id == source and edge.target_id not in invalidated):
+                    invalidated.add(edge.target_id)
+                    pending.append(edge.target_id)
+        for node_id in sorted(invalidated):
+            node = dependency_graph.get_node(node_id)
+            if node is None:
+                continue
+            attrs = copy.deepcopy(node.attributes or {})
+            history = list(attrs.get("factual_support_invalidations") or [])
+            history.append({"event_id": event_id, "source_entity_id": previous.id,
+                "assertion_stable_id": stable_id, "reason": reason,
+                "previous_satisfied": bool(node.satisfied),
+                "previous_satisfied_answer_text": attrs.get("satisfied_answer_text")})
+            attrs["factual_support_invalidations"] = history
+            attrs["support_invalidated"] = True
+            attrs["satisfied_via_denoiser"] = False
+            attrs.pop("satisfied_answer_text", None)
+            node.attributes = attrs
+            node.satisfied = False
+        return sorted(invalidated)
     
     def calculate_noise_level(self, 
                              knowledge_graph: KnowledgeGraph,
@@ -5011,14 +7244,246 @@ class ComplaintDenoiser:
         
         return noise
     
+    INTERVIEW_STOP_STATES = (
+        "needs_answer",
+        "saturated",
+        "deferred_unknown",
+        "provider_unavailable",
+        "cancelled",
+        "limit_reached",
+        "no_progress",
+        "needs_review",
+    )
+    STOPPING_OUTCOMES = (
+        "saturated",
+        "complete",
+        "paused",
+        "awaiting_user",
+        "deferred_needs_evidence",
+        "blocked_provider",
+        "no_progress",
+        "needs_review",
+    )
+    MAX_REPEAT_ATTEMPTS = 3
+    MAX_NO_INFORMATION_ATTEMPTS = 3
+    MAX_MODEL_RETRIES = 2
+    _INCOMPLETE_INTERVIEW_STOPS = frozenset({
+        "needs_answer",
+        "deferred_unknown",
+        "provider_unavailable",
+        "cancelled",
+        "limit_reached",
+        "no_progress",
+        "needs_review",
+    })
+    _PROVIDER_UNAVAILABLE_STATUSES = frozenset({
+        "unavailable",
+        "provider_unavailable",
+        "error",
+        "failed",
+        "timeout",
+        "backend_failure",
+    })
+    _UNKNOWN_DISPOSITIONS = frozenset({"unknown", "deferred"})
+    QUESTION_COUNT_LIMIT = 50
+
     def is_exhausted(self) -> bool:
+        """Return whether the interview itself is saturated.
+
+        An empty question list, a loss plateau, or more than
+        QUESTION_COUNT_LIMIT asked questions is not saturation.
         """
-        Check if we've exhausted the question pool.
-        
-        Returns:
-            True if no more questions can be asked
-        """
-        return len(self.questions_pool) == 0 or len(self.questions_asked) > 50
+        stop = getattr(self, "last_interview_stop", None)
+        return isinstance(stop, dict) and stop.get("state") == "saturated" and bool(stop.get("targets_accounted_for"))
+
+    def assertion_rule_fingerprint(
+        self,
+        knowledge_graph: Optional[KnowledgeGraph] = None,
+        dependency_graph: Optional[DependencyGraph] = None,
+    ) -> str:
+        """Stable fingerprint of assertion and rule truth, excluding wait flags."""
+        entities = []
+        if knowledge_graph is not None:
+            for entity_id in sorted((getattr(knowledge_graph, "entities", {}) or {})):
+                entity = knowledge_graph.entities[entity_id]
+                entities.append({
+                    "id": str(entity_id),
+                    "type": str(getattr(entity, "type", "") or ""),
+                    "name": str(getattr(entity, "name", "") or ""),
+                    "confidence": getattr(entity, "confidence", None),
+                })
+        nodes = []
+        if dependency_graph is not None:
+            for node_id in sorted((getattr(dependency_graph, "nodes", {}) or {})):
+                node = dependency_graph.nodes[node_id]
+                attributes = node.attributes if isinstance(getattr(node, "attributes", None), dict) else {}
+                nodes.append({
+                    "id": str(node_id),
+                    "name": str(getattr(node, "name", "") or ""),
+                    "satisfied": bool(getattr(node, "satisfied", False)),
+                    "value_status": str(attributes.get("value_status") or ""),
+                    "description": str(attributes.get("description") or ""),
+                })
+        dispositions = []
+        for record in self.question_disposition_records:
+            if not isinstance(record, dict):
+                continue
+            dispositions.append({
+                "target_id": str(record.get("target_id") or ""),
+                "target_revision": str(record.get("target_revision") or ""),
+                "disposition": str(record.get("disposition") or ""),
+                "reopened": bool(record.get("reopened")),
+            })
+        payload = {"entities": entities, "nodes": nodes, "dispositions": dispositions}
+        return json.dumps(payload, sort_keys=True, default=str)
+
+    def pause_intentional_user_wait(
+        self,
+        *,
+        reason: str = "user_pause",
+        knowledge_graph: Optional[KnowledgeGraph] = None,
+        dependency_graph: Optional[DependencyGraph] = None,
+    ) -> Dict[str, Any]:
+        """Pause for the user without rewriting assertions, rules, or iterations."""
+        fingerprint = self.assertion_rule_fingerprint(knowledge_graph, dependency_graph)
+        self.intentional_user_wait = {
+            "status": "awaiting_user",
+            "paused": True,
+            "resumed": False,
+            "intentional": True,
+            "awaiting_user": True,
+            "worker_stalled": False,
+            "supervisory_restart": False,
+            "reason": str(reason or "user_pause"),
+            "assertion_rule_fingerprint": fingerprint,
+        }
+        return dict(self.intentional_user_wait)
+
+    def resume_intentional_user_wait(
+        self,
+        *,
+        knowledge_graph: Optional[KnowledgeGraph] = None,
+        dependency_graph: Optional[DependencyGraph] = None,
+    ) -> Dict[str, Any]:
+        """Resume the same user wait. Do not restart supervision or mutate truth."""
+        current = self.assertion_rule_fingerprint(knowledge_graph, dependency_graph)
+        wait = getattr(self, "intentional_user_wait", None)
+        if not isinstance(wait, dict) or not wait.get("intentional"):
+            return {
+                "status": "needs_answer",
+                "paused": False,
+                "resumed": False,
+                "awaiting_user": False,
+                "worker_stalled": False,
+                "supervisory_restart": False,
+                "assertion_rule_changed": False,
+                "error": "no_intentional_wait",
+            }
+        changed = current != wait.get("assertion_rule_fingerprint")
+        resumed = {
+            "status": "awaiting_user",
+            "paused": False,
+            "resumed": not changed,
+            "intentional": True,
+            "awaiting_user": True,
+            "worker_stalled": False,
+            "supervisory_restart": False,
+            "reason": wait.get("reason"),
+            "assertion_rule_fingerprint": wait.get("assertion_rule_fingerprint"),
+            "assertion_rule_changed": changed,
+        }
+        if changed:
+            resumed["error"] = "assertion_rule_changed"
+            return resumed
+        self.intentional_user_wait = resumed
+        return dict(resumed)
+
+    def note_model_retry(self, reason: Any = None) -> int:
+        """Count one model retry. The bound stops the interview without claiming progress."""
+        self.model_retry_count = int(getattr(self, "model_retry_count", 0) or 0) + 1
+        self._last_model_retry_reason = str(reason or "").strip() or None
+        return self.model_retry_count
+
+    def evaluate_interview_stop(
+        self,
+        *,
+        open_questions: Optional[List[Dict[str, Any]]] = None,
+        intake_case_file: Optional[Dict[str, Any]] = None,
+        provider_status: Any = None,
+        cancelled: bool = False,
+        iteration_count: Optional[int] = None,
+        iteration_cap: Optional[int] = None,
+        question_limit: Optional[int] = None,
+        loss_converged: bool = False,
+        pool_empty: Optional[bool] = None,
+        paused: bool = False,
+        needs_review: bool = False,
+        repeat_attempts: Optional[int] = None,
+        no_information_attempts: Optional[int] = None,
+        model_retries: Optional[int] = None,
+        contradictions: Optional[List[Dict[str, Any]]] = None,
+        open_dependencies: Optional[List[Dict[str, Any]]] = None,
+        hook_completed: bool = False,
+        budget_exhausted: bool = False,
+        worker_stalled: bool = False,
+    ) -> Dict[str, Any]:
+        return denoiser_questions.evaluate_interview_stop(
+            self,
+            open_questions=open_questions,
+            intake_case_file=intake_case_file,
+            provider_status=provider_status,
+            cancelled=cancelled,
+            iteration_count=iteration_count,
+            iteration_cap=iteration_cap,
+            question_limit=question_limit,
+            loss_converged=loss_converged,
+            pool_empty=pool_empty,
+            paused=paused,
+            needs_review=needs_review,
+            repeat_attempts=repeat_attempts,
+            no_information_attempts=no_information_attempts,
+            model_retries=model_retries,
+            contradictions=contradictions,
+            open_dependencies=open_dependencies,
+            hook_completed=hook_completed,
+            budget_exhausted=budget_exhausted,
+            worker_stalled=worker_stalled,
+        )
+
+    @staticmethod
+    def _interview_stop_message(state: str, intake_complete: bool) -> str:
+        if state == "saturated" and intake_complete:
+            return (
+                "Relevant answerable targets are resolved. "
+                "This is interview saturation, not filing readiness or legal sufficiency."
+            )
+        if state == "saturated":
+            return (
+                "Relevant answerable targets are resolved or explicitly disposed. "
+                "Unresolved issues remain. Intake is not fully complete and the complaint is not ready to file."
+            )
+        if state == "deferred_unknown":
+            return (
+                "Remaining targets are unknown or deferred. "
+                "Core facts are not complete and the complaint is not ready to file."
+            )
+        if state == "provider_unavailable":
+            return "The interview backend is unavailable. Intake is not complete and the complaint is not ready to file."
+        if state == "cancelled":
+            return "The interview was cancelled. Intake is not complete and the complaint is not ready to file."
+        if state == "limit_reached":
+            return "The interview iteration or question limit was reached. Intake is not complete and the complaint is not ready to file."
+        if state == "no_progress":
+            return (
+                "Repeat, no-information, or model-retry bounds stopped the interview. "
+                "Unresolved issues remain. Intake is not complete and the complaint is not ready to file."
+            )
+        if state == "needs_review":
+            return (
+                "The interview needs review before it can continue. "
+                "Intake is not complete and the complaint is not ready to file."
+            )
+        return "An answerable interview target still needs an answer. Intake is not complete and the complaint is not ready to file."
     
     def generate_evidence_questions(self,
                                    knowledge_graph: KnowledgeGraph,
@@ -5027,290 +7492,15 @@ class ComplaintDenoiser:
                                    alignment_evidence_tasks: Optional[List[Dict[str, Any]]] = None,
                                    evidence_workflow_action_queue: Optional[List[Dict[str, Any]]] = None,
                                    max_questions: int = 5) -> List[Dict[str, Any]]:
-        """
-        Generate denoising questions for evidence phase.
-        
-        Args:
-            knowledge_graph: Current knowledge graph
-            dependency_graph: Current dependency graph
-            evidence_gaps: Identified evidence gaps
-            alignment_evidence_tasks: Shared intake/evidence element tasks to prioritize
-            evidence_workflow_action_queue: Ranked workflow steering actions for evidence follow-up
-            max_questions: Maximum questions to generate
-            
-        Returns:
-            List of evidence-focused denoising questions
-        """
-        questions = []
-
-        prioritized_tasks = (
-            alignment_evidence_tasks
-            if isinstance(alignment_evidence_tasks, list)
-            else []
+        return denoiser_questions.generate_evidence_questions(
+            self,
+            knowledge_graph,
+            dependency_graph,
+            evidence_gaps,
+            alignment_evidence_tasks,
+            evidence_workflow_action_queue,
+            max_questions,
         )
-        workflow_actions = (
-            evidence_workflow_action_queue
-            if isinstance(evidence_workflow_action_queue, list)
-            else []
-        )
-        priority_workflow_actions = []
-        remaining_workflow_actions = []
-        for action in workflow_actions:
-            if not isinstance(action, dict):
-                continue
-            action_code = str(action.get('action_code') or '').strip().lower()
-            if (
-                action_code in {'refine_document_grounding_strategy', 'retarget_document_grounding'}
-                and (
-                    bool(action.get('learned_support_lane_priority'))
-                    or str(action.get('learned_support_kind') or '').strip()
-                )
-            ):
-                priority_workflow_actions.append(action)
-            else:
-                remaining_workflow_actions.append(action)
-
-        ordered_workflow_actions = [*priority_workflow_actions, *remaining_workflow_actions]
-
-        def _append_workflow_action_question(action: Dict[str, Any]) -> None:
-            if len(questions) >= max_questions:
-                return
-            phase_name = str(action.get('phase_name') or '').strip().lower()
-            if phase_name not in {'graph_analysis', 'document_generation', 'evidence_collection', 'cross_phase'}:
-                return
-            action_code = str(action.get('action_code') or '').strip().lower()
-            focus_areas = [
-                str(item).strip()
-                for item in (action.get('focus_areas') or [])
-                if str(item).strip()
-            ]
-            action_text = str(action.get('action') or '').strip()
-            if not action_text:
-                return
-            claim_type = str(action.get('claim_type') or 'this claim').strip()
-            original_claim_element_id = str(action.get('claim_element_id') or '').strip()
-            suggested_claim_element_id = str(action.get('suggested_claim_element_id') or '').strip()
-            claim_element_id = (
-                suggested_claim_element_id
-                if action_code == 'retarget_document_grounding' and suggested_claim_element_id
-                else original_claim_element_id
-            )
-            claim_element_label = str(
-                action.get('claim_element_label')
-                or claim_element_id
-                or (focus_areas[0] if focus_areas else 'this issue')
-            ).strip()
-            preferred_support_kind = str(action.get('preferred_support_kind') or '').strip().lower()
-            missing_fact_bundle = [
-                str(item).strip()
-                for item in (action.get('missing_fact_bundle') or [])
-                if str(item).strip()
-            ]
-            if action_code == 'recover_document_grounding':
-                bundle_hint = (
-                    f" I still need grounding facts about {missing_fact_bundle[0]}."
-                    if missing_fact_bundle
-                    else ''
-                )
-                if preferred_support_kind == 'authority':
-                    question_text = (
-                        f"What legal authority, policy, or official document can ground "
-                        f"{claim_element_label} for {claim_type}?{bundle_hint}"
-                    )
-                elif preferred_support_kind == 'testimony':
-                    question_text = (
-                        f"What first-hand testimony or witness detail can ground "
-                        f"{claim_element_label} for {claim_type}?{bundle_hint}"
-                    )
-                else:
-                    question_text = (
-                        f"What evidence would best ground {claim_element_label} for {claim_type}?{bundle_hint}"
-                    )
-            elif action_code in {'refine_document_grounding_strategy', 'retarget_document_grounding'}:
-                suggested_support_kind = str(action.get('suggested_support_kind') or '').strip().lower()
-                alternate_support_kinds = [
-                    str(item).strip().lower()
-                    for item in (action.get('alternate_support_kinds') or [])
-                    if str(item).strip()
-                ]
-                next_lane = suggested_support_kind or (alternate_support_kinds[0] if alternate_support_kinds else '')
-                if action_code == 'retarget_document_grounding':
-                    bundle_hint = (
-                        f" Focus especially on {missing_fact_bundle[0]}."
-                        if missing_fact_bundle
-                        else ''
-                    )
-                    retarget_hint = (
-                        f" Instead of staying on {original_claim_element_id.replace('_', ' ')}, "
-                        if suggested_claim_element_id and original_claim_element_id and suggested_claim_element_id != original_claim_element_id
-                        else ''
-                    )
-                    question_text = (
-                        f"The learned {next_lane or 'support'} lane still did not improve grounding enough. "
-                        f"{retarget_hint}what more specific fact, date, witness detail, or document can narrow the grounding gap "
-                        f"for {claim_element_label} in {claim_type}?{bundle_hint}"
-                    )
-                elif next_lane == 'authority':
-                    question_text = (
-                        f"The last grounding pass did not improve enough. What legal authority, policy, or official document can better ground "
-                        f"{claim_element_label} for {claim_type}?"
-                    )
-                elif next_lane == 'testimony':
-                    question_text = (
-                        f"The last grounding pass did not improve enough. What first-hand testimony or witness detail can better ground "
-                        f"{claim_element_label} for {claim_type}?"
-                    )
-                else:
-                    question_text = (
-                        f"The last grounding pass did not improve enough. What stronger evidence can better ground "
-                        f"{claim_element_label} for {claim_type}?"
-                    )
-            else:
-                question_text = (
-                    f"What evidence would best help us {action_text.lower()}"
-                    + (f" Focus first on {focus_areas[0]}." if focus_areas else "")
-                )
-            questions.append({
-                'question': self._with_empathy(question_text, 'evidence_clarification'),
-                'type': 'evidence_clarification',
-                'context': {
-                    'workflow_action': True,
-                    'workflow_phase': phase_name,
-                    'workflow_rank': int(action.get('rank', 0) or 0),
-                    'workflow_focus_areas': focus_areas,
-                    'action_code': action_code,
-                    'claim_type': claim_type,
-                    'claim_element_id': claim_element_id,
-                    'original_claim_element_id': original_claim_element_id,
-                    'suggested_claim_element_id': suggested_claim_element_id,
-                    'claim_element_label': claim_element_label,
-                    'preferred_support_kind': preferred_support_kind,
-                    'learned_support_kind': str(action.get('learned_support_kind') or '').strip().lower(),
-                    'suggested_support_kind': str(action.get('suggested_support_kind') or '').strip().lower(),
-                    'alternate_support_kinds': list(action.get('alternate_support_kinds') or []),
-                    'missing_fact_bundle': missing_fact_bundle,
-                    'document_grounding_recovery': action_code == 'recover_document_grounding',
-                    'document_grounding_strategy_refinement': action_code == 'refine_document_grounding_strategy',
-                    'document_grounding_retargeting': action_code == 'retarget_document_grounding',
-                    'learned_support_lane_priority': bool(action.get('learned_support_lane_priority')),
-                },
-                'priority': 'high',
-                'proof_priority': 0,
-            })
-
-        for action in priority_workflow_actions:
-            _append_workflow_action_question(action)
-
-        for task in prioritized_tasks[:max_questions]:
-            if len(questions) >= max_questions:
-                break
-            if not isinstance(task, dict):
-                continue
-            claim_type = str(task.get('claim_type') or 'this claim').strip()
-            claim_element_id = str(task.get('claim_element_id') or '').strip()
-            claim_element_label = str(
-                task.get('claim_element_label')
-                or claim_element_id
-                or 'this issue'
-            ).strip()
-            support_status = str(task.get('support_status') or '').strip().lower()
-            action = str(task.get('action') or 'fill_evidence_gaps').strip().lower()
-            preferred_support_kind = str(task.get('preferred_support_kind') or '').strip().lower()
-            preferred_evidence_classes = [
-                str(item).strip().replace('_', ' ')
-                for item in (task.get('preferred_evidence_classes') or [])
-                if str(item).strip()
-            ]
-            missing_fact_bundle = [
-                str(item).strip()
-                for item in (task.get('missing_fact_bundle') or [])
-                if str(item).strip()
-            ]
-            recommended_queries = [
-                str(item).strip()
-                for item in (task.get('recommended_queries') or [])
-                if str(item).strip()
-            ]
-            evidence_hint = ''
-            if preferred_evidence_classes:
-                evidence_hint = f" such as {', '.join(preferred_evidence_classes[:3])}"
-            bundle_hint = f" I still need facts about {missing_fact_bundle[0]}." if missing_fact_bundle else ''
-            if support_status == 'contradicted' or action == 'resolve_support_conflicts':
-                question_text = (
-                    f"What evidence best resolves the conflict around {claim_element_label} "
-                    f"for {claim_type}?{bundle_hint}"
-                )
-                question_type = 'evidence_conflict'
-                priority = 'high'
-            else:
-                if preferred_support_kind == 'authority':
-                    question_text = (
-                        f"What legal authority or official policy material do you have to support "
-                        f"{claim_element_label} for {claim_type}?{bundle_hint}"
-                    )
-                elif preferred_support_kind == 'testimony':
-                    question_text = (
-                        f"What first-hand testimony or witness account can support {claim_element_label} "
-                        f"for {claim_type}?{bundle_hint}"
-                    )
-                else:
-                    question_text = (
-                        f"What evidence{evidence_hint} do you have to support {claim_element_label} "
-                        f"for {claim_type}?{bundle_hint}"
-                    )
-                question_type = 'evidence_clarification'
-                priority = 'high' if bool(task.get('blocking')) else 'medium'
-            questions.append({
-                'type': question_type,
-                'question': question_text,
-                'context': {
-                    'claim_type': claim_type,
-                    'claim_element_id': claim_element_id,
-                    'claim_element_label': claim_element_label,
-                    'support_status': support_status,
-                    'alignment_task': True,
-                    'preferred_support_kind': preferred_support_kind,
-                    'preferred_evidence_classes': list(task.get('preferred_evidence_classes') or []),
-                    'missing_fact_bundle': list(task.get('missing_fact_bundle') or []),
-                    'success_criteria': list(task.get('success_criteria') or []),
-                    'recommended_queries': recommended_queries,
-                },
-                'priority': priority,
-            })
-
-        for action in remaining_workflow_actions:
-            _append_workflow_action_question(action)
-
-        # Questions about missing evidence
-        remaining_slots = max(0, max_questions - len(questions))
-        for gap in evidence_gaps[:remaining_slots]:
-            questions.append({
-                'type': 'evidence_clarification',
-                'question': f"Do you have evidence to support: {gap.get('name', 'this claim')}?",
-                'context': {
-                    'gap_id': gap.get('id'),
-                    'claim_id': gap.get('related_claim'),
-                    'gap_type': gap.get('type', 'missing_evidence')
-                },
-                'priority': 'high'
-            })
-        
-        # Questions about evidence quality/completeness
-        evidence_entities = knowledge_graph.get_entities_by_type('evidence')
-        for evidence in evidence_entities[:max(0, max_questions - len(questions))]:
-            if evidence.confidence < 0.7:
-                questions.append({
-                    'type': 'evidence_quality',
-                    'question': f"Can you provide more details about this evidence: {evidence.name}?",
-                    'context': {
-                        'evidence_id': evidence.id,
-                        'evidence_name': evidence.name,
-                        'confidence': evidence.confidence
-                    },
-                    'priority': 'medium'
-                })
-        
-        return questions[:max_questions]
     
     def generate_legal_matching_questions(self,
                                          matching_results: Dict[str, Any],

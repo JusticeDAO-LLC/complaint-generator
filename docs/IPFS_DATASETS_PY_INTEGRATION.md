@@ -36,6 +36,15 @@ The `ipfs_datasets_py` integration should improve complaint-generator in five co
 4. Improve retrieval quality with archival, graph, and eventually vector and GraphRAG signals.
 5. Enable formal validation and contradiction analysis once graph and predicate layers mature.
 
+## Current boundary (2026-10-19)
+
+The datasets checkout is `external/ipfs_datasets_py`. Production imports stay in `integrations/ipfs_datasets/`.
+
+- Inference routers are owned by `external/ipfs_accelerate_py` through `integrations/ipfs_accelerate/routers.py`. The datasets `llm_router`, `embeddings_router`, and `multimodal_router` modules are compatibility aliases.
+- Content-addressed storage is owned by `external/ipfs_kit_py` through `integrations/ipfs_datasets/storage.py`. The datasets IPFS backend router remains the bridge. `COMPLAINT_GENERATOR_ENABLE_IPFS_KIT=1` turns on the kit backend. Otherwise storage uses the datasets router, then the local cache when that router is missing.
+- Knowledge graphs, legal datasets, multimedia, and logic stay in datasets. Graph writes use `knowledge_graphs.Client`. Logic uses `logic.fol`, `logic.deontic`, `logic.integration`, `logic.external_provers`, and `logic.TDFOL`.
+- Long-running evidence, draft-repair, and graph-refresh jobs can use `integrations/ipfs_accelerate/supervisor.py`. Those jobs are not on the HTTP or chat request path.
+
 ## Current Production Boundary
 
 All production-facing `ipfs_datasets_py` usage should flow through these adapter modules:

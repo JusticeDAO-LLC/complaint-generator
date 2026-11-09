@@ -1,0 +1,126 @@
+.complaint-facts {
+    margin: 0 0 18px;
+    padding: 16px;
+    border: 1px solid #d6d3d1;
+    border-radius: 16px;
+    background: #fffaf3;
+    color: #1c1917;
+    min-width: 0;
+}
+
+.complaint-facts h2,
+.complaint-facts h3 {
+    margin: 0 0 8px;
+}
+
+.complaint-facts-modes,
+.complaint-facts-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.complaint-facts button,
+.complaint-facts input,
+.complaint-facts textarea {
+    min-height: 44px;
+    font: inherit;
+}
+
+.complaint-facts-modes button[aria-pressed="true"] {
+    background: #1f4b3a;
+    color: #f8faf6;
+    border-color: #1f4b3a;
+}
+
+.complaint-facts-list,
+.complaint-facts-timeline,
+.complaint-facts-graph,
+.complaint-facts-questions {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    min-width: 0;
+}
+
+.complaint-facts-timeline {
+    border-left: 3px solid #1f4b3a;
+    padding-left: 12px;
+}
+
+.complaint-facts-fact,
+.complaint-facts-question,
+.complaint-facts-provenance,
+.complaint-facts-state {
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid #d6d3d1;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.complaint-facts-fact {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    text-align: left;
+}
+
+.complaint-facts-fact[aria-pressed="true"] {
+    border-color: #1f4b3a;
+    background: #e7f2ec;
+}
+
+.complaint-facts-provenance dl {
+    display: grid;
+    grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr);
+    gap: 6px 12px;
+    margin: 0 0 12px;
+}
+
+.complaint-facts-provenance dt {
+    font-weight: 700;
+}
+
+.complaint-facts-provenance dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.complaint-facts label {
+    display: grid;
+    gap: 4px;
+    font-weight: 700;
+    margin-top: 8px;
+}
+
+.complaint-facts input,
+.complaint-facts textarea {
+    width: 100%;
+    min-width: 0;
+}
+
+.complaint-facts-graph-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+@media (max-width: 700px) {
+    .complaint-facts-provenance dl {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .complaint-facts *,
+    .complaint-facts *::before,
+    .complaint-facts *::after {
+        scroll-behavior: auto !important;
+        transition: none !important;
+        animation: none !important;
+    }
+}

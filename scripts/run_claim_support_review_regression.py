@@ -15,9 +15,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BASE_TESTS = [
     "tests/test_complaint_generator_package.py",
     "tests/test_complaint_generator_package_surface.py",
+    "tests/test_t1_t3_temporal_next_steps.py",
+    "tests/test_temporal_rule_profiles.py",
     "tests/test_claim_support_hooks.py",
     "tests/test_review_api.py",
     "tests/test_claim_support_review_dashboard_flow.py",
+    "tests/test_mediator_three_phase.py",
+    "tests/test_intake_status.py",
     "tests/test_backfill_claim_testimony_links_cli.py",
     "tests/test_claim_support_review_template.py",
 ]
@@ -63,6 +67,7 @@ def playwright_chromium_available() -> bool:
     except Exception:
         return False
 
+    playwright = None
     try:
         playwright = sync_playwright().start()
         executable_path = Path(playwright.chromium.executable_path)
@@ -70,10 +75,8 @@ def playwright_chromium_available() -> bool:
     except Exception:
         return False
     finally:
-        try:
+        if playwright is not None:
             playwright.stop()
-        except Exception:
-            pass
 
 
 def resolve_test_targets(

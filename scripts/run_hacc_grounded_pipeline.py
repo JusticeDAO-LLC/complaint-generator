@@ -24,9 +24,6 @@ MASTER_EMAIL_MANIFEST_PATH = MASTER_EMAIL_IMPORT_DIR / "email_import_manifest.js
 MASTER_EMAIL_GRAPHRAG_SUMMARY_PATH = MASTER_EMAIL_IMPORT_DIR / "graphrag" / "email_graphrag_summary.json"
 MASTER_EMAIL_DUCKDB_PATH = MASTER_EMAIL_IMPORT_DIR / "graphrag" / "duckdb" / "email_search.duckdb"
 
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
 
 def _json_safe(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)) or value is None:
@@ -41,17 +38,24 @@ def _json_safe(value: Any) -> Any:
 
 
 def _load_hacc_engine() -> Any:
-    if str(HACC_REPO_ROOT) not in sys.path:
-        sys.path.insert(0, str(HACC_REPO_ROOT))
-    hacc_research = importlib.import_module("hacc_research")
+    """Load the installed HACC engine without modifying interpreter search paths."""
+
+    try:
+        hacc_research = importlib.import_module("hacc_research")
+    except ModuleNotFoundError as exc:
+        if exc.name != "hacc_research":
+            raise
+        raise RuntimeError(
+            "The HACC engine is not importable. Install the HACC project in the "
+            "active environment before running the grounded pipeline."
+        ) from exc
     return getattr(hacc_research, "HACCResearchEngine")
 
 
 def _load_complaint_synthesis_module() -> Any:
-    scripts_dir = PROJECT_ROOT / "scripts"
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
-    return importlib.import_module("synthesize_hacc_complaint")
+    """Load the repository synthesis entrypoint through its module name."""
+
+    return importlib.import_module("scripts.synthesize_hacc_complaint")
 
 
 def _load_query_specs(preset: str) -> list[dict[str, Any]]:
@@ -121,7 +125,8 @@ def _run_adversarial_report(
 ) -> Dict[str, Any]:
     command = [
         sys.executable,
-        str(PROJECT_ROOT / "scripts" / "run_hacc_adversarial_report.py"),
+        "-m",
+        "scripts.run_hacc_adversarial_report",
         "--preset",
         preset,
         "--num-sessions",

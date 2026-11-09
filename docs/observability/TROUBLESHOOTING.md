@@ -5,11 +5,214 @@
 This guide helps diagnose and resolve common issues with Prometheus metrics, OpenTelemetry tracing, circuit breaker integration, and the complete observability stack.
 
 **Quick Reference:**
+- [Long-Running Automation Stalls](#long-running-automation-stalls)
 - [Metrics Not Appearing](#metrics-not-appearing)
 - [High Memory Usage](#high-memory-usage)
 - [Missing Traces](#missing-traces)
 - [Circuit Breaker Issues](#circuit-breaker-issues)
 - [Integration Problems](#integration-problems)
+
+---
+
+## Long-Running Automation Stalls
+
+### Symptom: a daemon says running but work no longer advances
+
+Start with the daemon's status command. Do not infer liveness from the presence
+of a PID file alone, and do not infer a stall from a stable cycle count alone.
+UI optimization and Gmail import cycles may legitimately spend their configured
+poll interval in `sleeping`; error retries may spend the configured retry
+interval in a backoff phase.
+
+```bash
+# Refactor supervisor
+python scripts/refactor_agent_supervisor.py status
+
+# UI optimizer (use the same --artifact-root if it was overridden at start)
+python -m complaint_generator.ui_optimizer_daemon status \
+  --user-id <user-id> --json
+
+# Gmail/DuckDB importer (use the same --duckdb-output-dir if overridden)
+python scripts/gmail_duckdb_daemon.py status \
+  --user-id <user-id> --json
+```
+
+Read these fields together:
+
+- Common fields: `status`, `pid`, `updated_at`, `artifacts`, and `last_error`.
+- Refactor supervisor: `pid_alive`, `heartbeat_age_seconds`, `counts.queue`,
+  `counts.todo`, `cycle`, `last_seed`, `next_tasks`, `parallel_scheduler`, and
+  `parallel_lanes`. Its status command changes a nominal running state to
+  `stale` when its PID file no longer identifies a live process.
+- UI optimizer: top-level `running`, then `status_payload.phase`,
+  `phase_elapsed_seconds`, `cycle_count`, `consecutive_errors`, `last_result`,
+  and `recommendation_coverage`.
+- Gmail importer: top-level `running`, then `status_payload.phase`,
+  `cycle_count`, `consecutive_errors`, `last_result`, and `progress_summary`.
+  Compare `progress_updated_at`, `checkpoint_updated_at`, `eml_file_count`, and
+  `estimated_remaining_messages` across checks.
+
+The refactor supervisor queue is
+`data/refactor_supervisor/refactor_taskboard.duckdb`. UI and Gmail daemons do not
+use that queue. UI's latest completed cycle is under
+`status_payload.last_result`; Gmail's resumable work is in the checkpoint and
+progress files named by `status_payload.artifacts`. The agentic scraper is an
+in-process component and has no standalone PID, log, status, or queue file; the
+host application must persist `ScraperDaemon.status_payload()` if it needs a
+durable handoff.
+
+### Locate logs and verify the process
+
+Prefer the paths reported in `artifacts` because command-line overrides replace
+the defaults. Without overrides, the files are:
+
+| Automation | PID file | Status file | Log file | Queue/resume state |
+|------------|----------|-------------|----------|--------------------|
+| Refactor supervisor | `data/refactor_supervisor/refactor_supervisor.pid` | `data/refactor_supervisor/refactor_supervisor_status.json` | `data/refactor_supervisor/refactor_supervisor.log` | `data/refactor_supervisor/refactor_taskboard.duckdb` |
+| UI optimizer | `artifacts/ui-optimizer-daemon/<user-id>/ui_optimizer_daemon.pid` | Same directory, `ui_optimizer_daemon_status.json` | Same directory, `ui_optimizer_daemon.log` | No queue; `artifacts.cycle_manifest_path` identifies the last cycle |
+| Gmail/DuckDB importer | `output/email_duckdb/<user-id>/gmail_duckdb_daemon.pid` | Same directory, `gmail_duckdb_daemon_status.json` | Same directory, `gmail_duckdb_daemon.log` | No queue; use `artifacts.checkpoint_path` and `artifacts.progress_path` |
+
+Background `start` commands redirect process output to these log files.
+Foreground `run` commands write process output to the controlling terminal, so
+an empty or absent log file is not evidence of a stalled foreground process.
+
+Inspect the exact PID and recent log without changing runtime state:
+
+```bash
+PID_FILE='<path reported as artifacts.pid_file>'
+LOG_FILE='<path reported as artifacts.log_file>'
+
+if test -s "$PID_FILE"; then
+  DAEMON_PID="$(tr -d '[:space:]' < "$PID_FILE")"
+  ps -p "$DAEMON_PID" -o pid=,ppid=,stat=,etime=,args=
+fi
+tail -n 200 "$LOG_FILE"
+```
+
+Treat a status snapshot as stale when the recorded PID is not live, or when a
+live matching process has stopped refreshing status beyond its expected
+heartbeat/operation window. UI and Gmail status writers refresh roughly every
+15 seconds. For the refactor supervisor, use its reported
+`heartbeat_age_seconds` and configured supervisor interval. A long-running
+implementation or validation may legitimately exceed a normal refill interval,
+so also inspect the task/lane log and active worker before recovery.
+
+Never send a signal based only on an old numeric PID: operating systems can
+reuse PIDs. Confirm that the command printed by `ps` belongs to the expected
+daemon, user ID, state directory, and artifact root.
+
+### Clean recovery for a stale daemon
+
+1. Save the current status and the last 200 log lines for diagnosis.
+2. Request a clean stop with the daemon's CLI.
+3. Confirm the CLI reports the process stopped and `ps` no longer shows the
+   expected daemon. The refactor `stop` command also stops its managed worker.
+4. Only after confirming no matching process is alive, remove a malformed or
+   dead-process PID file if the daemon did not clean it up itself.
+5. Restart with the original root/path and scheduling options, then verify that
+   `updated_at` advances and `last_error` is clear or understood.
+
+```bash
+# Refactor supervisor
+python scripts/refactor_agent_supervisor.py stop
+python scripts/refactor_agent_supervisor.py start
+python scripts/refactor_agent_supervisor.py status
+
+# UI optimizer
+python -m complaint_generator.ui_optimizer_daemon stop \
+  --user-id <user-id> --json
+python -m complaint_generator.ui_optimizer_daemon start \
+  --user-id <user-id> <original-start-options> --json
+
+# Gmail/DuckDB importer
+python scripts/gmail_duckdb_daemon.py stop --user-id <user-id> --json
+python scripts/gmail_duckdb_daemon.py start \
+  --user-id <user-id> <original-source-and-auth-options> --json
+```
+
+For a parallel refactor scheduler, use
+`python scripts/refactor_agent_supervisor.py stop-parallel` and restart with the
+original `start-parallel` options. Do not run the serial `start` and
+`start-parallel` recovery paths simultaneously unless the deployment was
+deliberately configured that way.
+
+### Recover a stale refactor queue task
+
+A `counts.queue.running` value greater than zero is not sufficient evidence of
+a stale task. First establish all of the following:
+
+- the supervisor or lane that owned the row is stopped;
+- no implementation, validation, or merge process is still using the task's
+  worktree;
+- the task's `updated_at` is older than the applicable implementation timeout;
+- its `assigned_worker` no longer corresponds to a live worker; and
+- the lane log and `data/refactor_supervisor/events.jsonl` show no new progress.
+
+List running queue rows read-only. This uses the same task type filter as the
+refactor supervisor and prints ISO timestamps so age is easy to assess:
+
+```bash
+PYTHONPATH=ipfs_datasets_py/ipfs_accelerate_py python - <<'PY'
+from datetime import UTC, datetime
+from ipfs_accelerate_py.p2p_tasks import TaskQueue
+
+queue = TaskQueue("data/refactor_supervisor/refactor_taskboard.duckdb")
+try:
+    for item in queue.list(
+        status="running", limit=1000, task_types=("codex.todo_bundle",)
+    ):
+        updated = datetime.fromtimestamp(float(item["updated_at"]), tz=UTC)
+        print(item["task_id"], item["assigned_worker"], updated.isoformat())
+finally:
+    queue.close()
+PY
+```
+
+The implementation supervisor repairs dead active-execution markers during its
+next maintenance cycle. Prefer a clean stop/start and recheck status before
+manually releasing a queue row. If the row remains `running` after the owning
+worker is confirmed dead, release exactly that row back to `queued` with its
+recorded worker ID:
+
+```bash
+STALE_TASK_ID='<exact task_id from the read-only listing>'
+STALE_WORKER_ID='<exact assigned_worker from the listing>'
+export STALE_TASK_ID STALE_WORKER_ID
+
+PYTHONPATH=ipfs_datasets_py/ipfs_accelerate_py python - <<'PY'
+import os
+from ipfs_accelerate_py.p2p_tasks import TaskQueue
+
+task_id = os.environ["STALE_TASK_ID"]
+worker_id = os.environ["STALE_WORKER_ID"]
+queue = TaskQueue("data/refactor_supervisor/refactor_taskboard.duckdb")
+try:
+    before = queue.get(task_id)
+    if not before:
+        raise SystemExit(f"task not found: {task_id}")
+    if before.get("status") != "running":
+        raise SystemExit(f"task is no longer running: {before.get('status')}")
+    if before.get("assigned_worker") != worker_id:
+        raise SystemExit("assigned worker changed; refusing to release")
+    queue.release(
+        task_id=task_id,
+        worker_id=worker_id,
+        reason="operator_recovery_after_confirmed_dead_worker",
+    )
+    after = queue.get(task_id)
+    if not after or after.get("status") != "queued":
+        raise SystemExit("release did not transition the task to queued")
+    print(f"released {task_id} from {worker_id}; status=queued")
+finally:
+    queue.close()
+PY
+```
+
+Release one verified row at a time. Do not edit the DuckDB file directly, do not
+delete it, and do not release a row owned by a live worker; doing so can execute
+the same task twice. Restart the same scheduler mode that previously owned the
+task and confirm that `queue_counts.running`, `queue_counts.queued`, the task's
+`updated_at`, and the relevant lane log begin moving again.
 
 ---
 

@@ -1,5 +1,12 @@
 import sys
 
+import pytest
+
+pytestmark = [
+    pytest.mark.no_auto_llm,
+    pytest.mark.no_auto_heavy,
+]
+
 from integrations.ipfs_datasets.loader import import_module_optional
 
 
@@ -12,4 +19,7 @@ def test_import_module_optional_can_resolve_vendored_llm_router_from_shadowed_re
 
     assert error is None
     assert module is not None
-    assert getattr(module, '__file__', '').endswith('/ipfs_datasets_py/llm_router.py')
+    module_file = getattr(module, '__file__', '')
+    assert module_file.endswith('/ipfs_datasets_py/llm_router.py') or module_file.endswith(
+        '/ipfs_accelerate_py/llm_router.py'
+    )

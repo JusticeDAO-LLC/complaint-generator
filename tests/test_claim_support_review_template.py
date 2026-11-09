@@ -480,6 +480,14 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "Service Date" in content
     assert "Draft Preview" in content
     assert "Drafting Readiness" in content
+    assert "Mike workflow journey" in content
+    assert "mike-workflow-journey" in content
+    assert "Resolve conflicts in Mike and sync again before export." in content
+    assert "Open workspace Mike panel" in content
+    assert "Open sync workflow" in content
+    assert "/api/complaint-workspace/mike/status" in content
+    assert "refreshMikeIntegrationStatus" in content
+    assert "SYNC_EVENT_NAME" in content
     assert "Pre-Filing Checklist" in content
     assert "Open Checklist Review" in content
     assert "Section Readiness" in content
@@ -574,7 +582,7 @@ def test_document_template_exists_and_targets_document_endpoints():
     assert "resolveSectionReviewUrl" in content
     assert "getSectionReviewLinkMap" in content
     assert "renderSectionClaimLinks" in content
-    assert "renderFilingChecklist(items, manualReviewClaims, pendingReviewClaims)" in content
+    assert "renderFilingChecklist(items, manualReviewClaims, pendingReviewClaims, reviewLinks = {})" in content
     assert "Section Review</a>" in content
     assert "renderReviewLinks" in content
     assert "review_links" in content
@@ -688,6 +696,10 @@ def test_chat_and_results_templates_link_to_document_workflow():
     assert "/document" in chat_content
     assert "href=\"/document\"" in chat_content
     assert "/claim-support-review" in chat_content
+    assert "chat-selected-filing-hero" in chat_content
+    assert "Selected filing attached" in chat_content
+    assert "Answer is drafted here only until you explicitly save in Docket." in chat_content
+    assert "__complaintAppShellDisabled" in chat_content
     assert "/document" in results_content
     assert "href=\"/document\"" in results_content
     assert "/claim-support-review" in results_content
@@ -759,6 +771,12 @@ def test_review_surface_app_registers_dashboard_and_api_routes():
         ("/api/complaint-workspace/packaged-docket/view", "GET"),
         ("/api/complaint-workspace/packaged-docket/operator-dashboard", "GET"),
         ("/api/complaint-workspace/packaged-docket/operator-dashboard-report", "GET"),
+        ("/api/complaint-workspace/docket-dataset/view", "GET"),
+        ("/api/complaint-workspace/docket-dataset/search", "GET"),
+        ("/api/complaint-workspace/docket-dataset/metadata", "GET"),
+        ("/api/complaint-workspace/docket-dataset/graph", "GET"),
+        ("/api/complaint-workspace/workspace-dataset/view", "GET"),
+        ("/api/complaint-workspace/workspace-dataset/search", "GET"),
         ("/api/complaint-workspace/mcp/tools", "GET"),
         ("/api/complaint-workspace/mcp/call", "POST"),
         ("/api/complaint-workspace/mcp/rpc", "POST"),
@@ -852,11 +870,200 @@ def test_review_surface_serves_legacy_pages_with_operator_links():
     assert "complaint-mcp-server" in workspace_response.text
     assert "Complaint Editor Workshop" in wysiwyg_response.text
     assert "Unified Dashboard Hub" in dashboard_hub_response.text
+    assert "MCP dashboard package capabilities overview" in dashboard_hub_response.text
+    assert "Package Capability Map" in dashboard_hub_response.text
+    assert "Intake Chat and Guided Advice" in dashboard_hub_response.text
+    assert "Resume a Complaint and Marshal Evidence, Law, and Caselaw" in dashboard_hub_response.text
+    assert "Inspect Dockets and Existing Complaints" in dashboard_hub_response.text
+    assert "Profile, Identity and Personal Context" in dashboard_hub_response.text
+    assert "Package Capability Matrix" in dashboard_hub_response.text
+    assert "dashboard-entry-overview" in dashboard_hub_response.text
+    assert "MCP dashboard package capabilities overview" in dashboard_hub_response.text
+    assert "dashboard-entry-paths" in dashboard_hub_response.text
+    assert "Start your complaint" in dashboard_hub_response.text
+    assert "Continue your complaint" in dashboard_hub_response.text
+    assert "Review a court docket or response" in dashboard_hub_response.text
+    assert "Manage your profile" in dashboard_hub_response.text
+    assert "dashboard-subsection-index" in dashboard_hub_response.text
+    assert "Find the right tool" in dashboard_hub_response.text
+    assert "Jump to the part of the complaint workflow you need." in dashboard_hub_response.text
+    assert "Evidence, Laws, and Court Cases" in dashboard_hub_response.text
+    assert "Profile and Technical Tools" in dashboard_hub_response.text
+    assert "Start, continue, organize, review, and draft legal complaints or responses." in dashboard_hub_response.text
+    assert "This tool helps organize information and draft documents." in dashboard_hub_response.text
+    assert "Admin Dashboard Error" not in dashboard_hub_response.text
+    assert "IPFS Datasets MCP Dashboard Clean" not in dashboard_hub_response.text
+    assert "IPFS Datasets MCP Dashboard Final" not in dashboard_hub_response.text
+    assert "dashboard-package-map" in dashboard_hub_response.text
+    assert "Workspace Evidence and Authority" in dashboard_hub_response.text
+    assert "Law, Caselaw, and Legal Graph" in dashboard_hub_response.text
+    assert "legal authority/caselaw surfaces" in dashboard_hub_response.text
+    assert "/dashboards/ipfs-datasets/admin-caselaw" in dashboard_hub_response.text
+    assert "/dashboards/ipfs-datasets/admin-caselaw-mcp" in dashboard_hub_response.text
+    assert "Comprehensive Improvement Plan" in dashboard_hub_response.text
+    assert "Unify entry navigation" in dashboard_hub_response.text
+    assert "Promote real package capabilities" in dashboard_hub_response.text
+    assert "Tie dashboards together with context" in dashboard_hub_response.text
+    assert "Make graph and logic inspectable" in dashboard_hub_response.text
+    assert "Separate evidence, law, and caselaw lanes" in dashboard_hub_response.text
+    assert "Keep legacy dashboards discoverable" in dashboard_hub_response.text
+    assert "dashboard-capabilities" in dashboard_hub_response.text
+    assert "dashboard-journey-details" in dashboard_hub_response.text
+    assert "dashboard-section-menu" in dashboard_hub_response.text
+    assert "Dashboard sections" in dashboard_hub_response.text
+    assert "role=\"tablist\"" in dashboard_hub_response.text
+    assert "More tools" in dashboard_hub_response.text
+    assert "Technical tools" in dashboard_hub_response.text
+    assert "dashboard-workflow-rail" in dashboard_hub_response.text
+    assert "Guided Workflow" in dashboard_hub_response.text
+    assert "Intake -> Evidence, Law, and Caselaw -> Review -> Draft" in dashboard_hub_response.text
+    assert "workflow-primary-action" in dashboard_hub_response.text
+    assert "mobile-action-rail" in dashboard_hub_response.text
+    assert "mobile-workflow-primary-action" in dashboard_hub_response.text
+    assert "workflow-stage-intake" in dashboard_hub_response.text
+    assert "workflow-stage-evidence" in dashboard_hub_response.text
+    assert "workflow-stage-review" in dashboard_hub_response.text
+    assert "workflow-stage-draft" in dashboard_hub_response.text
+    assert "data-state=\"current\"" in dashboard_hub_response.text
+    assert "stage-state-badge" in dashboard_hub_response.text
+    assert "setWorkflowStageState" in dashboard_hub_response.text
+    assert "setWorkflowPrimaryAction" in dashboard_hub_response.text
+    assert "updateWorkflowRail" in dashboard_hub_response.text
+    assert "resetWorkflowRail" in dashboard_hub_response.text
+    assert "collapseMobileSectionMenu" in dashboard_hub_response.text
+    assert "intake-chat-workflow-panel" in dashboard_hub_response.text
+    assert "workspace-evidence-workflow-panel" in dashboard_hub_response.text
+    assert "docket-complaint-workflow-panel" in dashboard_hub_response.text
+    assert "profile-identity-workflow-panel" in dashboard_hub_response.text
+    assert "From story to reviewable claim theory" in dashboard_hub_response.text
+    assert "Resume a complaint and marshal evidence, law, and caselaw" in dashboard_hub_response.text
+    assert "Inspect an existing docket or complaint dataset" in dashboard_hub_response.text
+    assert "Manage personal context and session continuity" in dashboard_hub_response.text
+    assert "Start intake" in dashboard_hub_response.text
+    assert "Load session" in dashboard_hub_response.text
+    assert "Filter by legal role" in dashboard_hub_response.text
+    assert "Search filings" in dashboard_hub_response.text
+    assert "Use MCP tools" in dashboard_hub_response.text
+    assert "dashboard-workspace-snapshot" in dashboard_hub_response.text
+    assert "dashboard-subsection-nav" in dashboard_hub_response.text
+    assert "Workspace subsections" in dashboard_hub_response.text
+    assert "Material organization steps" in dashboard_hub_response.text
+    assert "Court Dockets and Responses" in dashboard_hub_response.text
+    assert "Upload subsections" in dashboard_hub_response.text
+    assert "Annotation subsections" in dashboard_hub_response.text
+    assert "packaged-docket-dashboard" in dashboard_hub_response.text
+    assert "chat-upload-dashboard" in dashboard_hub_response.text
+    assert "heads-up-display-dashboard" in dashboard_hub_response.text
+    assert "legacy-ipfs-dashboard-shells" in dashboard_hub_response.text
+    assert "dashboard-advanced-tools" in dashboard_hub_response.text
+    assert "Technical tools for administrators" in dashboard_hub_response.text
+    assert "Most users do not need these to create or manage a complaint." in dashboard_hub_response.text
+    assert "MCP tools JSON" in dashboard_hub_response.text
+    assert "Legacy ipfs_datasets_py Consoles" in dashboard_hub_response.text
+    assert "workspace-knowledge-graph-tools" in dashboard_hub_response.text
+    assert "workspace-deontic-logic-tools" in dashboard_hub_response.text
+    assert "workspace-law-caselaw-tools" in dashboard_hub_response.text
+    assert "dashboard-workspace-dataset-source-type" in dashboard_hub_response.text
+    assert "Evidence" in dashboard_hub_response.text
+    assert "Rules and laws" in dashboard_hub_response.text
+    assert "Court cases" in dashboard_hub_response.text
+    assert "Check proof gaps" in dashboard_hub_response.text
+    assert "data-workspace-dataset-preset" in dashboard_hub_response.text
+    assert "applyWorkspaceDatasetPreset" in dashboard_hub_response.text
+    assert "Start Here" in dashboard_hub_response.text
+    assert "dashboard-start-here" in dashboard_hub_response.text
+    assert "Explain what happened" in dashboard_hub_response.text
+    assert "Resume complaint" in dashboard_hub_response.text
+    assert "Upload evidence" in dashboard_hub_response.text
+    assert "Find connections" in dashboard_hub_response.text
+    assert "workspace-context-bar" in dashboard_hub_response.text
+    assert "context-workspace-id" in dashboard_hub_response.text
+    assert "context-claim-type" in dashboard_hub_response.text
+    assert "context-evidence-count" in dashboard_hub_response.text
+    assert "context-draft-status" in dashboard_hub_response.text
+    assert "context-next-action" in dashboard_hub_response.text
+    assert "context-open-builder" in dashboard_hub_response.text
+    assert "context-workspace-hint" in dashboard_hub_response.text
+    assert "context-claim-hint" in dashboard_hub_response.text
+    assert "context-evidence-hint" in dashboard_hub_response.text
+    assert "context-draft-hint" in dashboard_hub_response.text
+    assert "workspace-lane-cards" in dashboard_hub_response.text
+    assert "role=\"radiogroup\"" in dashboard_hub_response.text
+    assert "role=\"radio\"" in dashboard_hub_response.text
+    assert "aria-checked=\"false\"" in dashboard_hub_response.text
+    assert "data-lane-source-type=\"legal_authority\"" in dashboard_hub_response.text
+    assert "workspace-lane-evidence" in dashboard_hub_response.text
+    assert "workspace-lane-law" in dashboard_hub_response.text
+    assert "workspace-lane-caselaw" in dashboard_hub_response.text
+    assert "workspace-lane-claim-support" in dashboard_hub_response.text
+    assert "workspace-lane-summary" in dashboard_hub_response.text
+    assert "workspace-dataset-flow-status" in dashboard_hub_response.text
+    assert "workspace-materials-empty-state" in dashboard_hub_response.text
+    assert "No materials are loaded yet" in dashboard_hub_response.text
+    assert "Material organization checklist" in dashboard_hub_response.text
+    assert "workspace-step-load-title" in dashboard_hub_response.text
+    assert "Choose what kind of material you want to work with first." in dashboard_hub_response.text
+    assert "workspace-flow-dataset-readiness" in dashboard_hub_response.text
+    assert "workspace-flow-lane-readiness" in dashboard_hub_response.text
+    assert "workspace-flow-graph-readiness" in dashboard_hub_response.text
+    assert "workspace-flow-next-action" in dashboard_hub_response.text
+    assert "workspace-action-preflight" in dashboard_hub_response.text
+    assert "setWorkspaceLane" in dashboard_hub_response.text
+    assert "getWorkspaceDatasetPreflight" in dashboard_hub_response.text
+    assert "updateWorkspaceDatasetReadiness" in dashboard_hub_response.text
+    assert "setButtonEnabled" in dashboard_hub_response.text
+    assert "setLinkEnabled" in dashboard_hub_response.text
+    assert "workspace-dataset-step-load" in dashboard_hub_response.text
+    assert "workspace-dataset-step-filter" in dashboard_hub_response.text
+    assert "workspace-dataset-step-run" in dashboard_hub_response.text
+    assert "workspace-dataset-load-state" in dashboard_hub_response.text
+    assert "workspace-dataset-filter-state" in dashboard_hub_response.text
+    assert "workspace-dataset-run-state" in dashboard_hub_response.text
+    assert "dashboard-open-dataset-graph" in dashboard_hub_response.text
+    assert "dashboard-run-deontic-check" in dashboard_hub_response.text
+    assert "aria-disabled=\"true\"" in dashboard_hub_response.text
+    assert "Find connections before checking duties and conflicts." in dashboard_hub_response.text
+    assert "Find connections" in dashboard_hub_response.text
+    assert "Check duties and conflicts" in dashboard_hub_response.text
+    assert "setAttribute('aria-pressed'" in dashboard_hub_response.text
+    assert "What was required?" in dashboard_hub_response.text
+    assert "What was prohibited?" in dashboard_hub_response.text
+    assert "Which facts impose duties?" in dashboard_hub_response.text
+    assert "Find conditions and conflicts" in dashboard_hub_response.text
+    assert "Find supporting documents" in dashboard_hub_response.text
+    assert "data-dashboard-graph-preset" in dashboard_hub_response.text
+    assert "applyGraphPreset" in dashboard_hub_response.text
+    assert "updateWorkspaceContextBar" in dashboard_hub_response.text
     assert "Chat Upload Modal" in dashboard_hub_response.text
     assert "Complaint Workspace Snapshot" in dashboard_hub_response.text
     assert "Heads-Up Display Dashboard" in dashboard_hub_response.text
-    assert "Case Calendar Preview" in dashboard_hub_response.text
+    assert "Review Court Filings and Existing Complaints" in dashboard_hub_response.text
+    assert "Organize Evidence, Laws, and Court Cases" in dashboard_hub_response.text
+    assert "Load Saved Materials" in dashboard_hub_response.text
+    assert "Send a Filing or Document Note to the Complaint Workspace" in dashboard_hub_response.text
+    assert "/api/complaint-workspace/docket-dataset/view" in dashboard_hub_response.text
+    assert "/api/complaint-workspace/workspace-dataset/view" in dashboard_hub_response.text
+    assert "/api/complaint-workspace/document-annotations/tag" in dashboard_hub_response.text
+    assert "/api/complaint-workspace/workspace-dataset/annotations/tag" in dashboard_hub_response.text
+    assert "dashboard-dataset-annotation-tags" in dashboard_hub_response.text
+    assert "dashboard-dataset-annotation-user-name" in dashboard_hub_response.text
+    assert "dashboard-workspace-dataset-vectors" in dashboard_hub_response.text
+    assert "dashboard-workspace-dataset-logic" in dashboard_hub_response.text
+    assert "dashboard-workspace-dataset-proofs" in dashboard_hub_response.text
+    assert "dashboard-workspace-mike-state-chip" in dashboard_hub_response.text
+    assert "dashboard-workspace-mike-conflict-chip" in dashboard_hub_response.text
+    assert "deriveMikeUiState" in dashboard_hub_response.text
+    assert "/api/complaint-workspace/mike/status" in dashboard_hub_response.text
+    assert "dashboard-load-docket-dataset" in dashboard_hub_response.text
+    assert "dashboard-load-workspace-dataset" in dashboard_hub_response.text
+    assert "dashboard-save-dataset-annotation" in dashboard_hub_response.text
+    assert "Important dates found" in dashboard_hub_response.text
     assert "Operator Queue" in dashboard_hub_response.text
+    assert "Reset Workspace" in dashboard_hub_response.text
+    assert "Unload Workspace" in dashboard_hub_response.text
+    assert "Clear Package" in dashboard_hub_response.text
+    assert "/static/complaint_mcp_sdk.js" in dashboard_hub_response.text
+    assert "complaint-mcp-sync" in dashboard_hub_response.text
     assert "IPFS Datasets MCP Dashboard" in mcp_response.text
     assert analytics_history_response.json()["history"]
     assert workspace_tools_response.json()["tools"]

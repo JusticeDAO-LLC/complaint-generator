@@ -1,0 +1,109 @@
+{
+  "audited_at": "2026-10-24T20:22:59.178795+00:00",
+  "baseline_commit": "2c1439a7029eb9035338133210d8b43319add8a4",
+  "findings": [
+    {
+      "finding": {
+        "classification": "actual_synthetic_browser",
+        "id": "GUI-AUTH-READY",
+        "observation": "Nine protected MCP calls returned authorization_denied, but the unmodified GUI declared data-workspace-hydrated=ready and Workspace synchronized; SDK does not honor result.isError.",
+        "path": "templates/workspace.html"
+      },
+      "stream": "gui"
+    },
+    {
+      "finding": {
+        "classification": "actual_synthetic_browser",
+        "id": "GUI-FIXED-FORM",
+        "observation": "Saving six fixed fields did not create shared_interview or preserve the original narrative; shared graph questionnaire is a separate existing service path.",
+        "path": "templates/workspace.html"
+      },
+      "stream": "gui"
+    },
+    {
+      "finding": {
+        "classification": "actual_synthetic_browser",
+        "id": "GUI-FALSE-SUPPORT",
+        "observation": "The legacy fixed-form path displayed five hardcoded claim elements as supported based on entered assertions without corroboration; this UI label is not evidence of admitted legal-element support.",
+        "path": "applications/complaint_workspace.py"
+      },
+      "stream": "gui"
+    },
+    {
+      "finding": {
+        "classification": "actual_synthetic_browser",
+        "id": "GUI-BROWSER-PLAINTEXT",
+        "observation": "Synthetic case markers persisted in sdkSyncEvent and a per-user synopsis in localStorage; remove plaintext case caches and minimize synchronization events.",
+        "path": "static/complaint_mcp_sdk.js"
+      },
+      "stream": "gui"
+    },
+    {
+      "finding": {
+        "classification": "actual_synthetic_browser",
+        "id": "GUI-A11Y",
+        "observation": "Seven visible intake textareas lacked programmatic labels in the actual DOM.",
+        "path": "templates/workspace.html"
+      },
+      "stream": "gui"
+    },
+    {
+      "finding": {
+        "classification": "actual_synthetic_public_api",
+        "id": "GUI-SHARED-AVAILABLE",
+        "observation": "Explicit original_complaint through the real REST path creates KG12entities/DG9nodes and a pending inquiry revision1; why does not save an answer. Matching ID answers without explicit revision currently work; the browser cannot carry the stronger CAS/action contract.",
+        "path": "applications/complaint_workspace.py"
+      },
+      "stream": "gui"
+    },
+    {
+      "finding": {
+        "classification": "source_inspected",
+        "id": "GUI-CASE-AUTH",
+        "observation": "Current PrincipalRegistry is injected in-memory and owner-scoped. Durable roles, independent cases, membership, lawyer assignments and messages are absent.",
+        "path": "applications/complaint_workspace.py"
+      },
+      "stream": "gui"
+    },
+    {
+      "finding": {
+        "classification": "source_inspected",
+        "id": "GUI-ENTRYPOINTS",
+        "observation": "Actual app builders omit the principal registry; legacy profile/chat/WebSocket/cookie and review/document/download entry points need one case action-policy boundary.",
+        "path": "applications/server.py"
+      },
+      "stream": "gui"
+    },
+    {
+      "finding": {
+        "classification": "source_inspected",
+        "id": "GUI-CRYPTO-GRANTS",
+        "observation": "AAD binds tenant/case/principal/revision; delegation needs an explicit actual-actor/canonical-owner admission contract and recipient key grants. Historical key retention is not participant revocation.",
+        "path": "integrations/private_storage.py"
+      },
+      "stream": "gui"
+    },
+    {
+      "finding": {
+        "classification": "capability_boundary",
+        "id": "GUI-BROWSER-VALIDATION",
+        "observation": "Original release executable guard does not admit Node/Chromium and inherited kernel fence denies non-Unix sockets; the real manual pipe/ASGI browser probe succeeded, but Native measurement capability needs separate Task02 qualification.",
+        "path": "scripts/validate_complaint_intake.py"
+      },
+      "stream": "gui"
+    }
+  ],
+  "new_tasks_completed_by_audit": 0,
+  "prior_programs": {
+    "intake58": "completed, historical and immutable",
+    "mediator44": "completed, historical and immutable"
+  },
+  "private_data_read": false,
+  "schema": "complaint-gui-baseline-audit@1",
+  "shared_graph_probe_sha256": "a88b6cc6396ac3b6ce9b471413a7b0927b88a5b65cece3db4af13c4497827f29",
+  "synthetic_browser_probe": {
+    "method": "real Chromium/CDPpipe; unmodified assets; actual HTTPX ASGI route dispatch; inherited AF_UNIX kernel fence; synthetic private data; no canned API responses",
+    "result_sha256": "aabd7a9b1a1b33d947385c9d5ed5775298fe034cd375194de8ead03e61a97d22",
+    "scope": "manual current-browser audit, not Native task or live deployment qualification"
+  }
+}

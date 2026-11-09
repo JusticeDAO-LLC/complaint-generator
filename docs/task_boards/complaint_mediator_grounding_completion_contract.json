@@ -1,0 +1,123 @@
+{
+  "schema": "complaint-mediator-grounding-completion-contract@1",
+  "contract_version": 1,
+  "task_id": "CIMP-MGND-44",
+  "goal_id": "goal.mgnd.operations",
+  "subgoal_id": "subgoal.mgnd.operations.acceptance",
+  "completion_authority": false,
+  "provider_authority": false,
+  "state_authority": false,
+  "publication_authority": false,
+  "recursive_campaign_read": false,
+  "manufactures_own_completion": false,
+  "self_task": {
+    "status": "self_pending",
+    "validation_closes_task": false,
+    "native_callback_owner": "root_outside_task"
+  },
+  "audit_phases": {
+    "pre_completion": {
+      "accepts_native_completion": false,
+      "own_task_remains": "self_pending",
+      "records_validation_only": true
+    },
+    "post_native_callback": {
+      "requires": [
+        "task_id",
+        "canonical_task_cid",
+        "goal_id",
+        "subgoal_id",
+        "current_source_public_acceptance",
+        "native_callback"
+      ],
+      "missing_evidence_status": "unavailable",
+      "blocked_status": "blocked",
+      "does_not_infer_from_pre_completion": true,
+      "root_callback_owner": "root",
+      "rejects_callback_issued_by_this_task": true,
+      "rejects_synthetic_callback": true
+    }
+  },
+  "new_plan": {
+    "spec_relative": "docs/task_boards/complaint_mediator_grounding_spec.json",
+    "plan_relative": "docs/task_boards/complaint_mediator_grounding_formal_work_plan.json",
+    "board_relative": "docs/task_boards/complaint_mediator_grounding_task_board.md",
+    "namespace": "complaint-mediator-grounding",
+    "task_id_prefix": "CIMP-MGND-",
+    "goal_id": "goal.mgnd.operations",
+    "subgoal_id": "subgoal.mgnd.operations.acceptance"
+  },
+  "historical_intake": {
+    "program_id": "complaint-intake-58",
+    "role": "historical_scoped_evidence",
+    "task_count": 58,
+    "remap_to_new_task_ids": false,
+    "fresh_old_release_qualification": false,
+    "old_release_module_closure_count": 83
+  },
+  "operator_surface": {
+    "canonical_command": "python -m complaint_generator.cli chat --user-id USER_ID",
+    "consent_modes": ["local", "grok"],
+    "consent_flags": ["--privacy-mode local", "--privacy-mode grok"],
+    "session_controls": ["/why", "/edit", "/pause", "/resume", "/research", "/skip", "/privacy local", "/privacy grok"],
+    "awaiting_user_is_not_stalled_worker": true,
+    "source_is_not_proof": true,
+    "encrypted_local_storage_is_not_remote_durability": true
+  },
+  "durability_states": [
+    "local_encrypted_commit",
+    "ciphertext_readback",
+    "queued_replication",
+    "pinning",
+    "verified_replica"
+  ],
+  "durability_implications": {
+    "local_encrypted_commit": [],
+    "ciphertext_readback": ["local_encrypted_commit"],
+    "queued_replication": [],
+    "pinning": [],
+    "verified_replica": []
+  },
+  "current_source_public_acceptance": {
+    "required_fields": [
+      "source_revision",
+      "public_module",
+      "case_count",
+      "required_skips",
+      "legal_sufficiency",
+      "live_provider_qualified",
+      "remote_durability_qualified"
+    ],
+    "required_skips_must_equal": 0,
+    "case_count_min": 1,
+    "legal_sufficiency_must_equal": false,
+    "live_provider_qualified_must_equal": false,
+    "remote_durability_qualified_must_equal": false
+  },
+  "guide_relative": "docs/task_boards/complaint_mediator_grounding_operator_guide.md",
+  "guide_required_phrases": [
+    "python -m complaint_generator.cli chat --user-id USER_ID",
+    "--privacy-mode local",
+    "--privacy-mode grok",
+    "/privacy local",
+    "/privacy grok",
+    "/why",
+    "/edit",
+    "/pause",
+    "/resume",
+    "/research",
+    "/skip",
+    "awaiting_user",
+    "stalled worker",
+    "local_encrypted_commit",
+    "ciphertext_readback",
+    "queued_replication",
+    "pinning",
+    "verified_replica",
+    "not legal sufficiency",
+    "self-pending",
+    "CIMP-MGND-44",
+    "historical scoped evidence",
+    "83-module"
+  ]
+}

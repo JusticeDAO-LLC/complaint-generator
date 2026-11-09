@@ -1,0 +1,492 @@
+{
+  "active_attempt": 0,
+  "active_branch": "",
+  "active_log_path": "",
+  "active_phase": "",
+  "active_phase_detail": "",
+  "active_phase_started_at": "",
+  "active_task_id": "",
+  "active_task_started_at": "",
+  "active_task_title": "",
+  "active_task_track": "",
+  "active_worktree_path": "",
+  "blocked_count": 0,
+  "blocked_task_ids": [],
+  "completed_count": 30,
+  "completed_task_ids": [
+    "SUP-CONTRACT-PAYLOADS",
+    "SUP-CSR-M0",
+    "SUP-CSR-M1",
+    "SUP-CSR-M2",
+    "SUP-CSR-M3",
+    "SUP-CSR-M4",
+    "SUP-CSR-M5",
+    "SUP-CSR-M6",
+    "SUP-IE-B0",
+    "SUP-IE-B1",
+    "SUP-IE-B2",
+    "SUP-IE-B3",
+    "SUP-IE-B4",
+    "SUP-IE-B5",
+    "SUP-IE-B6",
+    "SUP-IE-B7",
+    "SUP-IE-B8",
+    "SUP-IPFS-M0",
+    "SUP-IPFS-M1",
+    "SUP-IPFS-M2",
+    "SUP-IPFS-M3",
+    "SUP-IPFS-M4",
+    "SUP-IPFS-M5",
+    "SUP-TEMP-T0",
+    "SUP-TEMP-T1",
+    "SUP-TEMP-T2",
+    "SUP-TEMP-T3",
+    "SUP-TEMP-T4",
+    "SUP-TEMP-T5",
+    "SUP-TEMP-T6"
+  ],
+  "eligible_ready_count": 0,
+  "eligible_ready_task_ids": [],
+  "heartbeat_at": "2026-07-21T03:47:48.674080+00:00",
+  "implementation_attempts": {
+    "SUP-CONTRACT-PAYLOADS": 1,
+    "SUP-CSR-M6": 1,
+    "SUP-IE-B0": 1,
+    "SUP-IE-B1": 1,
+    "SUP-IE-B2": 1,
+    "SUP-IPFS-M3": 1,
+    "SUP-IPFS-M4": 1,
+    "SUP-IPFS-M5": 1,
+    "SUP-TEMP-T1": 1,
+    "SUP-TEMP-T2": 1,
+    "SUP-TEMP-T3": 1,
+    "SUP-TEMP-T4": 1,
+    "SUP-TEMP-T5": 1,
+    "SUP-TEMP-T6": 1
+  },
+  "implementation_in_progress": false,
+  "last_implementation_branch": "implementation/sup-temp-t6-attempt-1-1784603937",
+  "last_implementation_commit": "ae5b685f4da5bf2566dff9126780c7e4d6b45bab",
+  "last_implementation_finished_at": "2026-07-21T03:35:42.543308+00:00",
+  "last_implementation_log_path": ".daemon/ipfs-supervisor/implementation_logs/sup-temp-t6-attempt-1.log",
+  "last_implementation_returncode": 0,
+  "last_implementation_started_at": "2026-07-21T03:18:57.921243+00:00",
+  "last_implementation_task_id": "SUP-TEMP-T6",
+  "last_implementation_worktree_path": "/tmp/ipfs-supervisor-worktrees/sup-temp-t6-attempt-1-1784603937",
+  "last_merge_branch": "implementation/sup-temp-t6-attempt-1-1784603937",
+  "last_merge_commit": "49c5438437a43ee44a960a0d361d4a273c854778",
+  "last_merge_error": "",
+  "last_merge_finished_at": "2026-07-21T03:35:42.354555+00:00",
+  "last_merge_returncode": 0,
+  "last_merge_started_at": "2026-07-21T03:35:42.147405+00:00",
+  "last_progress_at": "2026-07-21T03:36:42.660305+00:00",
+  "ready_count": 0,
+  "ready_task_ids": [],
+  "recommended_actions": [],
+  "recommended_task_id": "",
+  "selectable_ready_count": 0,
+  "selectable_ready_task_ids": [],
+  "selection_idle_reason": "no_shard_selectable_ready_tasks",
+  "strategy_generation": 0,
+  "strict_deprioritized_ready_count": 0,
+  "strict_deprioritized_ready_task_ids": [],
+  "task_artifacts": {
+    "SUP-CONTRACT-PAYLOADS": [
+      "docs/PAYLOAD_CONTRACTS.md",
+      "scripts/validate_task_boards.py",
+      "tests/test_task_board_contracts.py"
+    ],
+    "SUP-CSR-M0": [
+      "templates/claim_support_review.html",
+      "mediator/claim_support_hooks.py",
+      "complaint_phases/denoiser.py",
+      "complaint_phases/knowledge_graph.py",
+      "complaint_phases/dependency_graph.py",
+      "docs/PAYLOAD_CONTRACTS.md",
+      "docs/APPLICATIONS.md",
+      "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-CSR-M1": [
+      "templates/claim_support_review.html",
+      "integrations/ipfs_datasets/documents.py",
+      "mediator/evidence_hooks.py",
+      "mediator/web_evidence_hooks.py",
+      "mediator/claim_support_hooks.py",
+      "docs/PAYLOAD_CONTRACTS.md",
+      "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-CSR-M2": [
+      "mediator/claim_support_hooks.py",
+      "integrations/ipfs_datasets/types.py",
+      "integrations/ipfs_datasets/provenance.py",
+      "docs/PAYLOAD_CONTRACTS.md",
+      "templates/claim_support_review.html",
+      "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-CSR-M3": [
+      "integrations/ipfs_datasets/graphs.py",
+      "complaint_phases/knowledge_graph.py",
+      "complaint_phases/dependency_graph.py",
+      "mediator/claim_support_hooks.py",
+      "templates/claim_support_review.html",
+      "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-CSR-M4": [
+      "integrations/ipfs_datasets/vector_store.py",
+      "integrations/ipfs_datasets/documents.py",
+      "mediator/claim_support_hooks.py",
+      "templates/claim_support_review.html",
+      "docs/PAYLOAD_CONTRACTS.md",
+      "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-CSR-M5": [
+      "integrations/ipfs_datasets/logic.py",
+      "integrations/ipfs_datasets/graphrag.py",
+      "mediator/claim_support_hooks.py",
+      "complaint_phases/legal_graph.py",
+      "complaint_phases/neurosymbolic_matcher.py",
+      "templates/claim_support_review.html",
+      "docs/PAYLOAD_CONTRACTS.md",
+      "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-CSR-M6": [
+      "templates/claim_support_review.html",
+      "templates/document.html",
+      "mediator/claim_support_hooks.py",
+      "applications/server.py",
+      "docs/APPLICATIONS.md",
+      "docs/PAYLOAD_CONTRACTS.md",
+      "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-IE-B0": [
+      "complaint_phases/intake_case_file.py",
+      "mediator/mediator.py",
+      "complaint_phases/phase_manager.py",
+      "intake_status.py",
+      "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-IE-B1": [
+      "complaint_phases/intake_case_file.py",
+      "mediator/mediator.py",
+      "intake_status.py",
+      "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-IE-B2": [
+      "complaint_phases/denoiser.py",
+      "mediator/mediator.py",
+      "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-IE-B3": [
+      "complaint_phases/phase_manager.py",
+      "mediator/mediator.py",
+      "intake_status.py",
+      "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-IE-B4": [
+      "mediator/claim_support_hooks.py",
+      "mediator/mediator.py",
+      "complaint_phases/phase_manager.py",
+      "complaint_phases/denoiser.py",
+      "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-IE-B5": [
+      "mediator/evidence_hooks.py",
+      "mediator/claim_support_hooks.py",
+      "docs/EVIDENCE_MANAGEMENT.md",
+      "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-IE-B6": [
+      "complaint_phases/phase_manager.py",
+      "mediator/mediator.py",
+      "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-IE-B7": [
+      "intake_status.py",
+      "applications/review_api.py",
+      "applications/document_api.py",
+      "templates/claim_support_review.html",
+      "templates/document.html",
+      "templates/optimization_trace.html",
+      "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-IE-B8": [
+      "adversarial_harness/harness.py",
+      "adversarial_harness/critic.py",
+      "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-IPFS-M0": [
+      "integrations/ipfs_datasets/capabilities.py",
+      "integrations/ipfs_datasets/loader.py",
+      "integrations/ipfs_datasets/legal.py",
+      "integrations/ipfs_datasets/search.py",
+      "integrations/ipfs_datasets/graphs.py",
+      "integrations/ipfs_datasets/logic.py",
+      "mediator/mediator.py",
+      "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md"
+    ],
+    "SUP-IPFS-M1": [
+      "integrations/ipfs_datasets/documents.py",
+      "integrations/ipfs_datasets/types.py",
+      "integrations/ipfs_datasets/provenance.py",
+      "mediator/evidence_hooks.py",
+      "mediator/web_evidence_hooks.py",
+      "mediator/legal_authority_hooks.py",
+      "docs/PAYLOAD_CONTRACTS.md",
+      "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md"
+    ],
+    "SUP-IPFS-M2": [
+      "integrations/ipfs_datasets/graphs.py",
+      "mediator/claim_support_hooks.py",
+      "mediator/evidence_hooks.py",
+      "mediator/web_evidence_hooks.py",
+      "mediator/legal_authority_hooks.py",
+      "mediator/mediator.py",
+      "complaint_phases/knowledge_graph.py",
+      "complaint_phases/dependency_graph.py",
+      "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md"
+    ],
+    "SUP-IPFS-M3": [
+      "integrations/ipfs_datasets/graphrag.py",
+      "integrations/ipfs_datasets/logic.py",
+      "complaint_phases/legal_graph.py",
+      "complaint_phases/neurosymbolic_matcher.py",
+      "complaint_phases/phase_manager.py",
+      "mediator/claim_support_hooks.py",
+      "mediator/mediator.py",
+      "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md"
+    ],
+    "SUP-IPFS-M4": [
+      "applications/review_api.py",
+      "mediator/mediator.py",
+      "mediator/web_evidence_hooks.py",
+      "docs/APPLICATIONS.md",
+      "docs/PAYLOAD_CONTRACTS.md",
+      "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md"
+    ],
+    "SUP-IPFS-M5": [
+      "document_pipeline.py",
+      "applications/document_api.py",
+      "templates/document.html",
+      "mediator/mediator.py",
+      "mediator/claim_support_hooks.py",
+      "claim_support_review.py",
+      "docs/APPLICATIONS.md",
+      "docs/PAYLOAD_CONTRACTS.md",
+      "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md"
+    ],
+    "SUP-TEMP-T0": [
+      "complaint_phases/intake_case_file.py",
+      "mediator/claim_support_hooks.py",
+      "docs/PAYLOAD_CONTRACTS.md",
+      "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-TEMP-T1": [
+      "complaint_phases/intake_case_file.py",
+      "mediator/claim_support_hooks.py",
+      "mediator/mediator.py",
+      "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-TEMP-T2": [
+      "complaint_analysis/decision_trees.py",
+      "complaint_analysis/legal_patterns.py",
+      "complaint_analysis/temporal_rule_profiles.py",
+      "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-TEMP-T3": [
+      "mediator/claim_support_hooks.py",
+      "claim_support_review.py",
+      "integrations/ipfs_datasets/logic.py",
+      "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-TEMP-T4": [
+      "mediator/claim_support_hooks.py",
+      "complaint_phases/denoiser.py",
+      "mediator/mediator.py",
+      "intake_status.py",
+      "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-TEMP-T5": [
+      "templates/claim_support_review.html",
+      "templates/document.html",
+      "templates/optimization_trace.html",
+      "applications/review_api.py",
+      "applications/document_api.py",
+      "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md"
+    ],
+    "SUP-TEMP-T6": [
+      "tests/test_t1_t3_temporal_next_steps.py",
+      "tests/test_temporal_rule_profiles.py",
+      "tests/test_claim_support_hooks.py",
+      "tests/test_review_api.py",
+      "tests/test_mediator_three_phase.py",
+      "tests/test_claim_support_review_dashboard_flow.py",
+      "tests/test_claim_support_review_playwright_smoke.py",
+      "tests/test_intake_status.py",
+      "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md"
+    ]
+  },
+  "task_count": 30,
+  "task_statuses": {
+    "SUP-CONTRACT-PAYLOADS": "completed",
+    "SUP-CSR-M0": "completed",
+    "SUP-CSR-M1": "completed",
+    "SUP-CSR-M2": "completed",
+    "SUP-CSR-M3": "completed",
+    "SUP-CSR-M4": "completed",
+    "SUP-CSR-M5": "completed",
+    "SUP-CSR-M6": "completed",
+    "SUP-IE-B0": "completed",
+    "SUP-IE-B1": "completed",
+    "SUP-IE-B2": "completed",
+    "SUP-IE-B3": "completed",
+    "SUP-IE-B4": "completed",
+    "SUP-IE-B5": "completed",
+    "SUP-IE-B6": "completed",
+    "SUP-IE-B7": "completed",
+    "SUP-IE-B8": "completed",
+    "SUP-IPFS-M0": "completed",
+    "SUP-IPFS-M1": "completed",
+    "SUP-IPFS-M2": "completed",
+    "SUP-IPFS-M3": "completed",
+    "SUP-IPFS-M4": "completed",
+    "SUP-IPFS-M5": "completed",
+    "SUP-TEMP-T0": "completed",
+    "SUP-TEMP-T1": "completed",
+    "SUP-TEMP-T2": "completed",
+    "SUP-TEMP-T3": "completed",
+    "SUP-TEMP-T4": "completed",
+    "SUP-TEMP-T5": "completed",
+    "SUP-TEMP-T6": "completed"
+  },
+  "task_validation": {
+    "SUP-CONTRACT-PAYLOADS": [
+      "python scripts/validate_task_boards.py",
+      "python -m pytest tests/test_task_board_contracts.py -q"
+    ],
+    "SUP-CSR-M0": [
+      "python -m pytest tests/test_claim_support_hooks.py -q",
+      "python -m pytest tests/test_review_api.py -q"
+    ],
+    "SUP-CSR-M1": [
+      "python -m pytest tests/test_evidence_hooks.py -q",
+      "python -m pytest tests/test_web_evidence_hooks.py -q",
+      "python -m pytest tests/test_review_api.py -q"
+    ],
+    "SUP-CSR-M2": [
+      "python -m pytest tests/test_claim_support_hooks.py -q"
+    ],
+    "SUP-CSR-M3": [
+      "python -m pytest tests/test_claim_support_hooks.py -q",
+      "python -m pytest tests/test_review_api.py -q"
+    ],
+    "SUP-CSR-M4": [
+      "python -m pytest tests/test_m4_retrieval_sessions.py -q",
+      "python -m pytest tests/test_claim_support_hooks.py -q"
+    ],
+    "SUP-CSR-M5": [
+      "python -m pytest tests/test_claim_support_hooks.py -q",
+      "python -m pytest tests/test_probate_integration.py -q"
+    ],
+    "SUP-CSR-M6": [
+      "python -m pytest tests/test_document_pipeline.py -q",
+      "python -m pytest tests/test_review_api.py -q"
+    ],
+    "SUP-IE-B0": [
+      "python -m pytest tests/test_mediator_three_phase.py -q",
+      "python -m pytest tests/test_intake_status.py -q",
+      "python -m pytest tests/test_review_api.py -q"
+    ],
+    "SUP-IE-B1": [
+      "python -m pytest tests/test_mediator_three_phase.py -q",
+      "python -m pytest tests/test_intake_status.py -q"
+    ],
+    "SUP-IE-B2": [
+      "python -m pytest tests/test_mediator.py -q",
+      "python -m pytest tests/test_mediator_three_phase.py -q"
+    ],
+    "SUP-IE-B3": [
+      "python -m pytest tests/test_mediator.py -q",
+      "python -m pytest tests/test_intake_status.py -q"
+    ],
+    "SUP-IE-B4": [
+      "python -m pytest tests/test_mediator_three_phase.py -q",
+      "python -m pytest tests/test_claim_support_hooks.py -q"
+    ],
+    "SUP-IE-B5": [
+      "python -m pytest tests/test_claim_support_hooks.py -q",
+      "python -m pytest tests/test_document_pipeline.py -q"
+    ],
+    "SUP-IE-B6": [
+      "python -m pytest tests/test_document_pipeline.py -q",
+      "python -m pytest tests/test_parallel_validation_fix.py -q"
+    ],
+    "SUP-IE-B7": [
+      "python -m pytest tests/test_review_api.py -q",
+      "python -m pytest tests/test_claim_support_review_playwright_smoke.py -q"
+    ],
+    "SUP-IE-B8": [
+      "python -m pytest tests/test_adversarial_harness.py -q",
+      "python -m pytest tests/test_document_pipeline.py -q --run-llm"
+    ],
+    "SUP-IPFS-M0": [
+      "python -m pytest tests/test_ipfs_adapter_layer.py -q",
+      "python -m pytest tests/test_ipfs_adapter_types.py -q"
+    ],
+    "SUP-IPFS-M1": [
+      "python -m pytest tests/test_evidence_hooks.py -q",
+      "python -m pytest tests/test_web_evidence_hooks.py -q",
+      "python -m pytest tests/test_legal_authority_hooks.py -q"
+    ],
+    "SUP-IPFS-M2": [
+      "python -m pytest tests/test_claim_support_hooks.py -q",
+      "python -m pytest tests/test_review_api.py -q",
+      "python -m pytest tests/test_evidence_hooks.py tests/test_claim_support_hooks.py tests/test_legal_authority_hooks.py -q"
+    ],
+    "SUP-IPFS-M3": [
+      "python -m pytest tests/test_m3_graphrag_quality_scoring.py -q",
+      "python -m pytest tests/test_ipfs_logic_adapter.py -q",
+      "python -m pytest tests/test_m5_legal_proof_contradiction_engine.py -q"
+    ],
+    "SUP-IPFS-M4": [
+      "python -m pytest tests/test_review_api.py -q",
+      "python -m pytest tests/test_web_evidence_hooks.py tests/test_claim_support_hooks.py tests/test_review_api.py -q"
+    ],
+    "SUP-IPFS-M5": [
+      "python -m pytest tests/test_document_pipeline.py -q",
+      "python -m pytest tests/test_claim_support_review_template.py -q",
+      "python -m pytest tests/test_review_api.py -q"
+    ],
+    "SUP-TEMP-T0": [
+      "python -m pytest tests/test_intake_status.py -q",
+      "python -m pytest tests/test_claim_support_hooks.py -q",
+      "python -m pytest tests/test_review_api.py -q"
+    ],
+    "SUP-TEMP-T1": [
+      "python -m pytest tests/test_t1_t3_temporal_next_steps.py -q",
+      "python -m pytest tests/test_claim_support_hooks.py tests/test_mediator_three_phase.py -q",
+      "python -m pytest tests/test_review_api.py -q"
+    ],
+    "SUP-TEMP-T2": [
+      "python -m pytest tests/test_claim_support_hooks.py -q",
+      "python -m pytest tests/test_review_api.py -q"
+    ],
+    "SUP-TEMP-T3": [
+      "python -m pytest tests/test_claim_support_hooks.py tests/test_review_api.py -q",
+      "python -m pytest tests/test_claim_support_review_dashboard_flow.py -q"
+    ],
+    "SUP-TEMP-T4": [
+      "python -m pytest tests/test_mediator_three_phase.py tests/test_intake_status.py -q",
+      "python -m pytest tests/test_claim_support_review_dashboard_flow.py -q"
+    ],
+    "SUP-TEMP-T5": [
+      "python -m pytest tests/test_claim_support_review_dashboard_flow.py tests/test_claim_support_review_playwright_smoke.py -q",
+      "python -m pytest tests/test_claim_support_review_template.py -q"
+    ],
+    "SUP-TEMP-T6": [
+      "python -m pytest tests/test_claim_support_hooks.py tests/test_review_api.py tests/test_claim_support_review_dashboard_flow.py tests/test_claim_support_review_playwright_smoke.py tests/test_mediator_three_phase.py tests/test_intake_status.py -q",
+      "python scripts/run_claim_support_review_regression.py --browser on"
+    ]
+  },
+  "waiting_count": 0,
+  "waiting_task_ids": []
+}

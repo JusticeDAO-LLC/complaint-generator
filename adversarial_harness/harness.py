@@ -34,6 +34,8 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, set):
         return [_json_safe(item) for item in sorted(value, key=lambda item: str(item))]
     return value
+
+
 def _sanitize_for_json(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): _sanitize_for_json(item) for key, item in value.items()}
@@ -46,13 +48,26 @@ def _sanitize_for_json(value: Any) -> Any:
     if hasattr(value, "isoformat") and callable(getattr(value, "isoformat")):
         try:
             return value.isoformat()
-        except Exception:
-            pass
+        except (TypeError, ValueError, OverflowError):
+            logger.warning(
+                "Could not serialize %s with isoformat(); using fallback JSON representation",
+                type(value).__name__,
+                exc_info=True,
+            )
     if hasattr(value, "__dict__"):
         try:
-            return _sanitize_for_json(vars(value))
-        except Exception:
-            pass
+            attributes = vars(value)
+        except TypeError:
+            logger.warning(
+                "Could not inspect %s attributes for JSON serialization; using string fallback",
+                type(value).__name__,
+                exc_info=True,
+            )
+        else:
+            # Keep recursive conversion outside the access-error handler. A
+            # failure in an attribute serializer is not evidence that the
+            # object's attributes are unavailable and must remain observable.
+            return _sanitize_for_json(attributes)
     return str(value)
 
 
@@ -121,34 +136,48 @@ class AdversarialHarness:
 
     @staticmethod
     def _attach_result_spec_metadata(result: SessionResult, spec: Dict[str, Any]) -> SessionResult:
+        if not isinstance(result.seed_complaint, dict):
+            return result
+
         try:
-            if isinstance(result.seed_complaint, dict):
-                search_summary = _seed_search_summary(
-                    result.seed_complaint,
-                    str(spec.get('hacc_search_mode') or 'package'),
-                )
-                result.seed_complaint = {
-                    **result.seed_complaint,
-                    '_meta': {
-                        'personality': spec.get('personality'),
-                        'max_turns': spec.get('max_turns'),
-                        'include_hacc_evidence': spec.get('include_hacc_evidence', False),
-                        'hacc_preset': spec.get('hacc_preset'),
-                        'use_hacc_vector_search': spec.get('use_hacc_vector_search', False),
-                        'hacc_search_mode': search_summary['requested_search_mode'],
-                        'hacc_effective_search_mode': search_summary['effective_search_mode'],
-                        'hacc_search_fallback_note': search_summary['fallback_note'],
-                        'search_summary': search_summary,
-                        'seed_source': result.seed_complaint.get('source'),
-                        'anchor_sections': list(
-                            (
-                                result.seed_complaint.get('key_facts', {}) or {}
-                            ).get('anchor_sections', [])
-                        ),
-                    }
-                }
-        except Exception:
-            pass
+            search_summary = _seed_search_summary(
+                result.seed_complaint,
+                str(spec.get('hacc_search_mode') or 'package'),
+            )
+            key_facts = dict(result.seed_complaint.get('key_facts') or {})
+            anchor_sections = list(key_facts.get('anchor_sections') or [])
+        except (TypeError, ValueError):
+            # Seed complaints can originate in external evidence packages. A
+            # malformed optional metadata field must not turn an otherwise
+            # completed session into a failed one, but it must be observable.
+            # Keep unexpected implementation failures outside this recovery
+            # path so they are not silently reported as successful enrichment.
+            logger.warning(
+                "Could not attach optional specification metadata to session %s; "
+                "leaving its seed complaint unchanged",
+                result.session_id,
+                exc_info=True,
+            )
+            return result
+
+        # Perform the mutation outside the external-data recovery boundary so
+        # defects in result assignment or metadata assembly remain visible.
+        result.seed_complaint = {
+            **result.seed_complaint,
+            '_meta': {
+                'personality': spec.get('personality'),
+                'max_turns': spec.get('max_turns'),
+                'include_hacc_evidence': spec.get('include_hacc_evidence', False),
+                'hacc_preset': spec.get('hacc_preset'),
+                'use_hacc_vector_search': spec.get('use_hacc_vector_search', False),
+                'hacc_search_mode': search_summary['requested_search_mode'],
+                'hacc_effective_search_mode': search_summary['effective_search_mode'],
+                'hacc_search_fallback_note': search_summary['fallback_note'],
+                'search_summary': search_summary,
+                'seed_source': result.seed_complaint.get('source'),
+                'anchor_sections': anchor_sections,
+            }
+        }
         return result
 
     @staticmethod
@@ -448,6 +477,19 @@ class AdversarialHarness:
         safe = self._safe_session_id(session_id)
         return os.path.join(self.session_state_dir, safe)
 
+    @staticmethod
+    def _initialize_session_databases(*database_paths: str | None) -> None:
+        """Create each configured session database and surface initialization failures."""
+        configured_paths = [path for path in database_paths if path]
+        if not configured_paths:
+            return
+
+        import duckdb  # type: ignore
+
+        for database_path in configured_paths:
+            connection = duckdb.connect(database_path)
+            connection.close()
+
     def _create_mediator_for_session(
         self,
         *,
@@ -460,24 +502,50 @@ class AdversarialHarness:
         """Call mediator_factory with optional per-session DB paths if supported."""
         try:
             sig = inspect.signature(self.mediator_factory)
-            params = sig.parameters
-            accepts_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
-            kwargs: Dict[str, Any] = {}
-            if accepts_kwargs or "evidence_db_path" in params:
-                kwargs["evidence_db_path"] = evidence_db_path
-            if accepts_kwargs or "legal_authority_db_path" in params:
-                kwargs["legal_authority_db_path"] = legal_authority_db_path
-            if accepts_kwargs or "claim_support_db_path" in params:
-                kwargs["claim_support_db_path"] = claim_support_db_path
-            if session_id is not None and (accepts_kwargs or "session_id" in params):
-                kwargs["session_id"] = session_id
-            if session_dir is not None and (accepts_kwargs or "session_dir" in params):
-                kwargs["session_dir"] = session_dir
-            if kwargs:
-                return self.mediator_factory(**kwargs)
-        except Exception:
-            pass
-        return self.mediator_factory()
+        except (TypeError, ValueError):
+            # Some extension and dynamically generated callables do not expose
+            # an inspectable signature. Retain no-argument factory compatibility
+            # for those callables, while making the loss of session-scoped paths
+            # observable. Factory execution deliberately remains outside this
+            # recovery boundary so constructor failures are never retried or
+            # replaced by a second, argument-less invocation.
+            logger.warning(
+                "Could not inspect mediator factory %s; calling it without "
+                "session-specific arguments",
+                type(self.mediator_factory).__name__,
+                exc_info=True,
+            )
+            return self.mediator_factory()
+
+        params = sig.parameters
+        accepts_kwargs = any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in params.values()
+        )
+
+        def accepts_keyword(name: str) -> bool:
+            parameter = params.get(name)
+            return accepts_kwargs or (
+                parameter is not None
+                and parameter.kind in {
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                }
+            )
+
+        kwargs: Dict[str, Any] = {}
+        if accepts_keyword("evidence_db_path"):
+            kwargs["evidence_db_path"] = evidence_db_path
+        if accepts_keyword("legal_authority_db_path"):
+            kwargs["legal_authority_db_path"] = legal_authority_db_path
+        if accepts_keyword("claim_support_db_path"):
+            kwargs["claim_support_db_path"] = claim_support_db_path
+        if session_id is not None and accepts_keyword("session_id"):
+            kwargs["session_id"] = session_id
+        if session_dir is not None and accepts_keyword("session_dir"):
+            kwargs["session_dir"] = session_dir
+
+        return self.mediator_factory(**kwargs)
 
     def _ensure_session_db_paths(
         self,
@@ -863,21 +931,14 @@ class AdversarialHarness:
             legal_authority_db_path = os.path.join(session_dir, "legal_authorities.duckdb") if session_dir else None
             claim_support_db_path = os.path.join(session_dir, "claim_support.duckdb") if session_dir else None
 
-            # Proactively create valid DuckDB container files so they are always present
-            # in the session folder (hooks will still initialize schemas when DuckDB is available).
-            try:
-                import duckdb  # type: ignore
-                if evidence_db_path:
-                    conn = duckdb.connect(evidence_db_path)
-                    conn.close()
-                if legal_authority_db_path:
-                    conn = duckdb.connect(legal_authority_db_path)
-                    conn.close()
-                if claim_support_db_path:
-                    conn = duckdb.connect(claim_support_db_path)
-                    conn.close()
-            except Exception:
-                pass
+            # Proactively create valid DuckDB containers before constructing
+            # hooks. A missing or unusable session database is a session
+            # initialization failure, not an optional-artifact condition.
+            self._initialize_session_databases(
+                evidence_db_path,
+                legal_authority_db_path,
+                claim_support_db_path,
+            )
 
             # Create new mediator instance (thread-safe). If supported, use per-session DuckDB paths.
             mediator = self._create_mediator_for_session(
@@ -1007,6 +1068,8 @@ class AdversarialHarness:
         durations = [r.duration_seconds for r in successful]
         anchor_summary = self._anchor_section_statistics(successful)
         intake_priority_summary = self._intake_priority_statistics(successful)
+        phase1_summary = self._phase1_statistics(successful)
+        phase2_summary = self._phase2_statistics(successful)
         
         return {
             'total_sessions': len(self.results),
@@ -1020,6 +1083,8 @@ class AdversarialHarness:
             'score_distribution': self._score_distribution(scores),
             'anchor_sections': anchor_summary,
             'intake_priority': intake_priority_summary,
+            'phase1_metrics': phase1_summary,
+            'phase2_metrics': phase2_summary,
         }
     
     def _score_distribution(self, scores: List[float]) -> Dict[str, int]:
@@ -1190,4 +1255,161 @@ class AdversarialHarness:
             'coverage_by_objective': coverage_by_objective,
             'sessions_with_full_coverage': sessions_with_full_coverage,
             'sessions_with_partial_coverage': max(0, len(successful_results) - sessions_with_full_coverage),
+        }
+
+    def _phase1_statistics(self, successful_results: List[SessionResult]) -> Dict[str, Any]:
+        """Compute Phase 1 (intake) metrics aggregated across sessions.
+
+        Metrics:
+        - ``chronology_completeness``: average ratio of anchored events to total
+          events, derived from ``intake_chronology_readiness`` in final state.
+        - ``contradiction_count``: average number of intake contradictions per
+          session, from ``contradiction_summary.count``.
+        - ``duplicate_question_rate``: fraction of question candidates that
+          share a goal with an earlier candidate in the same session, estimated
+          from ``question_candidate_summary.source_counts``.
+        - ``proof_lead_density``: average proof leads per candidate claim.
+        """
+        chronology_completeness_values: List[float] = []
+        contradiction_counts: List[int] = []
+        duplicate_question_rate_values: List[float] = []
+        proof_lead_density_values: List[float] = []
+
+        for result in successful_results:
+            final_state = dict(getattr(result, 'final_state', {}) or {})
+
+            # chronology_completeness from intake_chronology_readiness
+            chronology_readiness = final_state.get('intake_chronology_readiness')
+            if not isinstance(chronology_readiness, dict):
+                intake_case_summary = final_state.get('intake_case_summary')
+                if isinstance(intake_case_summary, dict):
+                    chronology_readiness = intake_case_summary.get('intake_chronology_readiness') or {}
+            if isinstance(chronology_readiness, dict) and chronology_readiness:
+                anchor_coverage = chronology_readiness.get('anchor_coverage_ratio')
+                if anchor_coverage is not None:
+                    chronology_completeness_values.append(float(anchor_coverage))
+                else:
+                    event_count = int(chronology_readiness.get('event_count') or 0)
+                    anchored = int(chronology_readiness.get('anchored_event_count') or 0)
+                    if event_count > 0:
+                        chronology_completeness_values.append(anchored / event_count)
+
+            # contradiction_count from contradiction_summary
+            contradiction_summary = final_state.get('contradiction_summary')
+            if not isinstance(contradiction_summary, dict):
+                intake_case_summary = final_state.get('intake_case_summary')
+                if isinstance(intake_case_summary, dict):
+                    contradiction_summary = intake_case_summary.get('contradiction_summary') or {}
+            if isinstance(contradiction_summary, dict):
+                count = int(contradiction_summary.get('count') or 0)
+                contradiction_counts.append(count)
+
+            # duplicate_question_rate: estimate from question_candidate_summary
+            question_summary = final_state.get('question_candidate_summary')
+            if not isinstance(question_summary, dict):
+                intake_case_summary = final_state.get('intake_case_summary')
+                if isinstance(intake_case_summary, dict):
+                    question_summary = intake_case_summary.get('question_candidate_summary') or {}
+            if isinstance(question_summary, dict):
+                total_candidates = int(question_summary.get('count') or 0)
+                goal_counts = dict(question_summary.get('question_goal_counts') or {})
+                if total_candidates > 0 and goal_counts:
+                    # Count duplicates as (count - 1) per goal: the first candidate per goal is not a duplicate
+                    duplicate_count = sum(max(0, cnt - 1) for cnt in goal_counts.values())
+                    duplicate_question_rate_values.append(duplicate_count / total_candidates)
+                elif total_candidates > 0:
+                    duplicate_question_rate_values.append(0.0)
+
+            # proof_lead_density: proof leads per candidate claim
+            proof_lead_summary = final_state.get('proof_lead_summary')
+            if not isinstance(proof_lead_summary, dict):
+                intake_case_summary = final_state.get('intake_case_summary')
+                if isinstance(intake_case_summary, dict):
+                    proof_lead_summary = intake_case_summary.get('proof_lead_summary') or {}
+            candidate_claims = final_state.get('candidate_claims')
+            if not isinstance(candidate_claims, list):
+                intake_case_summary = final_state.get('intake_case_summary')
+                if isinstance(intake_case_summary, dict):
+                    candidate_claims = intake_case_summary.get('candidate_claims') or []
+            if isinstance(proof_lead_summary, dict):
+                lead_count = int(proof_lead_summary.get('count') or 0)
+                claim_count = len(candidate_claims) if isinstance(candidate_claims, list) else 0
+                if claim_count > 0:
+                    proof_lead_density_values.append(lead_count / claim_count)
+
+        def _avg(values: List[float]) -> Optional[float]:
+            return sum(values) / len(values) if values else None
+
+        return {
+            'average_chronology_completeness': _avg(chronology_completeness_values),
+            'average_contradiction_count': (_avg([float(c) for c in contradiction_counts])
+                                            if contradiction_counts else None),
+            'average_duplicate_question_rate': _avg(duplicate_question_rate_values),
+            'average_proof_lead_density': _avg(proof_lead_density_values),
+            'sessions_with_chronology_data': len(chronology_completeness_values),
+            'sessions_with_contradiction_data': len(contradiction_counts),
+            'sessions_with_question_data': len(duplicate_question_rate_values),
+            'sessions_with_proof_lead_data': len(proof_lead_density_values),
+        }
+
+    def _phase2_statistics(self, successful_results: List[SessionResult]) -> Dict[str, Any]:
+        """Compute Phase 2 (evidence) metrics aggregated across sessions.
+
+        Metrics:
+        - ``support_sufficiency``: average ``credible_support_ratio`` from the
+          claim support packet summary.
+        - ``support_quality_rate``: ratio of high-quality support events
+          (corroborated / documentary / authority_only) to total support events
+          across the ``support_quality_counts`` map.
+        - ``proof_readiness``: average ``proof_readiness_score`` from the
+          claim support packet summary.
+        """
+        _HIGH_QUALITY_LABELS = frozenset({
+            'corroborated', 'documentary', 'authority_only', 'high', 'strong',
+        })
+
+        support_sufficiency_values: List[float] = []
+        support_quality_rate_values: List[float] = []
+        proof_readiness_values: List[float] = []
+
+        for result in successful_results:
+            final_state = dict(getattr(result, 'final_state', {}) or {})
+
+            packet_summary = final_state.get('claim_support_packet_summary')
+            if not isinstance(packet_summary, dict):
+                intake_case_summary = final_state.get('intake_case_summary')
+                if isinstance(intake_case_summary, dict):
+                    packet_summary = intake_case_summary.get('claim_support_packet_summary') or {}
+
+            if not isinstance(packet_summary, dict):
+                continue
+
+            credible_ratio = packet_summary.get('credible_support_ratio')
+            if credible_ratio is not None:
+                support_sufficiency_values.append(float(credible_ratio))
+
+            proof_readiness = packet_summary.get('proof_readiness_score')
+            if proof_readiness is not None:
+                proof_readiness_values.append(float(proof_readiness))
+
+            quality_counts = dict(packet_summary.get('support_quality_counts') or {})
+            if quality_counts:
+                total_quality = sum(int(v or 0) for v in quality_counts.values())
+                high_quality = sum(
+                    int(quality_counts.get(label, 0) or 0)
+                    for label in _HIGH_QUALITY_LABELS
+                )
+                if total_quality > 0:
+                    support_quality_rate_values.append(high_quality / total_quality)
+
+        def _avg(values: List[float]) -> Optional[float]:
+            return sum(values) / len(values) if values else None
+
+        return {
+            'average_support_sufficiency': _avg(support_sufficiency_values),
+            'average_support_quality_rate': _avg(support_quality_rate_values),
+            'average_proof_readiness': _avg(proof_readiness_values),
+            'sessions_with_support_data': len(support_sufficiency_values),
+            'sessions_with_quality_data': len(support_quality_rate_values),
+            'sessions_with_proof_readiness_data': len(proof_readiness_values),
         }

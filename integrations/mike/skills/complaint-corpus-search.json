@@ -1,0 +1,37 @@
+{
+  "skill_asset_id": "complaint-corpus-search",
+  "version": "1.0.0",
+  "name": "Complaint legal corpus search",
+  "description": "Searches the combined federal and state-law corpus (US Code, Federal Register, state statutes, administrative rules) for documents that support complaint assertions. Returns authority citations with relevance scores and source URLs.",
+  "capability": "legal_corpus_search",
+  "adapter": "integrations/ipfs_datasets/search.py",
+  "entry_point": "search_legal_corpus",
+  "required_for_grounding_modes": ["legal_corpus_only", "strict_legal_containment"],
+  "inputs": {
+    "query": {
+      "type": "string",
+      "description": "Natural-language query or assertion text to search for."
+    },
+    "state": {
+      "type": "string",
+      "description": "Optional two-letter US state code to include state-law results.",
+      "nullable": true
+    },
+    "max_results": {
+      "type": "integer",
+      "default": 5,
+      "description": "Maximum number of results to return per corpus section."
+    }
+  },
+  "outputs": {
+    "federal_statutes": {"type": "array", "description": "Matching US Code sections."},
+    "federal_regulations": {"type": "array", "description": "Matching Federal Register entries."},
+    "state_statutes": {"type": "array", "description": "Matching state law sections."},
+    "total_result_count": {"type": "integer"}
+  },
+  "editor_integration": {
+    "panel": "authority_citations",
+    "displays": ["federal_statutes", "state_statutes"],
+    "block_on_zero_results": false
+  }
+}

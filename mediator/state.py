@@ -1,5 +1,6 @@
 """State management for complaint mediator workflow."""
 import json
+import logging
 import os
 import sys
 import time
@@ -11,6 +12,9 @@ from glob import glob
 import requests
 
 from backends.llm_router_backend import LLMRouterBackend
+
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_chat_history_entry(entry):
@@ -55,15 +59,20 @@ def extract_chat_history_context_strings_from_state(state, limit=3):
 		return context
 
 	extractor = getattr(state, "extract_chat_history_context_strings", None)
-	if callable(extractor):
+	default_extractor = getattr(globals().get("State"), "extract_chat_history_context_strings", None)
+	uses_default_extractor = getattr(extractor, "__func__", None) is default_extractor
+	if callable(extractor) and not uses_default_extractor:
 		try:
 			extracted = extractor(limit=limit)
 		except TypeError:
+			logger.debug("State history extractor rejected the limit argument; retrying without it", exc_info=True)
 			try:
 				extracted = extractor()
 			except Exception:
+				logger.debug("State history extractor failed; falling back to stored chat history", exc_info=True)
 				extracted = []
 		except Exception:
+			logger.debug("State history extractor failed; falling back to stored chat history", exc_info=True)
 			extracted = []
 		if isinstance(extracted, (list, tuple)):
 			for value in extracted:
@@ -191,9 +200,12 @@ class State:
 
 			try:
 				index = int(choice)
+				if not 1 <= index <= len(files):
+					raise IndexError(index)
 				file = files[index - 1]
 				break
-			except:
+			except (ValueError, IndexError):
+				print('Please enter a number from 1 to %i.' % len(files))
 				continue
 
 		with open(file) as f:

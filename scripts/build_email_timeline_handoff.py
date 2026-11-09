@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-from ipfs_datasets_py.processors.legal_data.email_timeline_handoff import build_email_timeline_handoff_from_file
+from complaint_generator.email_timeline_handoff import build_email_timeline_handoff_from_file
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -1,0 +1,391 @@
+.case-catalog-page {
+    overflow-wrap: anywhere;
+}
+
+.case-catalog-page,
+.case-catalog-page * {
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.case-catalog-page button,
+.case-catalog-page summary,
+.case-shell__task,
+.case-shell__more summary {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.case-catalog-page main,
+.case-catalog-page form,
+.case-catalog-page section,
+.case-catalog-page fieldset,
+.case-catalog-page ul {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.case-catalog-page fieldset label,
+.case-catalog-page .case-shell__switch {
+    display: block;
+}
+
+.case-catalog-page input,
+.case-catalog-page select,
+.case-catalog-page textarea,
+.case-catalog-page button {
+    max-width: 100%;
+}
+
+.case-shell {
+    position: sticky;
+    overflow-wrap: anywhere;
+    top: 0;
+    z-index: 20;
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 0;
+    padding: var(--cx-space-4, 16px);
+    background: var(--cx-color-panel, #fffcf8);
+    color: var(--cx-color-ink, #1c1917);
+    border-bottom: 1px solid var(--cx-color-line, #d6d3d1);
+    font-family: "Public Sans", "Segoe UI", sans-serif;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.case-shell__access,
+.case-shell__identity,
+.case-shell__identity p {
+    margin: 0 0 8px;
+}
+
+.case-shell__access a,
+.case-shell__task {
+    color: var(--cx-color-accent-strong, #6b240f);
+}
+
+.case-shell__identity {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    align-items: end;
+}
+
+.case-shell__identity span {
+    display: block;
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--cx-color-muted, #44403c);
+}
+
+.case-shell__identity strong {
+    display: block;
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+}
+
+#complaint-case-shell-next,
+.case-shell__task {
+    font: inherit;
+    min-height: 44px;
+    border: 1px solid var(--cx-color-accent-strong, #6b240f);
+    border-radius: 8px;
+    background: var(--cx-color-panel, #fffcf8);
+    padding: 8px 12px;
+}
+
+#complaint-case-shell-next {
+    background: var(--cx-color-accent, #7c2d12);
+    color: #fffaf5;
+    justify-self: start;
+}
+
+.case-shell__task[aria-current="page"] {
+    background: var(--cx-color-accent-soft, #ffedd5);
+}
+
+.case-shell__body {
+    display: block;
+    min-width: 0;
+}
+
+.case-shell__switch select {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    font: inherit;
+}
+
+#complaint-case-shell-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0;
+    min-width: 0;
+}
+
+.case-shell__more {
+    flex: 1 1 100%;
+}
+
+.case-shell__task[hidden] {
+    display: none;
+}
+
+.case-shell__panel {
+    margin-top: 8px;
+    padding: 12px;
+    border: 1px solid var(--cx-color-line, #d6d3d1);
+    border-radius: 8px;
+    background: var(--cx-color-canvas, #f6f3ee);
+}
+
+.case-shell :focus-visible {
+    outline: 3px solid var(--cx-color-accent-strong, #6b240f);
+    outline-offset: 2px;
+}
+
+body[data-case-task-flow="ordinary"] [data-case-shell-diagnostic="true"] {
+    display: none !important;
+}
+
+@media (min-width: 1100px) {
+    .case-shell__body {
+        display: grid;
+        grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+    }
+
+    #complaint-case-shell-nav {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .case-shell__more {
+        display: none;
+    }
+}
+
+@media (min-width: 768px) and (max-width: 1099px) {
+    .case-shell__identity {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .case-shell__more {
+        display: none;
+    }
+}
+
+#complaint-presentation-modes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-width: 100%;
+    min-width: 0;
+}
+
+#complaint-presentation-modes button,
+.case-shell__access a,
+#complaint-entry button {
+    min-height: 44px;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+#unresolved-gaps,
+#unresolved-gaps .gap,
+.case-shell__panel,
+.case-shell__panel-body,
+#complaint-presentation-context {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* Width changes stacking only. It does not drop unresolved gaps or authority. */
+#unresolved-gaps .gap,
+.case-shell [data-role="gap"] {
+    white-space: normal;
+}
+
+@media (max-width: 767px) {
+    .case-shell__identity {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #complaint-case-shell-nav,
+    #complaint-presentation-modes,
+    .case-shell__access {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .case-shell__task,
+    #complaint-case-shell-next,
+    #complaint-presentation-modes button,
+    #complaint-entry button,
+    .case-shell__access a {
+        flex: 1 1 auto;
+        width: 100%;
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 320px) {
+    .case-shell {
+        padding: 8px;
+    }
+
+    .case-shell__task,
+    #complaint-case-shell-next {
+        flex: 1 1 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .case-shell,
+    .case-shell * {
+        scroll-behavior: auto;
+        transition: none;
+    }
+}
+
+.case-state {
+    margin: 12px 0;
+    padding: 12px 14px;
+    border: 2px solid #6b3a22;
+    background: #f4efe6;
+    color: #1c1915;
+    border-radius: 6px;
+}
+
+.case-state[data-kind="loading"] {
+    border-color: #3f4d3a;
+}
+
+.case-state[data-kind="empty"] {
+    border-color: #3d4a57;
+}
+
+.case-state h2 {
+    margin: 0 0 6px;
+    font-size: 1.05rem;
+    line-height: 1.3;
+}
+
+.case-state p {
+    margin: 0 0 8px;
+    max-width: 68ch;
+}
+
+.case-state__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.case-state button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 8px 12px;
+    background: #1c1915;
+    color: #f4efe6;
+    border: 2px solid #1c1915;
+    border-radius: 4px;
+}
+
+.case-state button:focus-visible,
+.case-state:focus-visible {
+    outline: 3px solid #0b3a82;
+    outline-offset: 2px;
+}
+
+@media (max-width: 320px) {
+    .case-state button {
+        flex: 1 1 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .case-state,
+    .case-state *,
+    .case-shell,
+    .case-shell *,
+    dialog,
+    dialog * {
+        transition: none;
+        animation: none;
+        scroll-behavior: auto;
+    }
+}
+
+.case-a11y-live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+dialog {
+    color: #1c1915;
+    background: #f4efe6;
+    border: 2px solid #1c1915;
+    max-width: min(36rem, calc(100vw - 1.5rem));
+}
+
+dialog button {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+    padding: 8px 12px;
+    background: #1c1915;
+    color: #f4efe6;
+    border: 2px solid #1c1915;
+}
+
+dialog :focus-visible,
+.case-catalog-page :focus-visible,
+.correspondence :focus-visible {
+    outline: 3px solid #0b3a82;
+    outline-offset: 2px;
+}
+
+@media (prefers-contrast: more) {
+    .case-shell,
+    .case-state,
+    dialog,
+    .case-shell__task,
+    #complaint-case-shell-next,
+    .case-state button,
+    dialog button {
+        border-width: 3px;
+        border-color: #000;
+    }
+
+    .case-shell,
+    .case-state,
+    dialog {
+        background: #fff;
+        color: #000;
+    }
+
+    #complaint-case-shell-next,
+    .case-state button,
+    dialog button {
+        background: #000;
+        color: #fff;
+    }
+
+    .case-shell :focus-visible,
+    dialog :focus-visible,
+    .case-state button:focus-visible {
+        outline: 4px solid #000;
+    }
+}

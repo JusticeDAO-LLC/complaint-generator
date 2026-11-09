@@ -9,8 +9,26 @@ from pathlib import Path
 import anyio
 
 
-repo_root = Path(__file__).resolve().parents[2] / "ipfs_datasets_py"
-module_path = repo_root / "ipfs_datasets_py" / "processors" / "multimedia" / "email_processor.py"
+def _email_processor_module_path() -> Path:
+    repo_root = Path(__file__).resolve().parents[1]
+    current = repo_root
+    while True:
+        module_path = (
+            current
+            / "ipfs_datasets_py"
+            / "ipfs_datasets_py"
+            / "processors"
+            / "multimedia"
+            / "email_processor.py"
+        )
+        if module_path.is_file():
+            return module_path
+        if current.parent == current:
+            raise FileNotFoundError("Could not locate ipfs_datasets_py email_processor.py")
+        current = current.parent
+
+
+module_path = _email_processor_module_path()
 spec = importlib.util.spec_from_file_location("email_processor_window_module", module_path)
 email_processor_module = importlib.util.module_from_spec(spec)
 assert spec is not None

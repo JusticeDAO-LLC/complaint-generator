@@ -44,3 +44,20 @@ enhanced_daemon_manager.log
 output/gmail*
 output/*
 output/email_duckdb/starworks5_2y_20260326/email_corpus.duckdb.wal
+
+# Refactor supervisor runtime state
+data/refactor_supervisor/**/*.duckdb
+data/refactor_supervisor/**/*.duckdb.*
+data/refactor_supervisor/**/*.sqlite3*
+data/refactor_supervisor/**/*.log
+data/refactor_supervisor/**/*.pid
+data/refactor_supervisor/**/*.lock
+data/refactor_supervisor/**/scheduler_metrics.json
+data/refactor_supervisor/**/scheduler_decision_metrics.json
+data/refactor_supervisor/**/state/
+data/refactor_supervisor/**/supervisor_state/
+data/refactor_supervisor/**/worktrees/
+data/refactor_supervisor/objective_datasets/
+data/refactor_supervisor/merge_resolver_watchdog_status.json
+data/refactor_supervisor/refactor_supervisor_status.json
+data/manual_worktrees/

@@ -9,14 +9,15 @@ from pathlib import Path
 
 import anyio
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ipfs_datasets_py.processors.legal_data.email_auth import resolve_gmail_credentials
-from ipfs_datasets_py.processors.legal_data.email_corpus import (
+from complaint_generator.email_graphrag import (
     build_email_duckdb_artifacts,
     search_email_graphrag_duckdb,
 )
-from ipfs_datasets_py.processors.legal_data.email_workspace import import_gmail_workspace_evidence as import_gmail_evidence
+from integrations.ipfs_datasets.legal_data import load_legal_symbol
+
+resolve_gmail_credentials = load_legal_symbol("resolve_gmail_credentials", module="email_auth")
+import_gmail_evidence = load_legal_symbol("import_gmail_workspace_evidence", module="email_workspace")
 
 
 def build_parser() -> argparse.ArgumentParser:

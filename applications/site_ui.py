@@ -2,14 +2,18 @@ from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import HTMLResponse
+from .fastapi_compat import attach_router_routes
 
 
-_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
-_SDK_PLAYGROUND_TEMPLATE = (
-    Path(__file__).resolve().parent.parent
-    / "ipfs_datasets_py"
-    / "ipfs_accelerate_py"
-    / "SDK_PLAYGROUND_PREVIEW.html"
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_TEMPLATES_DIR = _REPO_ROOT / "templates"
+_SDK_PLAYGROUND_CANDIDATES = (
+    _REPO_ROOT / "external" / "ipfs_accelerate_py" / "SDK_PLAYGROUND_PREVIEW.html",
+    _REPO_ROOT / "ipfs_datasets_py" / "ipfs_accelerate_py" / "SDK_PLAYGROUND_PREVIEW.html",
+)
+_SDK_PLAYGROUND_TEMPLATE = next(
+    (candidate for candidate in _SDK_PLAYGROUND_CANDIDATES if candidate.exists()),
+    _SDK_PLAYGROUND_CANDIDATES[0],
 )
 
 
@@ -18,7 +22,30 @@ def _load_template(name: str) -> str:
 
 
 def _load_sdk_playground_template() -> str:
-    return _SDK_PLAYGROUND_TEMPLATE.read_text()
+    if _SDK_PLAYGROUND_TEMPLATE.exists():
+        return _SDK_PLAYGROUND_TEMPLATE.read_text()
+    return """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDK Playground</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f7f7f4; color: #152334; }
+        main { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+        a { color: #0a5570; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>SDK Playground</h1>
+        <p>The optional ipfs_datasets SDK playground asset is not installed in this checkout.</p>
+        <p><a href="/dashboards">Back to dashboards</a></p>
+    </main>
+</body>
+</html>
+"""
 
 
 def create_core_site_ui_router() -> APIRouter:
@@ -72,5 +99,4 @@ def create_core_site_ui_router() -> APIRouter:
 
 
 def attach_core_site_ui_routes(app: FastAPI) -> FastAPI:
-    app.include_router(create_core_site_ui_router())
-    return app
+    return attach_router_routes(app, create_core_site_ui_router())

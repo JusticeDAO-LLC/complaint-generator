@@ -61,23 +61,24 @@ The goal now is not to redesign the system abstractly. The goal is to deliver a 
 - `Complete`: implemented enough to be treated as baseline
 - `In Progress`: partially implemented and actively extendable
 - `Planned`: designed but not yet implemented
+- `Validation Required`: implemented checklist items exist, but the supervisor should still run the listed validation commands before treating the slice as closed
 - `Deferred`: useful but lower priority than the current roadmap
 
 ## Workstream Overview
 
 | ID | Workstream | Status | Priority | Outcome |
 |---|---|---|---|---|
-| W1 | Question planning and testimony intake | Planned | P0 | The dashboard becomes a guided clarification surface tied to legal proof gaps |
-| W2 | Document intake and decomposition | Planned | P0 | Uploaded or linked materials become reusable parsed evidence artifacts |
-| W3 | Fact registry and support ledger | Planned | P0 | Every element status can be traced to durable fact and chunk records |
-| W4 | Graph persistence and support paths | Planned | P1 | Support and contradiction paths become reusable and queryable |
-| W5 | Retrieval sessions and evidence ranking | Planned | P1 | Operators can inspect the best chunks and why they were selected |
-| W6 | Legal proof and contradiction engine | Planned | P0 | Facts can be evaluated against legal predicates, exceptions, and contradictions |
-| W7 | Operator experience and drafting integration | Planned | P1 | The dashboard becomes the canonical evidence-readiness workflow feeding `/document` |
+| W1 | Question planning and testimony intake | Complete | P0 | The dashboard becomes a guided clarification surface tied to legal proof gaps |
+| W2 | Document intake and decomposition | Complete | P0 | Uploaded or linked materials become reusable parsed evidence artifacts |
+| W3 | Fact registry and support ledger | Complete | P0 | Every element status can be traced to durable fact and chunk records |
+| W4 | Graph persistence and support paths | Complete | P1 | Support and contradiction paths become reusable and queryable |
+| W5 | Retrieval sessions and evidence ranking | Complete | P1 | Operators can inspect the best chunks and why they were selected |
+| W6 | Legal proof and contradiction engine | Complete | P0 | Facts can be evaluated against legal predicates, exceptions, and contradictions |
+| W7 | Operator experience and drafting integration | Validation Required | P1 | The dashboard becomes the canonical evidence-readiness workflow feeding `/document` |
 
 ## M0: Question And Testimony Foundation
 
-Status: Planned
+Status: Complete
 Priority: P0
 
 ### Goal
@@ -96,14 +97,14 @@ Make `/claim-support-review` a guided intake and clarification workflow instead 
 
 ### Checklist
 
-- [ ] add question recommendation payloads with `question_id`, `target_claim_element_id`, `question_lane`, `question_reason`, and `expected_proof_gain`
-- [ ] rank questions by unresolved legal value, contradiction impact, and evidentiary weakness
-- [ ] distinguish testimony questions from document-request questions
-- [ ] add a structured testimony composer with event date, actor, act, target, harm, confidence, and firsthand status
-- [ ] preserve raw narrative alongside structured testimony extraction preview
-- [ ] persist testimony records and revisions through mediator-backed storage
-- [ ] link testimony items to candidate claim elements before or at save time
-- [ ] surface testimony-backed support counts in existing coverage summaries
+- [x] add question recommendation payloads with `question_id`, `target_claim_element_id`, `question_lane`, `question_reason`, and `expected_proof_gain`
+- [x] rank questions by unresolved legal value, contradiction impact, and evidentiary weakness
+- [x] distinguish testimony questions from document-request questions
+- [x] add a structured testimony composer with event date, actor, act, target, harm, confidence, and firsthand status
+- [x] preserve raw narrative alongside structured testimony extraction preview
+- [x] persist testimony records and revisions through mediator-backed storage
+- [x] link testimony items to candidate claim elements before or at save time
+- [x] surface testimony-backed support counts in existing coverage summaries
 
 ### Acceptance criteria
 
@@ -131,7 +132,7 @@ Make `/claim-support-review` a guided intake and clarification workflow instead 
 
 ## M1: Document Intake And Decomposition Plane
 
-Status: Planned
+Status: Complete
 Priority: P0
 
 ### Goal
@@ -149,12 +150,12 @@ Make uploaded or linked materials first-class evidence artifacts routed through 
 
 ### Checklist
 
-- [ ] add dashboard document upload and URL intake controls
-- [ ] route dashboard-ingested materials through `integrations/ipfs_datasets/documents.py`
-- [ ] persist parse summary, transform lineage, chunk references, and remediation flags
-- [ ] expose chunk previews, page or span provenance, and parse-quality indicators in review payloads
-- [ ] add reparsing or OCR retry actions for low-quality document parses
-- [ ] link created artifacts to claim-support context and testimony threads where applicable
+- [x] add dashboard document upload and URL intake controls
+- [x] route dashboard-ingested materials through `integrations/ipfs_datasets/documents.py`
+- [x] persist parse summary, transform lineage, chunk references, and remediation flags
+- [x] expose chunk previews, page or span provenance, and parse-quality indicators in review payloads
+- [x] add reparsing or OCR retry actions for low-quality document parses
+- [x] link created artifacts to claim-support context and testimony threads where applicable
 
 ### Acceptance criteria
 
@@ -182,7 +183,7 @@ Make uploaded or linked materials first-class evidence artifacts routed through 
 
 ## M2: Fact Registry And Element Support Ledger
 
-Status: Planned
+Status: Complete
 Priority: P0
 
 ### Goal
@@ -199,12 +200,12 @@ Create one durable substrate for testimony facts, document facts, authority fact
 
 ### Checklist
 
-- [ ] formalize durable fact records with source artifact, chunk or span, proposition text, confidence, and validation state
-- [ ] add fact-to-element, fact-to-authority, and fact-to-testimony link records
-- [ ] normalize uncertainty and contradiction flags on facts
-- [ ] add stable support-packet or proof-path identifiers for review drilldowns
-- [ ] expose an element support ledger in the review payload keyed by concrete fact IDs
-- [ ] ensure dashboard summaries can be recomputed from persisted fact records instead of transient parser outputs
+- [x] formalize durable fact records with source artifact, chunk or span, proposition text, confidence, and validation state
+- [x] add fact-to-element, fact-to-authority, and fact-to-testimony link records
+- [x] normalize uncertainty and contradiction flags on facts
+- [x] add stable support-packet or proof-path identifiers for review drilldowns
+- [x] expose an element support ledger in the review payload keyed by concrete fact IDs
+- [x] ensure dashboard summaries can be recomputed from persisted fact records instead of transient parser outputs
 
 ### Acceptance criteria
 
@@ -230,7 +231,7 @@ Create one durable substrate for testimony facts, document facts, authority fact
 
 ## M3: Graph Snapshot Persistence And Support Paths
 
-Status: Planned
+Status: Complete
 Priority: P1
 
 ### Goal
@@ -247,11 +248,11 @@ Make support paths queryable and reusable across review, follow-up, and drafting
 
 ### Checklist
 
-- [ ] persist testimony, evidence, and law-adjacent graph snapshots with stable IDs
-- [ ] add query helpers for support-path and contradiction-path lookups per element
-- [ ] resolve duplicate or near-duplicate actors and entities across testimony and document graphs
-- [ ] attach provenance edges from facts to chunks and chunks to artifacts
-- [ ] expose graph snapshot references and support-path summaries in review payloads
+- [x] persist testimony, evidence, and law-adjacent graph snapshots with stable IDs
+- [x] add query helpers for support-path and contradiction-path lookups per element
+- [x] resolve duplicate or near-duplicate actors and entities across testimony and document graphs
+- [x] attach provenance edges from facts to chunks and chunks to artifacts
+- [x] expose graph snapshot references and support-path summaries in review payloads
 
 ### Acceptance criteria
 
@@ -277,7 +278,7 @@ Make support paths queryable and reusable across review, follow-up, and drafting
 
 ## M4: Retrieval Sessions And Evidence Ranking
 
-Status: Planned
+Status: Complete
 Priority: P1
 
 ### Goal
@@ -294,11 +295,11 @@ Make chunk retrieval a first-class review tool for question planning, contradict
 
 ### Checklist
 
-- [ ] index testimony and document chunks in one retrieval plane
-- [ ] add claim-element-scoped retrieval sessions with stable session IDs
-- [ ] expose retrieval explanations, scores, and duplicate-cluster hints in the review payload
-- [ ] use retrieval context to improve question recommendations and follow-up planning
-- [ ] store enough retrieval metadata to replay or debug a review session
+- [x] index testimony and document chunks in one retrieval plane
+- [x] add claim-element-scoped retrieval sessions with stable session IDs
+- [x] expose retrieval explanations, scores, and duplicate-cluster hints in the review payload
+- [x] use retrieval context to improve question recommendations and follow-up planning
+- [x] store enough retrieval metadata to replay or debug a review session
 
 ### Acceptance criteria
 
@@ -319,12 +320,12 @@ Make chunk retrieval a first-class review tool for question planning, contradict
 
 ### Suggested focused validation
 
-- `./.venv/bin/python -m pytest tests/test_ipfs_vector_store.py -q`
+- `./.venv/bin/python -m pytest tests/test_m4_retrieval_sessions.py -q`
 - `./.venv/bin/python -m pytest tests/test_claim_support_hooks.py -q`
 
 ## M5: Legal Proof And Contradiction Engine
 
-Status: Planned
+Status: Complete
 Priority: P0
 
 ### Goal
@@ -343,12 +344,12 @@ Turn coverage review into facts-applied-to-law validation with proof gaps, excep
 
 ### Checklist
 
-- [ ] implement `prove_claim_elements` behind the existing adapter contract
-- [ ] implement contradiction and exception checks with concise proof explanations
-- [ ] normalize law-element, predicate, and authority-rule references used by proof results
-- [ ] distinguish missing support, contradiction, exception-barred, and uncertain states per element
-- [ ] expose element proof cards with required predicates, satisfied predicates, missing predicates, supporting facts, contradiction sources, and next action
-- [ ] feed proof-state outputs back into question planning and follow-up planning
+- [x] implement `prove_claim_elements` behind the existing adapter contract
+- [x] implement contradiction and exception checks with concise proof explanations
+- [x] normalize law-element, predicate, and authority-rule references used by proof results
+- [x] distinguish missing support, contradiction, exception-barred, and uncertain states per element
+- [x] expose element proof cards with required predicates, satisfied predicates, missing predicates, supporting facts, contradiction sources, and next action
+- [x] feed proof-state outputs back into question planning and follow-up planning
 
 ### Acceptance criteria
 
@@ -374,7 +375,7 @@ Turn coverage review into facts-applied-to-law validation with proof gaps, excep
 
 ## M6: Operator Productization And `/document` Handoff
 
-Status: Planned
+Status: Validation Required
 Priority: P1
 
 ### Goal
@@ -392,11 +393,11 @@ Make `/claim-support-review` the canonical operator workflow for legal readiness
 
 ### Checklist
 
-- [ ] redesign the dashboard into clear sections for Questions, Testimony, Documents, Facts, Graph, Law, and Actions
-- [ ] add per-element proof cards with visible next actions and drilldowns
-- [ ] preserve deep-link context from `/document` into claim and section review state
-- [ ] make drafting warnings and readiness summaries reference concrete proof cards and support ledgers
-- [ ] ensure heavy processing steps can be queued without breaking the interactive dashboard
+- [x] redesign the dashboard into clear sections for Questions, Testimony, Documents, Facts, Graph, Law, and Actions
+- [x] add per-element proof cards with visible next actions and drilldowns
+- [x] preserve deep-link context from `/document` into claim and section review state
+- [x] make drafting warnings and readiness summaries reference concrete proof cards and support ledgers
+- [x] ensure heavy processing steps can be queued without breaking the interactive dashboard
 
 ### Acceptance criteria
 
@@ -408,6 +409,7 @@ Make `/claim-support-review` the canonical operator workflow for legal readiness
 
 - the dashboard remains usable even when some advanced tabs have reduced capabilities
 - deep-link handoff to `/document` still preserves claim and section context without requiring proof tooling
+- document handoff still emits reviewable DOCX artifacts with pleading, affidavit, section-heading, factual-group, open-gap, and support-handoff text when the optional styled DOCX renderer dependency is unavailable
 
 ### Validation
 

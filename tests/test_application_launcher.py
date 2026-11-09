@@ -1,6 +1,8 @@
 from pathlib import Path
 import json
 
+from fastapi.testclient import TestClient
+
 from applications.launcher import (
     _run_adversarial_autopatch_app,
     canonicalize_application_type,
@@ -8,6 +10,7 @@ from applications.launcher import (
     launch_application,
     normalize_application_types,
 )
+from applications.server import SERVER
 
 
 def test_normalize_application_types_supports_legacy_object_config():
@@ -60,6 +63,20 @@ def test_create_uvicorn_app_for_review_surface_registers_ui_and_api_routes():
         for route in app.routes
         if hasattr(route, "methods")
     )
+
+
+def test_default_server_registers_unified_dashboard_routes():
+    client = TestClient(SERVER(mediator=object()).app)
+
+    dashboard_response = client.get("/dashboards")
+    mcp_response = client.get("/mcp")
+    raw_response = client.get("/dashboards/raw/ipfs-datasets/mcp")
+
+    assert dashboard_response.status_code == 200
+    assert "Unified Dashboard Hub" in dashboard_response.text
+    assert mcp_response.status_code == 200
+    assert "IPFS Datasets MCP Dashboard" in mcp_response.text
+    assert raw_response.status_code == 200
 
 
 def test_launch_application_uses_uvicorn_runner_for_review_surface(monkeypatch):

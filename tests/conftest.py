@@ -1,7 +1,8 @@
+import importlib
 import os
 import re
 import sys
-import importlib.util
+import warnings
 
 import pytest
 
@@ -56,6 +57,44 @@ _RESERVED_EXAMPLE_URL_RE = re.compile(
     re.IGNORECASE,
 )
 
+_HYPOTHESIS_REQUIRED_TESTS = (
+    "test_mcplusplus_v39_session84_properties.py",
+    "test_mcplusplus_v39_session84_recovery.py",
+    "test_observability_property_based.py",
+    "test_property_based_extraction_testing.py",
+    "test_ontology_comparator.py",
+    "test_ontology_critic_hypothesis.py",
+    "test_score_analyzer.py",
+)
+
+_OPTIONAL_UPSTREAM_REQUIRED_TESTS = (
+    "test_agentic_evidence_download.py",
+    "test_attachment_text_extractor.py",
+    "test_complaint_generator_tools.py",
+    "test_docket_workspace_surface.py",
+    "test_email_agentic_search.py",
+    "test_email_authority_enrichment.py",
+    "test_email_duckdb_index.py",
+    "test_email_graphrag.py",
+    "test_email_import.py",
+    "test_email_seed_planner.py",
+    "test_email_timeline_handoff.py",
+    "test_evidence_relevance.py",
+)
+
+_OPTIONAL_UPSTREAM_MODULES = (
+    "ipfs_datasets_py.processors.legal_data.email_relevance",
+    "ipfs_datasets_py.processors.legal_data.email_agentic_search",
+    "ipfs_datasets_py.processors.legal_data.email_authority_enrichment",
+    "ipfs_datasets_py.processors.legal_data.email_corpus",
+    "ipfs_datasets_py.processors.legal_data.email_import",
+    "ipfs_datasets_py.processors.legal_data.email_seed_planner",
+    "ipfs_datasets_py.processors.legal_data.email_timeline_handoff",
+    "ipfs_datasets_py.processors.legal_data.workspace_dataset",
+    "ipfs_datasets_py.processors.multimedia.attachment_text_extractor",
+    "ipfs_datasets_py.processors.multimedia.email_duckdb_index",
+)
+
 
 def _truthy_env(name: str) -> bool:
     value = os.environ.get(name, "").strip().lower()
@@ -66,6 +105,124 @@ def _strip_reserved_example_urls(text: str) -> str:
     """Ignore reserved example-domain fixtures when auto-classifying network tests."""
 
     return _RESERVED_EXAMPLE_URL_RE.sub("reserved-example-url", text)
+
+
+def _classify_test_file(path: str) -> tuple[bool, bool, bool]:
+    """Return the automatic LLM, network, and heavy classifications for a test.
+
+    A collected test file should normally remain readable.  If it becomes
+    unavailable between discovery and classification, gate it behind every
+    opt-in rather than accidentally running a potentially external or expensive
+    test.  Only filesystem errors are recoverable here; classifier defects must
+    remain visible during collection.
+    """
+
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as source_file:
+            text = source_file.read().lower()
+    except OSError as exc:
+        warnings.warn(
+            (
+                f"Could not read test file {path!r} for automatic gating; "
+                "requiring LLM, network, and heavy test opt-ins: "
+                f"{type(exc).__name__}: {exc}"
+            ),
+            pytest.PytestCollectionWarning,
+            stacklevel=2,
+        )
+        return True, True, True
+
+    network_text = _strip_reserved_example_urls(text)
+    return (
+        any(keyword in text for keyword in _LLM_KEYWORDS),
+        any(keyword in network_text for keyword in _NETWORK_KEYWORDS),
+        any(keyword in text for keyword in _HEAVY_KEYWORDS),
+    )
+
+
+def _candidate_ipfs_dataset_roots(repo_root: str) -> list[str]:
+    """Return local or supervisor-parent ipfs_datasets_py checkouts."""
+
+    root = os.path.abspath(repo_root)
+    candidates: list[str] = []
+    current = root
+    while True:
+        for candidate in (
+            os.path.join(current, "external", "ipfs_datasets_py"),
+            os.path.join(current, "ipfs_datasets_py"),
+        ):
+            if candidate not in candidates:
+                candidates.append(candidate)
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+    return candidates
+
+
+def _select_ipfs_dataset_root(repo_root: str) -> str:
+    """Honor explicit source paths before discovering a complete checkout.
+
+    Supervisor worktrees can contain empty submodule directories.  A pinned,
+    absolute source checkout supplied through PYTHONPATH must take precedence
+    over an unrelated standalone checkout found in a parent directory.
+    """
+
+    fallback = os.path.join(repo_root, "ipfs_datasets_py")
+    explicit_roots = [
+        entry
+        for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep)
+        if os.path.isabs(entry)
+    ]
+    for candidate in explicit_roots + _candidate_ipfs_dataset_roots(repo_root):
+        expected_init = os.path.join(candidate, "ipfs_datasets_py", "__init__.py")
+        if os.path.isfile(expected_init):
+            return candidate
+    return fallback
+
+
+def _optional_upstream_module_available(module_name: str) -> bool:
+    """Probe optional modules without hiding unrelated initializer failures."""
+
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except ModuleNotFoundError as exc:
+        # find_spec imports parents of dotted names.  An absent requested
+        # parent means this optional feature is unavailable; a missing import
+        # inside a present parent is a different failure and remains visible.
+        if exc.name and (
+            module_name == exc.name or module_name.startswith(exc.name + ".")
+        ):
+            return False
+        raise
+    except ValueError as exc:
+        # Some tests install lightweight module proxies without a ModuleSpec.
+        # Treat that specific find_spec result as unavailable, not a crash.
+        if str(exc) == f"{module_name}.__spec__ is None":
+            return False
+        raise
+
+
+def _preload_ipfs_datasets_package(expected_init: str) -> None:
+    """Preload the vendored package, reporting only unavailable imports.
+
+    Preloading is a compatibility aid for collection, so an unavailable optional
+    import should not prevent unrelated tests from running.  Other exceptions
+    indicate a broken package initializer and must remain visible.
+    """
+
+    importlib.invalidate_caches()
+    try:
+        import ipfs_datasets_py  # noqa: F401
+    except ImportError as exc:
+        warnings.warn(
+            (
+                "Could not preload the vendored ipfs_datasets_py package from "
+                f"{expected_init}: {type(exc).__name__}: {exc}"
+            ),
+            pytest.PytestConfigWarning,
+            stacklevel=2,
+        )
 
 
 def pytest_addoption(parser):
@@ -97,12 +254,28 @@ def pytest_addoption(parser):
     )
 
 
+def pytest_ignore_collect(collection_path, path=None, config=None):
+    """Avoid collection-time import errors for optional property-test deps."""
+
+    candidate = str(collection_path if collection_path is not None else path)
+    if importlib.util.find_spec("hypothesis") is None:
+        if any(name in candidate for name in _HYPOTHESIS_REQUIRED_TESTS):
+            return True
+    if any(name in candidate for name in _OPTIONAL_UPSTREAM_REQUIRED_TESTS):
+        if any(not _optional_upstream_module_available(module) for module in _OPTIONAL_UPSTREAM_MODULES):
+            return True
+    return None
+
+
 def pytest_configure() -> None:
     """Ensure the ipfs_datasets_py submodule package is importable in tests."""
 
     repo_root = os.path.dirname(os.path.dirname(__file__))
-    submodule_root = os.path.join(repo_root, "ipfs_datasets_py")
-    if os.path.isdir(submodule_root) and submodule_root not in sys.path:
+    submodule_root = _select_ipfs_dataset_root(repo_root)
+    if os.path.isdir(submodule_root):
+        # A prior import/bootstrap may already have put this path behind a
+        # legacy checkout.  Reposition it before clearing cached modules.
+        sys.path[:] = [entry for entry in sys.path if entry != submodule_root]
         sys.path.insert(0, submodule_root)
 
     # With pytest --import-mode=importlib, the repository root isn't guaranteed to be on
@@ -128,21 +301,17 @@ def pytest_configure() -> None:
                 if name == "ipfs_datasets_py" or name.startswith("ipfs_datasets_py."):
                     sys.modules.pop(name, None)
 
-    # Vendored dependency layout: ipfs_accelerate_py/ipfs_accelerate_py/
-    accelerate_repo_root = os.path.join(submodule_root, "ipfs_accelerate_py")
+    # Sibling checkout under external/, with the older nested layout as a fallback.
+    external_accelerate = os.path.join(repo_root, "external", "ipfs_accelerate_py")
+    nested_accelerate = os.path.join(submodule_root, "ipfs_accelerate_py")
+    accelerate_repo_root = external_accelerate if os.path.isdir(external_accelerate) else nested_accelerate
     if os.path.isdir(accelerate_repo_root) and accelerate_repo_root not in sys.path:
         sys.path.insert(0, accelerate_repo_root)
 
     # Best-effort: import the real package now that sys.path is set, so tests can safely
     # do `from ipfs_datasets_py import llm_router` during collection.
     if os.path.isfile(expected_init):
-        try:
-            import importlib
-
-            importlib.invalidate_caches()
-            import ipfs_datasets_py  # noqa: F401
-        except Exception:
-            pass
+        _preload_ipfs_datasets_package(expected_init)
 
 
 def pytest_collection_modifyitems(config, items):
@@ -158,10 +327,6 @@ def pytest_collection_modifyitems(config, items):
         if cached is not None:
             return cached
 
-        is_llm = False
-        is_network = False
-        is_heavy = False
-        
         # Exclude specific test files from auto-detection
         # (files containing "llm" in code but not actually requiring LLM features)
         if (
@@ -179,21 +344,16 @@ def pytest_collection_modifyitems(config, items):
             or "test_run_hacc_grounded_pipeline_cli" in path
             or "test_adversarial_harness" in path
             or "test_multimodal_router_backend" in path
+            or "test_accelerate_router_facade" in path
+            or "test_agent_supervisor_jobs" in path
+            or "test_complaint_supervisor_cli" in path
+            or "test_multimedia_adapter" in path
+            or "test_ipfs_kit_storage_adapter" in path
         ):
             file_cache[path] = (False, False, False)
             return file_cache[path]
-        
-        try:
-            with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                text = f.read().lower()
-            network_text = _strip_reserved_example_urls(text)
-            is_llm = any(k in text for k in _LLM_KEYWORDS)
-            is_network = any(k in network_text for k in _NETWORK_KEYWORDS)
-            is_heavy = any(k in text for k in _HEAVY_KEYWORDS)
-        except Exception:
-            pass
 
-        file_cache[path] = (is_llm, is_network, is_heavy)
+        file_cache[path] = _classify_test_file(path)
         return file_cache[path]
 
     skip_llm = pytest.mark.skip(reason="Skipped by default (LLM). Use --run-llm or RUN_LLM_TESTS=1")
@@ -204,6 +364,7 @@ def pytest_collection_modifyitems(config, items):
         marked_llm = item.get_closest_marker("llm") is not None
         marked_network = item.get_closest_marker("network") is not None
         marked_heavy = item.get_closest_marker("heavy") is not None
+        marked_no_auto_llm = item.get_closest_marker("no_auto_llm") is not None
         marked_no_auto_network = item.get_closest_marker("no_auto_network") is not None
         marked_no_auto_heavy = item.get_closest_marker("no_auto_heavy") is not None
 
@@ -213,6 +374,8 @@ def pytest_collection_modifyitems(config, items):
         auto_heavy = False
         if path:
             auto_llm, auto_network, auto_heavy = _classify_file(path)
+        if marked_no_auto_llm:
+            auto_llm = False
         if marked_no_auto_network:
             auto_network = False
         if marked_no_auto_heavy:

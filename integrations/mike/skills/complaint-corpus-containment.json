@@ -1,0 +1,71 @@
+{
+  "skill_asset_id": "complaint-corpus-containment",
+  "version": "1.0.0",
+  "name": "Complaint legal corpus containment (assertion grounding)",
+  "description": "Grounds each sentence-level assertion in the complaint draft against the combined legal corpus. An assertion is 'grounded' if at least one authoritative corpus document (US Code, Federal Register, or state law) supports its claim. Assertions failing this test are surfaced as 'ungrounded' in the editor guardrail panel.",
+  "capability": "legal_corpus_containment",
+  "adapter": "integrations/ipfs_datasets/legal.py",
+  "entry_point": "constrain_assertions_to_corpus",
+  "required_for_grounding_modes": ["legal_corpus_only", "strict_legal_containment"],
+  "inputs": {
+    "assertions": {
+      "type": "array",
+      "description": "List of assertion dicts each carrying at minimum a 'text' key.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "assertion_id": {"type": "string"},
+          "text": {"type": "string"}
+        },
+        "required": ["text"]
+      }
+    },
+    "state": {
+      "type": "string",
+      "description": "Optional two-letter US state code to narrow state-law searches.",
+      "nullable": true
+    },
+    "max_results_per_assertion": {
+      "type": "integer",
+      "default": 3,
+      "description": "How many corpus hits to retrieve per assertion."
+    },
+    "allow_live_scrape_fallback": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to permit live-scrape calls when IPFS backends are absent."
+    }
+  },
+  "outputs": {
+    "grounded": {
+      "type": "array",
+      "description": "Assertions successfully grounded in a legal authority.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "assertion_id": {"type": "string"},
+          "text": {"type": "string"},
+          "grounded": {"type": "boolean"},
+          "corpus_hits": {"type": "array"}
+        }
+      }
+    },
+    "ungrounded": {
+      "type": "array",
+      "description": "Assertions for which no supporting authority was found."
+    },
+    "grounded_count": {"type": "integer"},
+    "ungrounded_count": {"type": "integer"},
+    "total_assertion_count": {"type": "integer"},
+    "corpus_coverage_percent": {
+      "type": "integer",
+      "nullable": true,
+      "description": "Percentage of assertions that are grounded in the corpus."
+    }
+  },
+  "editor_integration": {
+    "panel": "proof_readiness_flags",
+    "displays": ["corpus_coverage_percent", "ungrounded_count", "ungrounded"],
+    "block_on_zero_coverage": false
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "schema": "complaint-ux-capture-contract@1",
+  "task_id": "CIMP-UX-61",
+  "synthetic_data_only": true,
+  "mock_api_used": false,
+  "diagnostic_test_panels_mounted": false,
+  "invented_evidence": false,
+  "real_user_data": false,
+  "baseline_manifest": "docs/ux/complaint_ux_overhaul/baseline/screenshot_manifest.json",
+  "baseline_manifest_sha256": "f94d043ceffa8e5df00aba32daca772423cdb260d27a4589e40162121ad39bb3",
+  "experience_contract": "docs/ux/complaint_ux_overhaul/experience_contract.md",
+  "experience_contract_sha256": "ffad5c99803b38450decc89f21d473ec9e79ecd785380549ff77082c8e50dfbc",
+  "preserved_baseline_story": [
+    "The baseline workspace header can still show No case selected or access denied after authentication. That observation stays a defect record, not a success template.",
+    "Evidence captures show the real case evidence surface. Receipt is not proof, and no uploaded artifact is invented.",
+    "Draft captures stay on the real not-generated draft surface unless a stored draft exists.",
+    "A lawyer role does not open owner complaint content.",
+    "The operational admin directory is account metadata. It is not a content-review bypass.",
+    "Every case, actor, credential, and message in a fresh capture is synthetic."
+  ],
+  "transport": "actual_same_origin_http_to_asgi_over_pinned_cdp_pipe",
+  "network": "inherited_denial_of_non_af_unix_sockets",
+  "runtime_source": "tests.gui_native_browser.pin_executables",
+  "handlers": "public_asgi_routes",
+  "screenshot_output": "validation_private_tmp_not_repository_baseline",
+  "viewports": {
+    "desktop": {"width": 1440, "height": 1000},
+    "tablet": {"width": 768, "height": 1024},
+    "mobile": {"width": 390, "height": 844}
+  },
+  "phases": ["before", "after"],
+  "surfaces": [
+    {
+      "id": "owner",
+      "role": "owner",
+      "route": "/cases",
+      "baseline_ids": ["08-cases-owner-desktop"],
+      "before_dom": "document.getElementById('case-login') !== null && document.getElementById('case-auth-status').textContent !== 'Signed in'",
+      "after_dom": "document.getElementById('complaint-case-shell-actor') && document.getElementById('complaint-case-shell-actor').dataset.relationship === 'owner'"
+    },
+    {
+      "id": "evidence",
+      "role": "owner",
+      "route": "/cases",
+      "baseline_ids": ["05-evidence-composer-desktop", "06-evidence-composer-mobile"],
+      "before_dom": "document.querySelector('[data-case-panel=\"evidence\"]').hidden === true",
+      "after_dom": "document.querySelector('[data-case-panel=\"evidence\"]').hidden === false && document.querySelector('[data-case-panel=\"evidence\"]').textContent.indexOf('Receipt is not proof') >= 0"
+    },
+    {
+      "id": "draft",
+      "role": "owner",
+      "route": "/cases",
+      "baseline_ids": ["07-draft-desktop"],
+      "before_dom": "document.querySelector('[data-case-panel=\"draft\"]').hidden === true",
+      "after_dom": "document.querySelector('[data-case-panel=\"draft\"]').hidden === false && document.querySelector('[data-case-panel=\"draft\"]').textContent.indexOf('No draft is stored') >= 0"
+    },
+    {
+      "id": "chat",
+      "role": "owner",
+      "route": "/chat",
+      "baseline_ids": ["02-workspace-desktop"],
+      "before_dom": "document.getElementById('chat-form') !== null && document.querySelector('#chat-form input').value === ''",
+      "after_dom": "document.querySelector('#chat-form input').value === 'Synthetic chat fact about a fictional employer and no real person.'"
+    },
+    {
+      "id": "correspondence",
+      "role": "owner",
+      "route": "/case-messages",
+      "baseline_ids": ["10-correspondence-owner-desktop", "11-correspondence-lawyer-mobile"],
+      "before_dom": "document.getElementById('message-text') !== null && document.getElementById('message-text').value === '' && document.querySelectorAll('#message-list li').length === 0",
+      "after_dom": "document.getElementById('message-text').value === 'Synthetic correspondence that stays in the composer until a real send.' && document.querySelectorAll('#message-list li').length === 0"
+    },
+    {
+      "id": "lawyer",
+      "role": "lawyer",
+      "route": "/lawyer-workspace",
+      "baseline_ids": ["09-lawyer-workspace-desktop"],
+      "before_dom": "document.getElementById('lawyer-workspace') !== null && document.getElementById('review-credential').value === '' && document.querySelectorAll('#assigned-cases tbody tr').length === 0",
+      "after_dom": "document.getElementById('review-credential').value === 'synthetic-lawyer-credential' && document.querySelectorAll('#assigned-cases tbody tr').length === 0"
+    },
+    {
+      "id": "admin",
+      "role": "operational_admin",
+      "route": "/admin",
+      "baseline_ids": ["12-admin-accounts-desktop", "13-admin-accounts-mobile"],
+      "before_dom": "document.getElementById('admin-login') !== null && document.getElementById('directory').hidden === true",
+      "after_dom": "document.getElementById('directory').hidden === false && document.querySelectorAll('#account-rows tr').length > 0 && document.body.textContent.indexOf('Case content stays withheld') >= 0"
+    }
+  ],
+  "prohibited": [
+    "mockApi",
+    "diagnostic_test_only_law_panel",
+    "invented_evidence",
+    "real_user_data",
+    "unclosed_owned_processes"
+  ]
+}

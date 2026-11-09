@@ -1,7 +1,12 @@
 {
+  "annotation_knowledge_graph": {
+    "entities": [],
+    "relationships": []
+  },
   "case_synopsis": "",
   "claim_type": "retaliation",
   "created_at": "2026-03-22T23:57:09.832801+00:00",
+  "document_annotations": [],
   "draft": null,
   "evidence": {
     "documents": [],
@@ -12,7 +17,19 @@
   "intake_history": [],
   "latest_export_critic": null,
   "latest_packet_export": null,
+  "mike_integration": {
+    "audit_trail": [],
+    "handoff_history": [],
+    "last_handoff": null,
+    "last_sync": null,
+    "sync_history": []
+  },
   "ui_readiness": null,
-  "updated_at": "2026-04-13T00:35:35.217579+00:00",
-  "user_id": "template-user"
+  "updated_at": "2026-07-21T03:33:35.494254+00:00",
+  "user_id": "template-user",
+  "workspace_annotation_index": {
+    "by_collection": {},
+    "by_document_type": {},
+    "by_tag": {}
+  }
 }

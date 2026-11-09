@@ -1,29 +1,30 @@
-import json
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from .complaint_workspace_api import attach_complaint_workspace_routes
-from .document_api import attach_document_routes
+from .case_routes import compose_case_routes
+from .dashboard_ui import attach_dashboard_ui_routes
 from .document_ui import load_document_html
-from .review_api import attach_claim_support_review_routes
 from .review_ui import attach_claim_support_review_ui_routes, attach_static_asset_routes
 
 
 def _read_template(filename: str) -> str:
-    path = os.path.join(os.getcwd(), "templates", filename)
-    if os.path.isfile(path):
-        with open(path, "r", encoding="utf-8") as handle:
-            return handle.read()
+    path = Path(__file__).resolve().parent.parent / "templates" / filename
+    if path.is_file():
+        return path.read_text(encoding="utf-8")
     return ""
 
 
 class SERVER:
-    def __init__(self, mediator: Any):
+    def __init__(self, mediator: Any, authorizer: Any = None, workspace_service: Any = None,
+                 *, browser_sessions: Any = None, case_handlers: Any = None, json_body_limits: Any = None, case_catalog: Any = None, case_consent: Any = None, gui_inference_transport: Any = None, gui_inference_route: Any = None, case_reviews: Any = None, evidence_workspace: Any = None):
         self.mediator = mediator
-        self.app = self._build_app(mediator)
+        self.authorizer = authorizer
+        self.app = self._build_app(mediator, authorizer, workspace_service=workspace_service,
+                                   browser_sessions=browser_sessions, case_handlers=case_handlers, json_body_limits=json_body_limits, case_catalog=case_catalog, case_consent=case_consent, gui_inference_transport=gui_inference_transport, gui_inference_route=gui_inference_route, case_reviews=case_reviews, evidence_workspace=evidence_workspace)
 
     @staticmethod
     def build_chat_payload(
@@ -94,13 +95,12 @@ class SERVER:
             hashed_username=hashed_username,
         )
 
-    def _build_app(self, mediator: Any) -> FastAPI:
+    def _build_app(self, mediator: Any, authorizer: Any = None, workspace_service: Any = None,
+                   *, browser_sessions: Any = None, case_handlers: Any = None, json_body_limits: Any = None, case_catalog: Any = None, case_consent: Any = None, gui_inference_transport: Any = None, gui_inference_route: Any = None, case_reviews: Any = None, evidence_workspace: Any = None) -> FastAPI:
         app = FastAPI()
         attach_static_asset_routes(app)
-        attach_complaint_workspace_routes(app)
-        attach_claim_support_review_routes(app, mediator)
         attach_claim_support_review_ui_routes(app)
-        attach_document_routes(app, mediator)
+        attach_dashboard_ui_routes(app)
 
         @app.get("/health")
         async def health() -> Dict[str, str]:
@@ -141,57 +141,27 @@ class SERVER:
 
         @app.get("/cookies")
         async def cookies(request: Request) -> JSONResponse:
-            return JSONResponse(dict(request.cookies))
+            del request
+            return JSONResponse({"error": "legacy_route_retired"}, status_code=401)
 
         @app.post("/load_profile")
         async def load_profile(request: Request) -> JSONResponse:
-            payload = await request.json()
-            request_payload = payload.get("request") if isinstance(payload, dict) else {}
-            response_payload = {
-                "hashed_username": str(request_payload.get("hashed_username") or request.cookies.get("hashed_username") or ""),
-                "hashed_password": str(request_payload.get("hashed_password") or request.cookies.get("hashed_password") or ""),
-                "data": json.dumps({}),
-            }
-            if "username" in request_payload or "password" in request_payload:
-                return JSONResponse({"results": response_payload})
-            return JSONResponse(response_payload)
+            del request
+            return JSONResponse({"error": "legacy_route_retired"}, status_code=401)
 
         @app.post("/create_profile")
         async def create_profile() -> JSONResponse:
-            return JSONResponse(
-                {
-                    "hashed_username": "",
-                    "hashed_password": "",
-                    "data": json.dumps({}),
-                }
-            )
+            return JSONResponse({"error": "legacy_route_retired"}, status_code=401)
 
         @app.post("/api/chat")
         async def post_chat(request: Request) -> JSONResponse:
+            if getattr(request.state, "case_authorization", None) is None and getattr(request.app.state, "case_route_composition", None):
+                return JSONResponse({"error": "authorizer_required"}, status_code=401)
             payload = await request.json()
             message_text = str(payload.get("message") or payload.get("content") or "").strip()
             if not message_text:
                 raise HTTPException(status_code=400, detail="message is required")
-
-            hashed_username = str(
-                payload.get("hashed_username") or request.cookies.get("hashed_username") or ""
-            ).strip()
-            hashed_password = str(request.cookies.get("hashed_password") or "").strip()
-            if hashed_username and hashed_password and hasattr(mediator, "state"):
-                profile_request = {
-                    "results": {
-                        "hashed_username": hashed_username,
-                        "hashed_password": hashed_password,
-                    }
-                }
-                if callable(getattr(mediator.state, "load_profile", None)):
-                    mediator.state.load_profile(profile_request)
-
-            response_payload = self.process_chat_message(
-                mediator,
-                message_text,
-                hashed_username=hashed_username or None,
-            )
+            response_payload = self.process_chat_message(mediator, message_text)
             return JSONResponse(response_payload)
 
         @app.post("/api/chat/fallback")
@@ -200,63 +170,44 @@ class SERVER:
 
         @app.websocket("/api/chat")
         async def websocket_chat(websocket: WebSocket) -> None:
+            if getattr(websocket.state, "case_authorization", None) is None and getattr(websocket.app.state, "case_route_composition", None):
+                await websocket.close(code=1008)
+                return
             await websocket.accept()
-            hashed_username = str(websocket.cookies.get("hashed_username") or "").strip()
-            hashed_password = str(websocket.cookies.get("hashed_password") or "").strip()
-
-            initial_payload = self._build_initial_chat_payload(
-                mediator,
-                hashed_username=hashed_username or None,
-            )
+            initial_payload = self._build_initial_chat_payload(mediator)
             await websocket.send_json(initial_payload)
-
             try:
                 while True:
                     data = await websocket.receive_json()
                     message_text = str(data.get("message") or data.get("content") or "").strip()
                     if not message_text:
                         continue
-
-                    profile_request = {
-                        "results": {
-                            "hashed_username": hashed_username,
-                            "hashed_password": hashed_password,
-                        }
-                    }
-                    if hashed_username and hashed_password and hasattr(mediator, "state"):
-                        if callable(getattr(mediator.state, "load_profile", None)):
-                            mediator.state.load_profile(profile_request)
-
                     user_payload = self.build_chat_payload(
                         message_text,
-                        {
-                            "sender": hashed_username or "User:",
-                            "message": message_text,
-                            "question": message_text,
-                        },
-                        sender=hashed_username or "User:",
-                        hashed_username=hashed_username or None,
+                        {"sender": "User:", "message": message_text, "question": message_text},
+                        sender="User:",
                     )
-                    if hasattr(mediator, "state") and callable(getattr(mediator.state, "message", None)):
-                        mediator.state.message(user_payload)
                     await websocket.send_json(user_payload)
-
-                    bot_payload = self.process_chat_message(
-                        mediator,
-                        message_text,
-                        hashed_username=hashed_username or None,
-                    )
-                    if hasattr(mediator, "state") and callable(getattr(mediator.state, "message", None)):
-                        mediator.state.message(bot_payload)
+                    bot_payload = self.process_chat_message(mediator, message_text)
                     await websocket.send_json(bot_payload)
-
-                    if hashed_username and hashed_password and hasattr(mediator, "state"):
-                        if callable(getattr(mediator.state, "store_profile", None)):
-                            mediator.state.store_profile(profile_request)
-
             except WebSocketDisconnect:
                 return
 
+        compose_case_routes(
+            app,
+            authorizer=authorizer,
+            mediator=mediator,
+            workspace_service=workspace_service,
+            browser_sessions=browser_sessions,
+            case_handlers=case_handlers,
+            json_body_limits=json_body_limits,
+            case_catalog=case_catalog,
+            case_consent=case_consent,
+            gui_inference_transport=gui_inference_transport,
+            gui_inference_route=gui_inference_route,
+        case_reviews=case_reviews,
+        evidence_workspace=evidence_workspace,
+        )
         return app
 
     def run(

@@ -909,6 +909,27 @@ function buildWorkspaceCapabilities(state) {
     user_id: state.user_id,
     case_synopsis: sessionPayload.case_synopsis,
     overview: clone(overview),
+    environment_preflight: {
+      status: 'degraded',
+      all_ready: false,
+      checks: {
+        sdk_playground_preview: {
+          path: 'ipfs_datasets_py/ipfs_accelerate_py/SDK_PLAYGROUND_PREVIEW.html',
+          exists: false,
+          state: 'missing',
+        },
+        ipfs_templates_dir: {
+          path: 'ipfs_datasets_py/ipfs_datasets_py/templates',
+          exists: false,
+          state: 'missing',
+        },
+        ipfs_static_dir: {
+          path: 'ipfs_datasets_py/ipfs_datasets_py/static',
+          exists: false,
+          state: 'missing',
+        },
+      },
+    },
     capabilities: [
       {
         id: 'intake_questions',
@@ -945,6 +966,12 @@ function buildWorkspaceCapabilities(state) {
         label: 'Complaint packet export',
         available: true,
         detail: 'The lawsuit packet can be exported as a structured browser, CLI, or MCP artifact.',
+      },
+      {
+        id: 'ipfs_datasets_py_trace',
+        label: 'Neurosymbolic IPFS trace',
+        available: false,
+        detail: 'ipfs_datasets_py trace surfaces are missing; route-safe fallback guidance should stay visible.',
       },
     ],
     tooling_contract: buildWorkspaceToolingContract(state.user_id),
@@ -1781,6 +1808,169 @@ function buildWorkspaceFormalDiagnosticsPayload(state) {
   };
 }
 
+function buildWorkspaceNeurosymbolicTrace(state) {
+  const sessionPayload = buildWorkspaceSessionPayload(state);
+  const packetPayload = buildWorkspacePacketExport(state);
+  const analysis = buildWorkspaceComplaintOutputAnalysis(state);
+  const packet = packetPayload.packet || {};
+  const draft = packet.draft || {};
+  const review = sessionPayload.review || {};
+  const overview = review.overview || {};
+  const evidence = state.evidence || {};
+  const testimonyItems = Array.isArray(evidence.testimony) ? evidence.testimony : [];
+  const documentItems = Array.isArray(evidence.documents) ? evidence.documents : [];
+  const uiFeedback = analysis.ui_feedback || {};
+  const releaseGate = uiFeedback.release_gate || {};
+  const formalSections = uiFeedback.formal_sections_present || {};
+  const encodedUser = encodeURIComponent(state.user_id || 'did:key:playwright-demo');
+  const cidStatus = 'submodule_or_preview_missing';
+  const datasetRefs = [
+    {
+      ref_id: 'complaint_packet_json',
+      piece_id: 'complaint_packet',
+      label: 'Complaint packet JSON',
+      uri: `workspace://${encodedUser}/packets/${slugifyWorkspaceFilename(draft.title || 'complaint-packet')}.json`,
+      export_tool: 'complaint.export_complaint_packet',
+      artifact_format: 'json',
+      cid: null,
+      cid_status: cidStatus,
+    },
+    {
+      ref_id: 'complaint_markdown',
+      piece_id: 'complaint_markdown',
+      label: 'Complaint Markdown artifact',
+      uri: `workspace://${encodedUser}/artifacts/${slugifyWorkspaceFilename(draft.title || 'complaint-packet')}.md`,
+      export_tool: 'complaint.export_complaint_markdown',
+      artifact_format: 'markdown',
+      cid: null,
+      cid_status: cidStatus,
+    },
+    {
+      ref_id: 'evidence_map',
+      piece_id: 'evidence_items',
+      label: 'Evidence map',
+      uri: `workspace://${encodedUser}/evidence`,
+      item_count: testimonyItems.length + documentItems.length,
+      testimony_count: testimonyItems.length,
+      document_count: documentItems.length,
+      cid: null,
+      cid_status: cidStatus,
+    },
+    {
+      ref_id: 'support_matrix',
+      piece_id: 'claim_support_matrix',
+      label: 'Claim support matrix',
+      uri: `workspace://${encodedUser}/review/support-matrix`,
+      supported_elements: Number(overview.supported_elements || 0),
+      missing_elements: Number(overview.missing_elements || 0),
+      cid: null,
+      cid_status: cidStatus,
+    },
+    {
+      ref_id: 'filing_release_gate',
+      piece_id: 'release_gate',
+      label: 'Filing release gate',
+      uri: `workspace://${encodedUser}/release-gate`,
+      verdict: String(releaseGate.verdict || 'unknown'),
+      cid: null,
+      cid_status: cidStatus,
+    },
+  ];
+  testimonyItems.concat(documentItems).forEach((item, index) => {
+    datasetRefs.push({
+      ref_id: `evidence_${index + 1}`,
+      piece_id: 'evidence_item',
+      label: String(item.title || item.id || `Evidence ${index + 1}`),
+      claim_element_id: String(item.claim_element_id || 'unmapped'),
+      kind: String(item.kind || (index < testimonyItems.length ? 'testimony' : 'document')),
+      uri: `workspace://${encodedUser}/evidence/${encodeURIComponent(String(item.id || index + 1))}`,
+      source: String(item.source || ''),
+      cid: null,
+      cid_status: cidStatus,
+    });
+  });
+  const ruleHits = [
+    {
+      rule_id: 'pleading.caption.present',
+      label: 'Caption and civil action placeholder are visible',
+      status: formalSections.caption ? 'pass' : 'fail',
+      severity: 'critical',
+      evidence_refs: ['complaint_markdown'],
+      explanation: formalSections.caption ? 'The generated complaint includes a court-style caption.' : 'The generated complaint is missing the expected caption structure.',
+    },
+    {
+      rule_id: 'claim.support.coverage',
+      label: 'Tracked claim elements have support coverage',
+      status: Number(overview.missing_elements || 0) === 0 ? 'pass' : 'warning',
+      severity: 'high',
+      evidence_refs: ['support_matrix', 'evidence_map'],
+      explanation: `${Number(overview.supported_elements || 0)} supported elements and ${Number(overview.missing_elements || 0)} open support gaps are visible.`,
+    },
+    {
+      rule_id: 'claim.support.corroboration',
+      label: 'Support is corroborated by saved evidence',
+      status: (testimonyItems.length + documentItems.length) > 1 ? 'pass' : 'warning',
+      severity: 'medium',
+      evidence_refs: datasetRefs.filter((item) => String(item.ref_id || '').startsWith('evidence_')).slice(0, 6).map((item) => item.ref_id),
+      explanation: `${testimonyItems.length} testimony item(s) and ${documentItems.length} document item(s) are attached to the record.`,
+    },
+    {
+      rule_id: 'release_gate.verdict',
+      label: 'Client filing-readiness release gate',
+      status: String(releaseGate.verdict || '').toLowerCase() === 'pass' ? 'pass' : 'block',
+      severity: 'critical',
+      evidence_refs: ['filing_release_gate'],
+      explanation: releaseGate.reason || 'No release-gate reason was provided.',
+    },
+  ];
+  return {
+    trace_id: `trace-${slugifyWorkspaceFilename(draft.title || 'complaint-packet')}`,
+    trace_schema: 'complaint_handoff_neurosymbolic_trace.v1',
+    trace_backend: 'ipfs_datasets_py',
+    dataset_refs: datasetRefs,
+    reasoning_summary: {
+      claim_type: String(packet.claim_type || state.claim_type || 'retaliation'),
+      draft_strategy: String(draft.draft_strategy || 'template'),
+      support_summary: `${Number(overview.supported_elements || 0)} supported element(s), ${Number(overview.missing_elements || 0)} open gap(s), ${testimonyItems.length + documentItems.length} saved evidence item(s).`,
+      release_gate_verdict: String(releaseGate.verdict || 'unknown'),
+      release_gate_reason: String(releaseGate.reason || ''),
+      filing_shape_score: Number(uiFeedback.filing_shape_score || 0),
+      claim_type_alignment_score: Number(uiFeedback.claim_type_alignment_score || 0),
+      route_summary: 'llm_router / formal_complaint_reviewer',
+    },
+    rule_hits: ruleHits,
+  };
+}
+
+function buildWorkspaceFilingProvenancePayload(state) {
+  const packetPayload = buildWorkspacePacketExport(state);
+  const analysis = buildWorkspaceComplaintOutputAnalysis(state);
+  const draft = ((packetPayload.packet || {}).draft || {});
+  const complaintBackend = clone((((analysis.ui_feedback || {}).router_review || {}).backend || {}));
+  const neurosymbolicTrace = buildWorkspaceNeurosymbolicTrace(state);
+  return {
+    user_id: state.user_id,
+    claim_type: String(((packetPayload.packet || {}).claim_type) || state.claim_type || 'retaliation'),
+    draft_strategy: String(draft.draft_strategy || 'template'),
+    draft_backend: clone(draft.draft_backend || {}),
+    complaint_output_router_backend: complaintBackend,
+    complaint_output_router_backends: Object.keys(complaintBackend).length ? [complaintBackend] : [],
+    export_critic_router_backends: Object.keys(complaintBackend).length ? [complaintBackend] : [],
+    ui_review_backend: {
+      strategy: 'multimodal_router',
+      provider: 'llm_router',
+      model: 'multimodal_router',
+    },
+    ui_workflow_type: 'ui_ux_closed_loop',
+    artifact_formats: clone((packetPayload.packet_summary || {}).artifact_formats || []),
+    has_draft: Boolean((packetPayload.packet_summary || {}).has_draft),
+    dataset_refs: clone(neurosymbolicTrace.dataset_refs),
+    reasoning_summary: clone(neurosymbolicTrace.reasoning_summary),
+    rule_hits: clone(neurosymbolicTrace.rule_hits),
+    neurosymbolic_trace: clone(neurosymbolicTrace),
+  };
+}
+
 async function installCommonMocks(page, recorder = {}, options = {}) {
   const documentResponses = Array.isArray(options.documentResponses) && options.documentResponses.length
     ? options.documentResponses.map((item) => clone(item))
@@ -2065,6 +2255,9 @@ async function installCommonMocks(page, recorder = {}, options = {}) {
     }
     if (name === 'complaint.get_formal_diagnostics') {
       return buildWorkspaceFormalDiagnosticsPayload(state);
+    }
+    if (name === 'complaint.get_filing_provenance') {
+      return buildWorkspaceFilingProvenancePayload(state);
     }
     if (name === 'complaint.review_generated_exports') {
       const analysis = buildWorkspaceComplaintOutputAnalysis(state);

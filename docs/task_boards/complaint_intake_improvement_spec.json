@@ -1,0 +1,2784 @@
+{
+  "baseline_commit": "65ba0fb931a88ebf48e58ebec0209dc9708a1479",
+  "created_at": "2026-10-21T01:24:14.285736+00:00",
+  "execution_policy": {
+    "automatic_fallback": false,
+    "context_exclude": [
+      ".complaint_workspace/sessions/**",
+      "data/**",
+      "output/**",
+      "statefiles/**",
+      "exports/**",
+      "secrets/**",
+      ".env*",
+      "*.key",
+      "*.pem"
+    ],
+    "deployment": false,
+    "development_inputs": "repository source and synthetic fixtures only",
+    "implementation_timeout_seconds": 900,
+    "initial_execution_scope": "Begin with CIMP-TUI-01 and verify real task progress; continue the reviewed DAG as dependencies become ready under the same pinned route and recovery policy.",
+    "initial_lanes": 1,
+    "initial_ready_task": "CIMP-TUI-01",
+    "live_exceptions": [
+      "explicit synthetic Grok4.7 canary",
+      "explicit local-node encrypted storage qualification"
+    ],
+    "manual_holds_respected": true,
+    "max_agent_turns": 32,
+    "max_task_attempts": 3,
+    "merge_target": "isolated local campaign integration branch",
+    "native_task_source_profile": "explicit legacy-markdown projection of the native FormalWorkPlan",
+    "offline_default": true,
+    "product_inference": "requires persisted per-case cloud-processing choice; local-private mode must not send raw case data remotely",
+    "provider_role": "grok-only",
+    "remote_push": false,
+    "required_evidence": [
+      "current source identity",
+      "nonempty behavioral tests",
+      "required case identities and zero required skips",
+      "real graph and state assertions",
+      "typed result and command exit status"
+    ],
+    "runtime_wait_semantics": "An interview waiting on its user is legitimate; a development worker waiting for stdin, an expired claim or a silent provider requires bounded diagnostics/recovery.",
+    "stop_semantics": "Saturated means no remaining answerable actionable inquiry for the current version of facts, law and user knowledge. Unknown/refused/unavailable/timed-out/capped states retain explicit unresolved reasons and never imply legal sufficiency.",
+    "upstream_checkout_policy": "Initialize only task-declared pinned submodules, preferring local cached Git worktrees. Preserve unrelated source checkout edits. Implement first-party adapters in the declared targets; upstream changes require their own source-bound regression evidence."
+  },
+  "findings": [
+    {
+      "finding": {
+        "classification": "passed_baseline",
+        "id": "TUI-BASE-PTY",
+        "observation": "An actual PTY child invoked applications.complaint_cli.main with chat --user-id pty-synthetic --max-turns 2, accepted Jordan Example and Acme Company, saved both answers, displayed the resume prompt and exited 0 within one second. Provider subprocesses and socket connects were blocked; session lived in a TemporaryDirectory."
+      },
+      "stream": "terminal"
+    },
+    {
+      "finding": {
+        "classification": "passed_baseline",
+        "id": "TUI-BASE-RESUME",
+        "observation": "CliRunner actual chat paused after two answers, resumed the remaining five with the same user ID, exited 0, and fresh ComplaintWorkspaceService read the persisted seven-answer completion."
+      },
+      "stream": "terminal"
+    },
+    {
+      "finding": {
+        "classification": "reproduced_gap",
+        "id": "TUI-GAP-NARRATIVE",
+        "observation": "run_intake_chat_turn(message=\"My landlord evicted me after my accommodation request.\") records the initial complaint narrative as party_name."
+      },
+      "stream": "terminal"
+    },
+    {
+      "finding": {
+        "classification": "reproduced_gap",
+        "id": "TUI-GAP-UNKNOWN",
+        "observation": "Seven unknown answers produce conversation_state.is_complete=true and Intake complete. This is seven nonempty strings rather than resolved, answerable graph issues."
+      },
+      "stream": "terminal"
+    },
+    {
+      "finding": {
+        "classification": "reproduced_gap",
+        "id": "TUI-GAP-GRAPHS",
+        "observation": "Completed workspace intake session has only annotation_knowledge_graph; run_intake_chat_turn does not invoke the factual KG/dependency-graph workflow."
+      },
+      "stream": "terminal"
+    },
+    {
+      "finding": {
+        "classification": "reproduced_gap",
+        "id": "TUI-GAP-EOF",
+        "observation": "CliRunner chat with empty input exits 1 with SystemExit instead of a documented pause outcome."
+      },
+      "stream": "terminal"
+    },
+    {
+      "finding": {
+        "classification": "reproduced_gap",
+        "id": "TUI-GAP-PRIVACY",
+        "observation": "Synthetic workspace JSON persisted plaintext with mode 0664 under this environment umask. Encryption/private permissions require explicit implementation."
+      },
+      "stream": "terminal"
+    },
+    {
+      "finding": {
+        "classification": "source_inspection",
+        "id": "TUI-SOURCE-LEGACY",
+        "observation": "Legacy applications.cli.CLI uses Mediator.process, whose finalize raises UserPresentableException(not-implemented); CLI generic loop catches this and continues. scripts/run_cli_mediator.sh hardcodes llm-router-codex and expects root .venv absent in published worktree."
+      },
+      "stream": "terminal"
+    },
+    {
+      "finding": {
+        "classification": "source_inspection",
+        "id": "TUI-SOURCE-REUSE",
+        "observation": "Reuse Mediator.start_three_phase_process and process_denoising_answer, ComplaintDenoiser candidate/answer APIs, and PhaseManager.get_intake_readiness. start_three_phase_process currently calls DependencyGraphBuilder.build_from_claims(claims) without legal_requirements; SummaryJudgmentHook.generate_requirements returns LLM-derived list[str], whereas graph builder expects structured requirement dictionaries."
+      },
+      "stream": "terminal"
+    },
+    {
+      "finding": {
+        "classification": "source_inspection",
+        "id": "TUI-SOURCE-STOP",
+        "observation": "PhaseManager.has_converged checks a five-loss plateau; ComplaintDenoiser.is_exhausted uses empty question pool or >50 asked. Neither alone establishes legal sufficiency."
+      },
+      "stream": "terminal"
+    },
+    {
+      "finding": {
+        "finding": "Intake calls DependencyGraphBuilder.build_from_claims(claims) without legal_requirements. Actual statute graph is built only during formalization, so current initial questioning is not driven by retrieved verified legal requirements.",
+        "id": "F1",
+        "path": "mediator/mediator.py",
+        "severity": "high",
+        "symbols": [
+          "Mediator.start_three_phase_process",
+          "Mediator.advance_to_formalization_phase"
+        ]
+      },
+      "stream": "graphs_law_logic"
+    },
+    {
+      "finding": {
+        "finding": "Statute requirement extraction is explicitly a placeholder using claim-type keywords; procedure builder uses simplified hardcoded federal requirements. Treat both as templates/candidates, not verified applicable law.",
+        "id": "F2",
+        "path": "complaint_phases/legal_graph.py",
+        "severity": "high",
+        "symbols": [
+          "LegalGraphBuilder._extract_requirements_from_statute",
+          "LegalGraphBuilder.build_rules_of_procedure"
+        ]
+      },
+      "stream": "graphs_law_logic"
+    },
+    {
+      "finding": {
+        "finding": "Missing/unrecognized state silently defaults to OR. Legal requirements must not be selected from a guessed jurisdiction; missing jurisdiction should remain unknown and trigger intake question.",
+        "id": "F3",
+        "path": "integrations/ipfs_datasets/legal.py",
+        "severity": "high",
+        "symbols": [
+          "_resolve_state_code",
+          "search_legal_authority_program"
+        ]
+      },
+      "stream": "graphs_law_logic"
+    },
+    {
+      "finding": {
+        "finding": "Any corpus search hit currently classifies assertion as grounded. Retrieval is candidate evidence, not entailment, factual verification, applicability, or proof.",
+        "id": "F4",
+        "path": "integrations/ipfs_datasets/legal.py",
+        "severity": "high",
+        "symbols": [
+          "constrain_assertions_to_corpus"
+        ]
+      },
+      "stream": "graphs_law_logic"
+    },
+    {
+      "finding": {
+        "finding": "build_from_text marks all extracted entities/relationships source=complaint but does not attach source spans or provider receipts. Entity/Relationship provenance fields already exist and should carry user message identity/span/hash and extraction lineage.",
+        "id": "F5",
+        "path": "complaint_phases/knowledge_graph.py",
+        "severity": "high",
+        "symbols": [
+          "KnowledgeGraphBuilder.build_from_text",
+          "Entity",
+          "Relationship"
+        ]
+      },
+      "stream": "graphs_law_logic"
+    },
+    {
+      "finding": {
+        "finding": "is_exhausted treats more than 50 questions as exhaustion; question generation adds standard prompts and accumulates pool entries. Need stable question-target deduplication and distinct saturation, turn-cap, unknown/refused, deferred and unavailable dispositions.",
+        "id": "F6",
+        "path": "complaint_phases/denoiser.py",
+        "severity": "high",
+        "symbols": [
+          "Denoiser.is_exhausted",
+          "Denoiser.generate_questions"
+        ]
+      },
+      "stream": "graphs_law_logic"
+    },
+    {
+      "finding": {
+        "finding": "Question exhaustion is ORed with phase convergence. A cap, failed backend or empty question list must not imply all answerable questions resolved.",
+        "id": "F7",
+        "path": "mediator/mediator.py",
+        "severity": "high",
+        "symbols": [
+          "Mediator.process_denoising_answer"
+        ]
+      },
+      "stream": "graphs_law_logic"
+    },
+    {
+      "finding": {
+        "finding": "Existing typed capability contract distinguishes implemented/degraded/unavailable; several legacy operations remain explicitly degraded despite provider imports. Preserve truthfulness while adding real canonical compiler/proof routing adapters.",
+        "id": "F8",
+        "path": "integrations/ipfs_datasets/logic.py",
+        "severity": "medium",
+        "symbols": [
+          "get_logic_capability",
+          "get_logic_capability_report",
+          "text_to_fol",
+          "legal_text_to_deontic",
+          "prove_claim_elements",
+          "run_hybrid_reasoning"
+        ]
+      },
+      "stream": "graphs_law_logic"
+    },
+    {
+      "finding": {
+        "finding": "Reusable first-party provenance/persistence/query contracts exist. Client persistence already uses actual upstream knowledge_graphs.Client. Current extraction helper primarily makes sentence facts; keep claim-element and law nodes separate from asserted factual facts.",
+        "id": "F9",
+        "path": "integrations/ipfs_datasets/graphs.py",
+        "severity": "medium",
+        "symbols": [
+          "extract_graph_from_text",
+          "persist_graph_snapshot",
+          "query_graph_snapshot",
+          "resolve_duplicate_entities",
+          "attach_provenance_edges"
+        ]
+      },
+      "stream": "graphs_law_logic"
+    },
+    {
+      "finding": {
+        "finding": "Authority graph already supports treatment edges and source-bound rule candidates/governs edges; reuse rather than replace. Existing good-law-unconfirmed and adverse treatment must not be erased by retrieval relevance.",
+        "id": "F10",
+        "path": "complaint_phases/legal_graph.py",
+        "severity": "medium",
+        "symbols": [
+          "LegalGraphBuilder.build_from_authorities"
+        ]
+      },
+      "stream": "graphs_law_logic"
+    },
+    {
+      "finding": {
+        "finding": "Local Boolean model lookups default missing predicates to false. Intake support reasoning must represent unknown separately from refutation and avoid closed-world rejection of missing complaint facts.",
+        "id": "F11",
+        "path": "lib/formal_logic/core.py",
+        "severity": "medium",
+        "symbols": [
+          "Predicate.evaluate"
+        ]
+      },
+      "stream": "graphs_law_logic"
+    },
+    {
+      "finding": {
+        "finding": "Several existing authority tests skip on missing imports/dependencies. Native supervisor completion must inspect JUnit required identities/skips, not only pytest exit code.",
+        "id": "F12",
+        "path": "tests/test_legal_authority_hooks.py",
+        "severity": "medium",
+        "symbols": []
+      },
+      "stream": "graphs_law_logic"
+    },
+    {
+      "finding": {
+        "finding": "Lossy _slugify_user_id can map distinct identities onto same session filename.",
+        "path": "applications/complaint_workspace.py:848"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "Plaintext JSON sessions; corrupt/unreadable payload returns default state; fixed .tmp writer then os.replace lacks file/directory fsync or writer lock.",
+        "path": "applications/complaint_workspace.py:2388"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "Shared plaintext local fallback; bafy prefix plus truncated SHA256 is synthetic identifier, not verified standard CID; marker file pin is local marker.",
+        "path": "integrations/ipfs_datasets/storage.py:45"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "Explicit enable flag gates optional Kit constructor; high-level API construction can start node; CanonicalStorageService is protocol, not byte backend.",
+        "path": "integrations/ipfs_datasets/storage.py:298"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "Plain theorem/report blobs; pin errors swallowed; sha256 fallback and bool(nonempty_report_cid) misreport pinned.",
+        "path": "integrations/ipfs_datasets/draft_logic_pipeline.py:445"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "Actual reusable AES256GCM random salt/nonce PBKDF2 primitive; text only, no AAD.",
+        "path": "external/ipfs_kit_py/ipfs_kit_py/aes_encryption.py:92"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "KeyManager supports explicit KEYRING/MEMORY, FILE raw key storage; HSM/VAULT/TPM enum options not implemented.",
+        "path": "external/ipfs_kit_py/ipfs_kit_py/mcp/enterprise/encryption.py:188"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "EncryptionManager AES256GCM bytes+AAD branch reusable after qualification; avoid CBC and invalid16-byte nonce ChaCha branch.",
+        "path": "external/ipfs_kit_py/ipfs_kit_py/mcp/enterprise/encryption.py:674"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "Unsafe for private case defaults: machine-id/hostname-derived key with constant fallback; can downgrade AES to XOR.",
+        "path": "external/ipfs_kit_py/ipfs_kit_py/enhanced_secrets_manager.py:233"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "SecureConfigManager has random Fernet generation/restrictive local master.key but stores raw (including password-derived) master key unwrapped and disables encryption when dependency absent; not private-user vault.",
+        "path": "external/ipfs_kit_py/ipfs_kit_py/secure_config.py:80"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "CredentialManager may fall back keyring->file; must not inherit silent fallback for user case key.",
+        "path": "external/ipfs_kit_py/ipfs_kit_py/credential_manager.py:119"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "WALTransactionCoordinator has stable effects, fsynced decisions, crash injection and repeatable replay; caller must encrypt intent.",
+        "path": "external/ipfs_kit_py/ipfs_kit_py/core/wal/coordinator.py:58"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "ReplicaReconciler bounded passes verifies readback digest/version and keeps deferred operations out of verified count.",
+        "path": "external/ipfs_kit_py/ipfs_kit_py/core/replication/reconciler.py:173"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "IrohManifestStore offers cryptographically linked revisions, expected-head CAS and recover_head; owner-only permissions do not encrypt blobs.",
+        "path": "external/ipfs_kit_py/ipfs_kit_py/iroh/manifest.py:587"
+      },
+      "stream": "privacy_storage"
+    },
+    {
+      "finding": {
+        "finding": "Architecture-router prompt can create additional cloud egress beyond generation; privacy policy must precede routing.",
+        "path": "integrations/ipfs_datasets/llm.py:371"
+      },
+      "stream": "privacy_storage"
+    }
+  ],
+  "goals": [
+    {
+      "id": "goal.tui",
+      "subgoals": [
+        {
+          "id": "subgoal.tui.baseline",
+          "title": "Baseline"
+        },
+        {
+          "id": "subgoal.tui.canonical-service",
+          "title": "Canonical service"
+        },
+        {
+          "id": "subgoal.tui.graph-interview",
+          "title": "Graph interview"
+        },
+        {
+          "id": "subgoal.tui.usable-resume",
+          "title": "Usable resume"
+        }
+      ],
+      "title": "A usable adaptive terminal intake with accurate pause, resume and stopping"
+    },
+    {
+      "id": "goal.facts",
+      "subgoals": [
+        {
+          "id": "subgoal.facts.assertion-contracts",
+          "title": "Assertion contracts"
+        },
+        {
+          "id": "subgoal.facts.extraction-revisions",
+          "title": "Extraction revisions"
+        },
+        {
+          "id": "subgoal.facts.durable-graphs",
+          "title": "Durable graphs"
+        }
+      ],
+      "title": "Knowledge graphs grounded in versioned user assertions and documents"
+    },
+    {
+      "id": "goal.law",
+      "subgoals": [
+        {
+          "id": "subgoal.law.jurisdiction",
+          "title": "Jurisdiction"
+        },
+        {
+          "id": "subgoal.law.authority-retrieval",
+          "title": "Authority retrieval"
+        },
+        {
+          "id": "subgoal.law.verified-requirements",
+          "title": "Verified requirements"
+        }
+      ],
+      "title": "Dependency graphs grounded in applicable, cited legal requirements"
+    },
+    {
+      "id": "goal.proof",
+      "subgoals": [
+        {
+          "id": "subgoal.proof.compiler-obligations",
+          "title": "Compiler obligations"
+        },
+        {
+          "id": "subgoal.proof.bounded-invalidation",
+          "title": "Bounded invalidation"
+        }
+      ],
+      "title": "Bounded formal reasoning with source maps, explicit trust and uncertainty"
+    },
+    {
+      "id": "goal.questioning",
+      "subgoals": [
+        {
+          "id": "subgoal.questioning.targeted-questions",
+          "title": "Targeted questions"
+        },
+        {
+          "id": "subgoal.questioning.saturation",
+          "title": "Saturation"
+        }
+      ],
+      "title": "Questions driven by unresolved dependencies with honest saturation"
+    },
+    {
+      "id": "goal.privacy",
+      "subgoals": [
+        {
+          "id": "subgoal.privacy.policy-isolation",
+          "title": "Policy isolation"
+        },
+        {
+          "id": "subgoal.privacy.encryption-keys",
+          "title": "Encryption keys"
+        },
+        {
+          "id": "subgoal.privacy.egress-metadata",
+          "title": "Egress metadata"
+        },
+        {
+          "id": "subgoal.privacy.recovery-retention",
+          "title": "Recovery retention"
+        }
+      ],
+      "title": "Private case isolation, authenticated encryption and user-owned keys"
+    },
+    {
+      "id": "goal.durability",
+      "subgoals": [
+        {
+          "id": "subgoal.durability.backend-persistence",
+          "title": "Backend persistence"
+        },
+        {
+          "id": "subgoal.durability.wal-manifests",
+          "title": "Wal manifests"
+        },
+        {
+          "id": "subgoal.durability.verified-replicas",
+          "title": "Verified replicas"
+        }
+      ],
+      "title": "Crash-safe encrypted persistence, verified replicas and recovery"
+    },
+    {
+      "id": "goal.router",
+      "subgoals": [
+        {
+          "id": "subgoal.router.interview-route",
+          "title": "Interview route"
+        },
+        {
+          "id": "subgoal.router.provider-contract",
+          "title": "Provider contract"
+        },
+        {
+          "id": "subgoal.router.private-resilient-inference",
+          "title": "Private resilient inference"
+        }
+      ],
+      "title": "Explicit Grok4.7 through llm_router with privacy and failure handling"
+    },
+    {
+      "id": "goal.supervision",
+      "subgoals": [
+        {
+          "id": "subgoal.supervision.ingest-start",
+          "title": "Ingest start"
+        },
+        {
+          "id": "subgoal.supervision.recovery-evidence",
+          "title": "Recovery evidence"
+        },
+        {
+          "id": "subgoal.supervision.privacy-live-qualification",
+          "title": "Privacy live qualification"
+        }
+      ],
+      "title": "Native plan ingestion, owned execution, evidence gates and stall recovery"
+    },
+    {
+      "id": "goal.release",
+      "subgoals": [
+        {
+          "id": "subgoal.release.terminal-acceptance",
+          "title": "Terminal acceptance"
+        },
+        {
+          "id": "subgoal.release.acceptance-documentation",
+          "title": "Acceptance documentation"
+        }
+      ],
+      "title": "Reproducible end-to-end acceptance and usable operational documentation"
+    }
+  ],
+  "initial_status": "all 58 tasks pending; audit/canary observations do not satisfy the implementation program",
+  "privacy_dependency_findings": [
+    {
+      "finding": "Root core dependencies include cryptography>=41.0.0; no direct Kit dependency declared in project.dependencies.",
+      "path": "pyproject.toml"
+    },
+    {
+      "finding": "Editable external/ipfs_kit_py[api,ipld,ai_ml] and cryptography>=41.0.0 currently declared.",
+      "path": "requirements.txt"
+    },
+    {
+      "finding": "Kit core cryptography>=38.0.0; lazy facade SOURCE_VERSION=0.3.0. keyring is optional import and not in inspected core dependency contract.",
+      "path": "external/ipfs_kit_py/pyproject.toml"
+    }
+  ],
+  "provider": {
+    "allow_fallback": false,
+    "model": "grok-4.7",
+    "provider": "grok_cli",
+    "router": "ipfs_accelerate_py.llm_router"
+  },
+  "purpose": "Verify the existing TUI first, then connect a user-grounded factual knowledge graph to an independently sourced law-derived dependency graph, ask relevant questions until no answerable actionable questions remain, preserve unresolved/legal uncertainty, and keep private encrypted durable user state.",
+  "schema_version": "complaint-generator.intake-improvement-spec.v1",
+  "success_criteria": [
+    "A usable real terminal interview and resume flow",
+    "User assertions and applicable legal rules have separate traceable graph identities",
+    "Each question has an actionable dependency/uncertainty target",
+    "Finite honest stopping and unresolved summary",
+    "Grok4.7 route and privacy choice are observable",
+    "Encrypted private persistence and verifiable durability/recovery",
+    "Native supervisor ingests all tasks and exhibits monitored implementation progress with bounded recovery"
+  ],
+  "tasks": [
+    {
+      "acceptance": [
+        "Work is scoped to one characterization test module and receipt; target less than 15 minutes. Do not rewrite the interview or start a live provider.",
+        "Create a real PTY child with a temporary session directory, provider-process/socket guards, two synthetic answers and --max-turns 2; assert exit 0, persisted answers and pause/resume message within a fixed 15-second deadline.",
+        "Add a fresh-service same-ID resume assertion using the actual workspace service; include baseline receipt documenting the initial-narrative-as-name, all-unknown completion, absent factual/dependency graph, EOF exit 1, and plaintext storage gaps as observations rather than false passing product acceptance.",
+        "No real complaint files, existing sessions, network connections or provider executables may be used. Test diagnostics must redact synthetic payloads when expanded to real sessions.",
+        "Write the synthetic characterization observations to docs/task_boards/complaint_tui_baseline_receipt.json; classify existing product defects independently from baseline smoke pass/fail."
+      ],
+      "depends_on": [],
+      "goal_id": "goal.tui",
+      "id": "CIMP-TUI-01",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker. The provider container deliberately has a minimal qualified toolchain; the supervisor runs the required behavioral validation with its provisioned host interpreter. If UI imports are unavailable inside the worker container, report that limitation and preserve the tests for the host validator. Do not vendor dependencies, weaken assertions or mark a failed check passed to compensate.",
+      "priority": "P0",
+      "source_candidate_id": "TUI-01",
+      "subgoal_id": "subgoal.tui.baseline",
+      "submodules": [],
+      "targets": [
+        "tests/test_tui_intake_baseline.py",
+        "applications/complaint_cli.py",
+        "applications/complaint_workspace.py",
+        "docs/task_boards/complaint_tui_baseline_receipt.json"
+      ],
+      "title": "Characterize existing terminal intake with a bounded offline PTY smoke",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_tui_intake_baseline.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Introduce an explicit original_complaint or equivalent versioned narrative field with a schema-preserving migration for saved seven-field sessions.",
+        "chat starts by requesting the complaint in plain language and stores it separately; a housing narrative must never become party_name.",
+        "Support multiline narrative/file-or-stdin input without command injection; supplied question answers remain distinct from narrative and revisions.",
+        "Package/API/MCP wrappers expose the same typed narrative transition and return the resulting next inquiry."
+      ],
+      "depends_on": [
+        "CIMP-TUI-01"
+      ],
+      "goal_id": "goal.tui",
+      "id": "CIMP-TUI-02",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.\n\nMigrate the live TUI baseline tests alongside narrative capture: retain the historical baseline receipt byte-for-byte and validate its recorded history, but replace live assertions requiring known defects to persist. Exercise the new narrative-first contract through the real terminal while retaining the bounded PTY, pause/resume and diagnostic-redaction checks. Do not skip, xfail, mock the application or conditionally accept the old narrative-as-name bug. Later graph, outcome, interruption and privacy tasks own their desired behavioral regressions; historical gap observations are not current product requirements. This note grants no additional output or completion authority.",
+      "priority": "P0",
+      "source_candidate_id": "TUI-02",
+      "subgoal_id": "subgoal.tui.canonical-service",
+      "submodules": [],
+      "targets": [
+        "applications/complaint_workspace.py",
+        "applications/complaint_cli.py",
+        "complaint_generator/workspace.py",
+        "tests/test_tui_narrative_capture.py",
+        "tests/test_tui_intake_baseline.py"
+      ],
+      "title": "Capture complaint narrative separately from structured answers",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_tui_narrative_capture.py tests/test_tui_intake_baseline.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Wrap existing start_three_phase_process and process_denoising_answer rather than creating another independent graph/interview engine.",
+        "One transition API owns versioned session, inquiry IDs, expected question revision and errors for terminal/package/API/MCP callers.",
+        "Graph workflow can run with deterministic fake router and fixtures for development; optional-dependency failure is structured and resumable.",
+        "Legacy CLI continues exposing saved-session/status/history through an adapter and no longer ends intake with finalize(not-implemented)."
+      ],
+      "depends_on": [
+        "CIMP-TUI-02",
+        "CIMP-FACT-01",
+        "CIMP-ROUTE-01"
+      ],
+      "goal_id": "goal.tui",
+      "id": "CIMP-TUI-03",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "TUI-03",
+      "subgoal_id": "subgoal.tui.canonical-service",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "applications/complaint_workspace.py",
+        "mediator/mediator.py",
+        "mediator/workflow_service.py",
+        "complaint_generator/workspace.py",
+        "tests/test_tui_shared_interview.py"
+      ],
+      "title": "Adapt the graph workflow into one shared interview service",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_tui_shared_interview.py tests/test_cli_commands.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Ask or resolve jurisdiction, relevant date and claim candidates before selecting legal requirements; preserve unknown jurisdiction explicitly.",
+        "Create a typed adapter from sourced legal requirements to DependencyGraphBuilder entries; do not feed SummaryJudgmentHook list[str] directly to dictionary-based builder.",
+        "Every legal requirement carries authority/source locator, jurisdiction, effective date/version and derivation/proof status; user assertions cannot create authoritative law.",
+        "Pass legal_requirements explicitly into initial dependency graph construction; missing/ambiguous authority produces unresolved requirements, not invented rules or silent success."
+      ],
+      "depends_on": [
+        "CIMP-TUI-03",
+        "CIMP-LAW-04",
+        "CIMP-LAW-02",
+        "CIMP-LAW-06"
+      ],
+      "goal_id": "goal.tui",
+      "id": "CIMP-TUI-04",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "TUI-04",
+      "subgoal_id": "subgoal.tui.graph-interview",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "mediator/legal_hooks.py",
+        "mediator/mediator.py",
+        "complaint_phases/dependency_graph.py",
+        "integrations/ipfs_datasets/legal.py",
+        "tests/test_tui_legal_requirements.py"
+      ],
+      "title": "Feed cited jurisdiction-specific legal requirements into intake",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_tui_legal_requirements.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Narrative creates source-linked people/events/allegations and answers produce inspectable graph revisions with provenance to the exact user statement.",
+        "Corrections supersede prior assertions without losing their audit history; repeated submission of one transition is idempotent.",
+        "Distinguish user allegation, corroborating evidence, inferred hypothesis and legal authority in factual nodes/support edges.",
+        "An answer can change support for a legal element without editing the authority-derived requirement definition; contradiction/unknown values remain visible."
+      ],
+      "depends_on": [
+        "CIMP-TUI-03",
+        "CIMP-TUI-04",
+        "CIMP-FACT-02",
+        "CIMP-FACT-03"
+      ],
+      "goal_id": "goal.tui",
+      "id": "CIMP-TUI-05",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "TUI-05",
+      "subgoal_id": "subgoal.tui.graph-interview",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "complaint_phases/knowledge_graph.py",
+        "complaint_phases/denoiser.py",
+        "complaint_phases/intake_case_file.py",
+        "mediator/mediator.py",
+        "integrations/ipfs_datasets/graphs.py",
+        "tests/test_tui_graph_revisions.py"
+      ],
+      "title": "Refine factual graph and support links on every answer",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_tui_graph_revisions.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Select questions from factual uncertainties, legal-element support gaps, contradictions and evidence needs using existing candidate-generation APIs.",
+        "Each inquiry includes stable objective/target IDs, why it matters and an expected answer/update contract; terminal /why displays understandable reasons.",
+        "Answering one issue updates or removes its candidate and can change the next question; semantic duplicate objectives have a bounded repeat policy.",
+        "Unknown/refused/skipped answers are recorded as such and direct the next candidate without satisfying the underlying legal requirement."
+      ],
+      "depends_on": [
+        "CIMP-TUI-05",
+        "CIMP-QUEST-03"
+      ],
+      "goal_id": "goal.tui",
+      "id": "CIMP-TUI-06",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "TUI-06",
+      "subgoal_id": "subgoal.tui.graph-interview",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "complaint_phases/denoiser.py",
+        "complaint_phases/phase_manager.py",
+        "applications/complaint_workspace.py",
+        "tests/test_tui_question_selection.py"
+      ],
+      "title": "Select explained questions from actionable graph gaps",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_tui_question_selection.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Return explicit saturated/complete, paused, awaiting_user, deferred_needs_evidence, blocked_provider, no_progress and needs_review outcomes with remaining issues.",
+        "No additional answerable questions means interview saturation, not a claim that legal sufficiency, all facts or all proof requirements are satisfied.",
+        "Loss plateau, >50 questions or empty candidate pool cannot alone mark legal requirements satisfied; unknown-only sessions never claim core facts are complete.",
+        "Bound repeat/no-information attempts and model retries; terminate with an unresolved-issues summary and resumable next action."
+      ],
+      "depends_on": [
+        "CIMP-TUI-06"
+      ],
+      "goal_id": "goal.tui",
+      "id": "CIMP-TUI-07",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "TUI-07",
+      "subgoal_id": "subgoal.tui.graph-interview",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "complaint_phases/phase_manager.py",
+        "complaint_phases/denoiser.py",
+        "applications/complaint_workspace.py",
+        "mediator/mediator.py",
+        "tests/test_tui_stopping_policy.py"
+      ],
+      "title": "Implement finite stopping with truthful completion reasons",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_tui_stopping_policy.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Support /help, /status, /why, /skip, /edit, /pause, /resume and /quit with documented safe behavior, multiline text, and no-color/Unicode/narrow-terminal modes.",
+        "EOF and Ctrl-C persist a recoverable pause and return documented exit codes without traceback or loss of the pending inquiry.",
+        "Fresh-process resume restores pending question/objective, graph revision, unknown/skipped answers and explicit stop reason; stale concurrent answers are rejected.",
+        "PTY tests have fixed timeouts and cover redirected input, Unicode, narrow width and interrupted provider wait. Launcher selects a working Python and configured backend instead of hardcoded Codex."
+      ],
+      "depends_on": [
+        "CIMP-TUI-07",
+        "CIMP-TUI-02"
+      ],
+      "goal_id": "goal.tui",
+      "id": "CIMP-TUI-08",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P1",
+      "source_candidate_id": "TUI-08",
+      "subgoal_id": "subgoal.tui.usable-resume",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "applications/complaint_cli.py",
+        "applications/cli.py",
+        "scripts/run_cli_mediator.sh",
+        "tests/test_tui_controls_pty.py"
+      ],
+      "title": "Provide accessible terminal controls and reliable resume",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_tui_controls_pty.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Snapshot includes both graphs, provenance, pending inquiry, revisions, schema version, outcome reason and explicitly unknown/deferred items.",
+        "Encrypted mode covers complaint text, transcripts, graphs, exports and durability payloads; locked/wrong-key sessions never fall back to plaintext.",
+        "Use private directory/file permissions, unique atomic write files, concurrency control and integrity/corruption recovery. Preserve or explicitly migrate prior unencrypted snapshots with no silent overwrite.",
+        "Logs/receipts expose identifiers and operational status without complaint text or encryption keys; restart and failed durability-write scenarios preserve the last valid revision."
+      ],
+      "depends_on": [
+        "CIMP-TUI-05",
+        "CIMP-TUI-07",
+        "CIMP-DUR-002",
+        "CIMP-DUR-005",
+        "CIMP-FACT-05",
+        "CIMP-DUR-004"
+      ],
+      "goal_id": "goal.tui",
+      "id": "CIMP-TUI-09",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "TUI-09",
+      "subgoal_id": "subgoal.tui.usable-resume",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "applications/complaint_workspace.py",
+        "applications/cli.py",
+        "integrations/ipfs_datasets/storage.py",
+        "tests/test_tui_private_resume.py"
+      ],
+      "title": "Persist complete interview snapshots through private durable storage",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_tui_private_resume.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Requested and selected router/provider/model appear in sanitized session diagnostics and task receipts; Grok 4.7 selection is verified against actual provider-supported identity.",
+        "Do not silently substitute Codex or another model when Grok 4.7 is unavailable; return a bounded structured provider error and retain the session.",
+        "Enforce timeout/retry/cancel and structured output validation; sparse provider progress remains visible without printing private prompts.",
+        "Offline fake-router tests assert the request traverses llm_router. A separately identified synthetic live canary records actual selected model and no real complaint data.",
+        "Explain whether selected inference sends complaint text remotely; encryption at rest does not imply private remote inference."
+      ],
+      "depends_on": [
+        "CIMP-TUI-03",
+        "CIMP-ROUTE-01"
+      ],
+      "goal_id": "goal.router",
+      "id": "CIMP-TUI-10",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "TUI-10",
+      "subgoal_id": "subgoal.router.interview-route",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "backends/llm_router_backend.py",
+        "config.llm_router.json",
+        "scripts/run_cli_mediator.sh",
+        "applications/complaint_cli.py",
+        "tests/test_tui_router_trace.py"
+      ],
+      "title": "Trace explicit Grok 4.7 router selection in the terminal",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_tui_router_trace.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Fixtures cover coherent complaint, unknown-only answers, contradictory dates, unidentified defendant, missing authority, malformed/timeout provider output, replayed transition, concurrent resume, wrong encryption key and interrupted storage write.",
+        "Assert graph content/provenance/support links and truthful stopping reason, not only rendered strings or command exit status.",
+        "Package/API/MCP/terminal transitions produce equivalent inquiry identifiers and graph revisions for the same synthetic sequence.",
+        "Tests hard-block network/provider subprocesses unless a specifically selected live synthetic canary is executed; no initial saved user sessions are read or modified."
+      ],
+      "depends_on": [
+        "CIMP-TUI-04",
+        "CIMP-TUI-05",
+        "CIMP-TUI-06",
+        "CIMP-TUI-07",
+        "CIMP-TUI-08",
+        "CIMP-TUI-09",
+        "CIMP-TUI-10"
+      ],
+      "goal_id": "goal.release",
+      "id": "CIMP-TUI-11",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "TUI-11",
+      "subgoal_id": "subgoal.release.terminal-acceptance",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "tests/test_tui_interview_acceptance.py",
+        "tests/test_complaint_generator_tools.py",
+        "tests/test_complaint_generator_packaging.py"
+      ],
+      "title": "Validate adverse interview scenarios across shared surfaces",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_tui_interview_acceptance.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Supervisor executes bounded synthetic PTY/graph/privacy acceptance, attaches output receipts and source identity, and cannot mark terminal tasks complete from source-substring checks alone.",
+        "Distinguish legitimate awaiting_user in an end-user interview from a stalled development worker; never fabricate user answers or force legal completion to unstick development.",
+        "Development tasks continue with synthetic fixtures where possible; irreducible external dependencies have precise diagnostics, bounded retries and resumable state.",
+        "Completion receipt reports passed, skipped and live-canary status separately, and preserves actionable unresolved legal/user issues in product sessions."
+      ],
+      "depends_on": [
+        "CIMP-TUI-11",
+        "CIMP-OPS-03"
+      ],
+      "goal_id": "goal.release",
+      "id": "CIMP-TUI-12",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "TUI-12",
+      "subgoal_id": "subgoal.release.terminal-acceptance",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "tests/test_tui_supervisor_acceptance.py",
+        "docs/task_boards",
+        "integrations/ipfs_accelerate"
+      ],
+      "title": "Gate supervisor completion on reproducible terminal evidence",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_tui_supervisor_acceptance.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Every factual entity/edge carries source_kind user_statement or user_uploaded_document, source/message identity, source span and hash, assertion status, extractor version and stable identity.",
+        "Model suggestions, inferred claim labels and legal text have separate types/statuses and cannot be inserted as asserted user facts.",
+        "No required field is populated by guessing a missing name, date, actor or jurisdiction."
+      ],
+      "depends_on": [
+        "CIMP-TUI-01"
+      ],
+      "goal_id": "goal.facts",
+      "id": "CIMP-FACT-01",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "FACT-01",
+      "subgoal_id": "subgoal.facts.assertion-contracts",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "complaint_phases/knowledge_graph.py",
+        "complaint_phases/intake_case_file.py",
+        "integrations/ipfs_datasets/types.py",
+        "tests/test_factual_assertion_provenance.py"
+      ],
+      "title": "Define versioned user assertion and source provenance contracts",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_factual_assertion_provenance.py tests/test_intake_case_file.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Capability-gated adapter calls actual KnowledgeGraphExtractor.extract_knowledge_graph on submitted text.",
+        "All asserted extracted facts have matching source spans; unsupported extractions remain suggestions/diagnostics.",
+        "No Wikipedia/Wikidata/web expansion or model downloads occur during private fact extraction.",
+        "Backend absent/error produces bounded explicit degraded/unavailable result and never fabricated facts."
+      ],
+      "depends_on": [
+        "CIMP-FACT-01"
+      ],
+      "goal_id": "goal.facts",
+      "id": "CIMP-FACT-02",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P1",
+      "source_candidate_id": "FACT-02",
+      "subgoal_id": "subgoal.facts.extraction-revisions",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/graphs.py",
+        "complaint_phases/knowledge_graph.py",
+        "tests/test_intake_graph_provenance_contract.py"
+      ],
+      "title": "Connect upstream graph extraction with validated user-source spans",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_intake_graph_provenance_contract.py tests/test_graph_phase2_integration.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "A user correction creates a new revision and supersedes the previous assertion while retaining both sources.",
+        "Contradictory user statements remain explicit conflicts until clarified; no silent confidence-based overwrite.",
+        "Dependent support links and questions invalidate or recompute when an assertion is changed/retracted.",
+        "Same answer event replay is idempotent."
+      ],
+      "depends_on": [
+        "CIMP-FACT-01"
+      ],
+      "goal_id": "goal.facts",
+      "id": "CIMP-FACT-03",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "FACT-03",
+      "subgoal_id": "subgoal.facts.extraction-revisions",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "complaint_phases/knowledge_graph.py",
+        "complaint_phases/denoiser.py",
+        "mediator/mediator.py",
+        "tests/test_factual_correction_replay.py"
+      ],
+      "title": "Record factual corrections, retractions and supersession without erasing history",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_factual_correction_replay.py tests/test_mediator_three_phase.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Factual assertion, authority source, rule candidate, legal requirement and support-link IDs/types are distinct.",
+        "A legal passage cannot become a factual assertion about the complainant.",
+        "Entity deduplication cannot merge user testimony with a legal norm despite similar labels.",
+        "Support/contradiction links reference both factual and rule IDs and preserve each provenance chain."
+      ],
+      "depends_on": [
+        "CIMP-FACT-01"
+      ],
+      "goal_id": "goal.facts",
+      "id": "CIMP-FACT-04",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "FACT-04",
+      "subgoal_id": "subgoal.facts.assertion-contracts",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/graphs.py",
+        "complaint_phases/knowledge_graph.py",
+        "complaint_phases/legal_graph.py",
+        "complaint_phases/dependency_graph.py",
+        "tests/test_intake_graph_provenance_contract.py"
+      ],
+      "title": "Keep factual, authority and requirement graph namespaces separate",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_intake_graph_provenance_contract.py tests/test_m3_graph_snapshot_support_paths.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Actual knowledge_graphs.Client persistence/reopen works with same-count content changes and idempotent retries.",
+        "Resume retains graph revisions, provenance, superseded facts and cross-graph links.",
+        "Private graph payloads, source text, embeddings and indexes use the storage workstream encrypted repository before replication; plaintext publication remains disabled."
+      ],
+      "depends_on": [
+        "CIMP-FACT-02",
+        "CIMP-FACT-03",
+        "CIMP-FACT-04",
+        "CIMP-DUR-002"
+      ],
+      "goal_id": "goal.facts",
+      "id": "CIMP-FACT-05",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P1",
+      "source_candidate_id": "FACT-05",
+      "subgoal_id": "subgoal.facts.durable-graphs",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/graphs.py",
+        "mediator/claim_support_hooks.py",
+        "tests/test_factual_correction_replay.py"
+      ],
+      "title": "Persist graph revisions with verified Client and encrypted storage boundary",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_factual_correction_replay.py tests/test_m3_graph_snapshot_support_paths.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Remove implicit OR/federal selection at first-party legal requirement boundaries; unresolved context remains unknown.",
+        "Ask user for jurisdiction and relevant event dates when needed; retain uncertain date ranges without invented precise dates.",
+        "Distinguish applicable-law date, event date, filing/reference date and corpus retrieval date.",
+        "Changing context invalidates old selected rule applicability and dependent proof state."
+      ],
+      "depends_on": [
+        "CIMP-FACT-01"
+      ],
+      "goal_id": "goal.law",
+      "id": "CIMP-LAW-01",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "LAW-01",
+      "subgoal_id": "subgoal.law.jurisdiction",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/legal.py",
+        "complaint_phases/intake_case_file.py",
+        "mediator/mediator.py",
+        "tests/test_explicit_legal_context.py"
+      ],
+      "title": "Require explicit jurisdiction and legally relevant date context",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_explicit_legal_context.py tests/test_intake_case_file.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use verified parameter-dictionary APIs for US Code, state statutes/admin rules, Federal Register and court rules behind first-party adapter.",
+        "Every result preserves source type/URI/citation, content hash, corpus/version/CID where available, retrieved_at and source passage.",
+        "Cache/offline lookup and live retrieval have explicit capability/timeout/error diagnostics; optional unavailable backends do not stall the intake.",
+        "No broad corpus downloads, unbounded scrape setup or private-fact publication as a side effect."
+      ],
+      "depends_on": [
+        "CIMP-LAW-01"
+      ],
+      "goal_id": "goal.law",
+      "id": "CIMP-LAW-02",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P1",
+      "source_candidate_id": "LAW-02",
+      "subgoal_id": "subgoal.law.authority-retrieval",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/legal.py",
+        "mediator/legal_authority_hooks.py",
+        "mediator/legal_corpus_hooks.py",
+        "tests/test_legal_corpus_candidate_contract.py"
+      ],
+      "title": "Add bounded corpus adapters for legal sources and court rules",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_legal_corpus_candidate_contract.py tests/test_legal_authority_hooks.py tests/test_ref_225_legal_authority_lookup_failure.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "constrain_assertions_to_corpus result distinguishes retrieved candidate, source-verified, applicable and entails states.",
+        "An unrelated search hit cannot mark an assertion legally grounded or a factual allegation verified.",
+        "Empty/backend-failed retrieval remains unknown with diagnostic rather than implying no law or false allegation.",
+        "Maintain compatibility fields only with explicitly documented conservative semantics."
+      ],
+      "depends_on": [
+        "CIMP-LAW-02"
+      ],
+      "goal_id": "goal.law",
+      "id": "CIMP-LAW-03",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "LAW-03",
+      "subgoal_id": "subgoal.law.authority-retrieval",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/legal.py",
+        "mediator/legal_authority_hooks.py",
+        "tests/test_legal_corpus_candidate_contract.py"
+      ],
+      "title": "Separate corpus retrieval relevance from entailment and applicability",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_legal_corpus_candidate_contract.py tests/test_m5_legal_proof_contradiction_engine.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Replace placeholder claim-keyword extraction with candidate rules linked to exact authority source spans.",
+        "Every promoted requirement retains jurisdiction, authority identity/version, source hash/span and applicable date context.",
+        "Preserve conditions, exceptions, conjunction/disjunction and procedural-versus-substantive distinctions.",
+        "Simplified legacy templates remain explicitly unverified templates and cannot silently become applicable legal requirements.",
+        "Unsupported or ambiguous extraction remains a candidate with review reason."
+      ],
+      "depends_on": [
+        "CIMP-LAW-02",
+        "CIMP-LAW-03",
+        "CIMP-FACT-04"
+      ],
+      "goal_id": "goal.law",
+      "id": "CIMP-LAW-04",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "LAW-04",
+      "subgoal_id": "subgoal.law.verified-requirements",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "complaint_phases/legal_graph.py",
+        "integrations/ipfs_datasets/logic.py",
+        "tests/test_legal_requirement_source_versions.py"
+      ],
+      "title": "Extract source-bound legal rule candidates and promote verified requirements",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_legal_requirement_source_versions.py tests/test_w94_authority_graph_integration.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Integrate actual LegalIR temporal authority graph and query context APIs through lazy adapter.",
+        "Synthetic fixtures distinguish effective, future, expired, amended, repealed and superseded versions and jurisdiction mismatch.",
+        "Unknown source version/date produces explicit unavailable applicability, never a guessed current rule.",
+        "Existing adverse/good_law_unconfirmed/treatment edges remain visible and affect requirement support eligibility."
+      ],
+      "depends_on": [
+        "CIMP-LAW-04"
+      ],
+      "goal_id": "goal.law",
+      "id": "CIMP-LAW-05",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "LAW-05",
+      "subgoal_id": "subgoal.law.verified-requirements",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/logic.py",
+        "complaint_phases/legal_graph.py",
+        "mediator/legal_authority_hooks.py",
+        "tests/test_legal_requirement_source_versions.py"
+      ],
+      "title": "Gate rule use by temporal authority and legal treatment status",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_legal_requirement_source_versions.py tests/test_w94_authority_graph_integration.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "start_three_phase_process passes verified legal requirements to dependency graph construction before asking element-specific questions.",
+        "Separate general factual clarification dependencies from legally sourced requirements.",
+        "Relevant factual/jurisdiction/date/rule changes recompute only affected dependencies and invalidate stale satisfaction.",
+        "No retrieved requirements yields explicit legal-context/source gap rather than silently calling heuristic graph law-derived."
+      ],
+      "depends_on": [
+        "CIMP-FACT-04",
+        "CIMP-LAW-04",
+        "CIMP-LAW-05",
+        "CIMP-FACT-02"
+      ],
+      "goal_id": "goal.law",
+      "id": "CIMP-LAW-06",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "LAW-06",
+      "subgoal_id": "subgoal.law.verified-requirements",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "mediator/mediator.py",
+        "complaint_phases/dependency_graph.py",
+        "complaint_phases/phase_manager.py",
+        "tests/test_authority_dependency_pipeline.py"
+      ],
+      "title": "Build and refresh verified legal dependency graph during intake",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_authority_dependency_pipeline.py tests/test_mediator_three_phase.py tests/test_temporal_rule_profiles.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Actual compile_canonical_pipeline(CompilerRequest) adapter stores schema/compiler/stage identities and unsupported diagnostics.",
+        "Use actual source map build/validate/traceability APIs so every emitted formula traces to source passage and transformation.",
+        "Strict implemented capability requires executed supported operation, not module import alone.",
+        "Version/schema mismatch invalidates cached formalization and leaves old receipt inspectable."
+      ],
+      "depends_on": [
+        "CIMP-LAW-04"
+      ],
+      "goal_id": "goal.proof",
+      "id": "CIMP-PROOF-01",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P1",
+      "source_candidate_id": "PROOF-01",
+      "subgoal_id": "subgoal.proof.compiler-obligations",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/logic.py",
+        "lib/formal_logic/capabilities.py",
+        "tests/test_legal_ir_canonical_adapter.py"
+      ],
+      "title": "Connect canonical compiler with replayable lossless source maps",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_legal_ir_canonical_adapter.py tests/test_logic_capability_contract.py tests/test_ipfs_logic_adapter.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Actual generate_legal_ir_proof_obligations produces stable source-bound obligations.",
+        "Premise inventory distinguishes asserted facts, disputed facts, selected legal rules and assumptions.",
+        "Structural/schema validation cannot be promoted to substantive claim-element entailment.",
+        "Proof artifacts record obligation, source/rule/fact versions, assumptions, trust level and backend identity."
+      ],
+      "depends_on": [
+        "CIMP-PROOF-01",
+        "CIMP-LAW-06"
+      ],
+      "goal_id": "goal.proof",
+      "id": "CIMP-PROOF-02",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P1",
+      "source_candidate_id": "PROOF-02",
+      "subgoal_id": "subgoal.proof.compiler-obligations",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/logic.py",
+        "mediator/claim_support_hooks.py",
+        "tests/test_legal_ir_canonical_adapter.py"
+      ],
+      "title": "Generate proof obligations with explicit premise and claim-element identity",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_legal_ir_canonical_adapter.py tests/test_m5_legal_proof_contradiction_engine.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use actual LegalIRProofRouter and ProofRoutingPolicy with explicit total/stage deadlines, route policy and trust requirement.",
+        "Separate proved, refuted, inconsistent, unknown, unsupported, timeout, cancelled and unavailable outcomes.",
+        "Missing facts are unknown under intake open-world semantics, not false from a Boolean default.",
+        "No similarity score, model assertion or structural check can satisfy a substantive proof trust threshold.",
+        "Timeout/cancellation returns promptly and cannot leave child provider/prover processes running."
+      ],
+      "depends_on": [
+        "CIMP-PROOF-02",
+        "CIMP-LAW-05"
+      ],
+      "goal_id": "goal.proof",
+      "id": "CIMP-PROOF-03",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "PROOF-03",
+      "subgoal_id": "subgoal.proof.bounded-invalidation",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/logic.py",
+        "mediator/claim_support_hooks.py",
+        "tests/test_legal_ir_proof_routing_adapter.py"
+      ],
+      "title": "Add bounded proof routing and explicit unknown outcomes",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_legal_ir_proof_routing_adapter.py tests/test_logic_capability_contract.py tests/test_logic_local_formal_logic_bridge.py tests/test_m5_legal_proof_contradiction_engine.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Proof cache identity includes factual revision, applicable legal source/version, compiler/schema/config and proof policy.",
+        "Corrected facts, changed law date or superseded rules cannot reuse a previous satisfied-element result.",
+        "Contradictory event dates and relative-only chronology preserve uncertainty and trigger targeted follow-up.",
+        "Replay on unchanged inputs is deterministic and does not call live providers."
+      ],
+      "depends_on": [
+        "CIMP-PROOF-03",
+        "CIMP-FACT-03"
+      ],
+      "goal_id": "goal.proof",
+      "id": "CIMP-PROOF-04",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P1",
+      "source_candidate_id": "PROOF-04",
+      "subgoal_id": "subgoal.proof.bounded-invalidation",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/logic.py",
+        "mediator/claim_support_hooks.py",
+        "complaint_phases/dependency_graph.py",
+        "tests/test_legal_ir_proof_routing_adapter.py"
+      ],
+      "title": "Invalidate and replay proofs when source, fact or law versions change",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_legal_ir_proof_routing_adapter.py tests/test_phase_manager_temporal_registry.py tests/test_temporal_rule_profiles.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Every question references unresolved factual/requirement/contradiction target and explains the needed information.",
+        "Priority accounts for dependency impact, unresolved uncertainty and user answerability.",
+        "Questions do not assume disputed allegations, suggest required facts or ask the user to assert a legal conclusion.",
+        "Prover/unavailable source diagnostics target appropriate source/operator follow-up rather than repeatedly asking user for backend details."
+      ],
+      "depends_on": [
+        "CIMP-LAW-06",
+        "CIMP-PROOF-03"
+      ],
+      "goal_id": "goal.questioning",
+      "id": "CIMP-QUEST-01",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P1",
+      "source_candidate_id": "QUEST-01",
+      "subgoal_id": "subgoal.questioning.targeted-questions",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "complaint_phases/denoiser.py",
+        "mediator/inquiries.py",
+        "mediator/mediator.py",
+        "tests/test_question_saturation_contract.py"
+      ],
+      "title": "Generate neutral questions from unresolved dependency and proof targets",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_question_saturation_contract.py tests/test_mediator_inquiry_payload.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Persist stable question target/revision and dispositions answered, unknown, refused, skipped, deferred or invalidated.",
+        "Equivalent standard-intake prompts cannot be endlessly reinserted for unchanged targets.",
+        "Do-not-know/refusal never creates a fact, requirement satisfaction or automatic contradictory conclusion.",
+        "New evidence or changed scope can explicitly reopen a previously disposed question with reason."
+      ],
+      "depends_on": [
+        "CIMP-QUEST-01",
+        "CIMP-FACT-03"
+      ],
+      "goal_id": "goal.questioning",
+      "id": "CIMP-QUEST-02",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "QUEST-02",
+      "subgoal_id": "subgoal.questioning.targeted-questions",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "complaint_phases/denoiser.py",
+        "complaint_phases/intake_case_file.py",
+        "mediator/mediator.py",
+        "tests/test_question_saturation_contract.py"
+      ],
+      "title": "Track question dispositions and deduplicate equivalent requests",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_question_saturation_contract.py tests/test_intake_case_file.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Replace >50 questions/empty list/convergence shortcut with explicit needs_answer, saturated, deferred_unknown, provider_unavailable, cancelled and limit_reached states.",
+        "Saturated requires all relevant answerable targets resolved or explicitly disposed and produces unresolved-issue summary.",
+        "Backend failure or iteration cap cannot advertise full intake completion or filing readiness.",
+        "User can pause/resume without changing assertion/rule truth or causing supervisory restart of intentional user wait."
+      ],
+      "depends_on": [
+        "CIMP-QUEST-02",
+        "CIMP-PROOF-04"
+      ],
+      "goal_id": "goal.questioning",
+      "id": "CIMP-QUEST-03",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "QUEST-03",
+      "subgoal_id": "subgoal.questioning.saturation",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "complaint_phases/denoiser.py",
+        "complaint_phases/phase_manager.py",
+        "mediator/mediator.py",
+        "intake_status.py",
+        "tests/test_question_saturation_contract.py"
+      ],
+      "title": "Implement explicit interview saturation and incomplete stop states",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_question_saturation_contract.py tests/test_mediator_three_phase.py tests/test_phase_manager_temporal_registry.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Scripted synthetic interview covers complete answers, unknown/refused answers, correction, contradictory dates, jurisdiction change, rule version change, provider outage, bounded timeout and resume.",
+        "Assert factual graph changes, law-derived dependency changes, source lineage and question dispositions after each turn.",
+        "Final transcript contains no invented factual assertions and no source-unverified applicable requirements.",
+        "Hermetic runner denies sockets/live provider process creation; required tests cannot pass by skip.",
+        "TUI workstream can reuse same application-level interview fixture to validate the real terminal flow."
+      ],
+      "depends_on": [
+        "CIMP-FACT-05",
+        "CIMP-LAW-06",
+        "CIMP-PROOF-04",
+        "CIMP-QUEST-03"
+      ],
+      "goal_id": "goal.questioning",
+      "id": "CIMP-QUEST-04",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "QUEST-04",
+      "subgoal_id": "subgoal.questioning.saturation",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "tests/test_question_saturation_contract.py",
+        "tests/test_authority_dependency_pipeline.py",
+        "tests/test_intake_graph_provenance_contract.py",
+        "tests/test_factual_correction_replay.py"
+      ],
+      "title": "Validate multi-turn graph refinement, saturation and resume end to end",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q --run-llm --run-network --run-heavy tests/test_question_saturation_contract.py tests/test_authority_dependency_pipeline.py tests/test_intake_graph_provenance_contract.py tests/test_factual_correction_replay.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Inventory raw intake, attachments, fact KG, claim-specific dependency evaluations, annotations, draft/proofs, embeddings, exports, logs, caches, temporary files and backups; distinguish public legal source graph from private claim fact graph.",
+        "Provide persistent product choice for local private processing and separately enabled Grok/cloud processing; encryption at rest does not imply remote LLM cannot read submitted content.",
+        "Policies are attached to user/case and applied at persistence/egress entrypoints; policy selection is a usable initial TUI setting, not repeated blocking confirmation for every operation.",
+        "Supervisor prompts/tasks operate on source and synthetic fixtures only; exclude real session/evidence/export/secret paths from agent context and telemetry."
+      ],
+      "actual_upstream_symbols": [
+        "integrations.ipfs_datasets.llm.generate_text_with_metadata",
+        "applications.complaint_workspace.ComplaintWorkspaceService"
+      ],
+      "depends_on": [
+        "CIMP-TUI-01"
+      ],
+      "goal_id": "goal.privacy",
+      "id": "CIMP-PRIV-001",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "Existing routes accept user_id as data; user-selected ID is not authentication.",
+        "No evidence that existing ciphertext/storage adapter currently enforces a case-wide privacy policy."
+      ],
+      "priority": "P0",
+      "source_candidate_id": "PRIV-001",
+      "subgoal_id": "subgoal.privacy.policy-isolation",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "applications/complaint_workspace.py",
+        "complaint_generator/workspace.py",
+        "integrations/ipfs_datasets/llm.py",
+        "tests/test_private_workspace_policy.py"
+      ],
+      "title": "Specify complaint data classes and executable privacy policy",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_workspace_policy.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use stable collision-resistant namespace derivation or persisted opaque IDs for authenticated user/case identities; keep compatibility mapping for legacy paths.",
+        "Distinct identities that slug to same filename do not share data; reject wrong-user case IDs, CID/key references, traversal, symlink escape and unauthorized exports.",
+        "TUI trusted-local ownership is explicit; HTTP/MCP bindings authorize every private operation and do not rely solely on supplied user_id.",
+        "Session load verifies expected owner/case before returning data and never normalizes two tenants into one path."
+      ],
+      "actual_upstream_symbols": [
+        "applications.complaint_workspace._slugify_user_id",
+        "ipfs_kit_py.core.service_router.DispatchContext",
+        "ipfs_kit_py.core.operation_registry.AuthorizationRequirement"
+      ],
+      "depends_on": [
+        "CIMP-PRIV-001"
+      ],
+      "goal_id": "goal.privacy",
+      "id": "CIMP-PRIV-002",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "_slugify_user_id at applications/complaint_workspace.py:848 replaces runs of nonalphanumeric characters, causing possible collisions.",
+        "MCP JSON-RPC endpoint has optional bearer token; that does not supply tenant-specific authorization across every route."
+      ],
+      "priority": "P0",
+      "source_candidate_id": "PRIV-002",
+      "subgoal_id": "subgoal.privacy.policy-isolation",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "applications/complaint_workspace.py",
+        "applications/complaint_workspace_api.py",
+        "applications/complaint_mcp_protocol.py",
+        "complaint_generator/workspace.py",
+        "tests/test_private_workspace_isolation.py"
+      ],
+      "title": "Replace lossy user filenames and enforce per-user per-case authorization",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_workspace_isolation.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use AES-256-GCM with fresh random nonce and per-user/case data key; encrypt bytes before CID, local hash, pin, replication, cache or durable journal.",
+        "Authenticate schema version, tenant/case binding, artifact kind and revision as associated data; tamper, wrong key, unsupported version and cross-case substitution fail.",
+        "Equal plaintext encrypted twice yields different ciphertext/content address; outer metadata contains only necessary opaque routing information.",
+        "Crypto unavailability returns typed recoverable capability error without plaintext, XOR, unencrypted tempfile or fake encrypted-success fallback.",
+        "Root pyproject declares cryptography>=41.0.0; upstream Kit requires cryptography>=38.0.0 (this is not the Kit package version); preserve compatible dependency contract and add documented Kit/private-storage and optional keyring dependencies consistently without gratuitous broad install.",
+        "Run referenced upstream fixture tests from that submodule with its intended package environment as a separately reported compatibility qualification; missing optional upstream fixtures are not counted as passed and must not erase required first-party adapter assertions."
+      ],
+      "actual_upstream_symbols": [
+        "ipfs_kit_py.aes_encryption.AESEncryption",
+        "ipfs_kit_py.mcp.enterprise.encryption.EncryptionManager.encrypt",
+        "ipfs_kit_py.mcp.enterprise.encryption.EncryptionAlgorithm.AES_256_GCM"
+      ],
+      "depends_on": [
+        "CIMP-PRIV-001",
+        "CIMP-PRIV-002"
+      ],
+      "goal_id": "goal.privacy",
+      "id": "CIMP-PRIV-003",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "AESEncryption handles UTF-8 strings with salted PBKDF2 but currently supplies no AAD; add/reuse AAD-capable envelope rather than claiming binding exists.",
+        "Enterprise EncryptionManager supports bytes/AAD under AES_GCM; its CBC branch is not authenticated, and ChaCha branch creates a 16-byte nonce that is unsuitable for ChaCha20Poly1305.",
+        "cryptography/keyring availability must be explicitly checked and tested; header-algorithm labels alone are insufficient."
+      ],
+      "priority": "P0",
+      "source_candidate_id": "PRIV-003",
+      "subgoal_id": "subgoal.privacy.encryption-keys",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/storage.py",
+        "pyproject.toml",
+        "requirements.txt",
+        "integrations/private_storage.py",
+        "tests/test_private_workspace_crypto.py"
+      ],
+      "title": "Implement versioned encrypt-before-addressing private artifact envelope",
+      "upstream_validation_commands": [
+        "python -m pytest -q external/ipfs_kit_py/tests/unit/test_aes_encryption.py"
+      ],
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_workspace_crypto.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Generate high-entropy master/data keys; protect keys with user-unlocked passphrase wrapping or OS keyring and keep unwrapped keys in memory during unlocked session.",
+        "Persist only wrapped keys plus salt/KDF/version metadata under restrictive directory/file permissions; keys are never derived from machine-id/hostname/default constants or placed beside encrypted exports in plaintext.",
+        "Get passphrases through non-echo input; never pass via process arguments, logs, agent prompts or persisted task receipts.",
+        "Unavailable/locked keyring offers explicit passphrase/recovery import path; never silently downgrades to raw file key persistence.",
+        "Locked case produces actionable unlock-needed state; supervisor can continue independent coding tasks without inventing keys or bypassing privacy."
+      ],
+      "actual_upstream_symbols": [
+        "ipfs_kit_py.mcp.enterprise.encryption.KeyManager",
+        "ipfs_kit_py.mcp.enterprise.encryption.KeyStorageType.KEYRING",
+        "ipfs_kit_py.mcp.enterprise.encryption.KeyStorageType.MEMORY",
+        "ipfs_kit_py.aes_encryption.AESEncryption"
+      ],
+      "depends_on": [
+        "CIMP-PRIV-003"
+      ],
+      "goal_id": "goal.privacy",
+      "id": "CIMP-PRIV-004",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "EnhancedSecretManager defaults derive master key from public machine-id/hostname and constant fallback, and can fall back to XOR; do not use defaults.",
+        "KeyManager FILE stores raw .key material with ordinary open and no explicit chmod; HSM/VAULT/TPM enum values are not implemented storage backends.",
+        "SecureConfigManager persists even password-derived Fernet master.key unwrapped; it is for local config, not proof of passphrase-protected private case ownership."
+      ],
+      "priority": "P0",
+      "source_candidate_id": "PRIV-004",
+      "subgoal_id": "subgoal.privacy.encryption-keys",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "integrations/private_storage.py",
+        "complaint_generator/cli.py",
+        "applications/complaint_workspace.py",
+        "tests/test_private_workspace_keys.py"
+      ],
+      "title": "Implement explicit user key ownership, unlock and recovery options",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_workspace_keys.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Bind actual Kit ServiceRouter/canonical execute protocol or injected byte backend without assuming CanonicalStorageService has add_bytes/cat/pin.",
+        "Preserve status/backend/receipt/verification fields separately for stored locally, pinned, verified, replicated and deferred operations.",
+        "SHA256-only fallback ID or local pseudo CID cannot report network pinned/durable; pin failure cannot be swallowed into pinned=true.",
+        "Default imports/probes do not start IPFS daemon or install dependencies; node lifecycle is explicit configuration.",
+        "Encrypted bytes passed to backend are verified by readback before reporting committed evidence; fake providers are labeled measured-hermetic."
+      ],
+      "actual_upstream_symbols": [
+        "ipfs_kit_py.core.service_router.CanonicalStorageService",
+        "ipfs_kit_py.core.service_router.ServiceRouter",
+        "ipfs_kit_py.core.operation_contracts.OperationResult",
+        "ipfs_kit_py.core.operation_contracts.DurabilityEvidence",
+        "integrations.ipfs_datasets.storage.store_bytes",
+        "integrations.ipfs_datasets.storage.retrieve_bytes",
+        "integrations.ipfs_datasets.storage.pin_cid"
+      ],
+      "depends_on": [
+        "CIMP-PRIV-003",
+        "CIMP-PRIV-004"
+      ],
+      "goal_id": "goal.durability",
+      "id": "CIMP-DUR-001",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "CanonicalStorageService is Protocol execute(operation,request,context), not a no-argument service implementation.",
+        "Current optional IPFSSimpleAPI constructor can start a node.",
+        "pin_proof_report_to_ipfs currently uses any nonempty report ID, including sha256 fallback, to set pinned=true and swallows pin exceptions."
+      ],
+      "priority": "P0",
+      "source_candidate_id": "DUR-001",
+      "subgoal_id": "subgoal.durability.backend-persistence",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/storage.py",
+        "integrations/ipfs_datasets/draft_logic_pipeline.py",
+        "tests/test_ipfs_kit_storage_adapter.py",
+        "tests/test_proof_report_and_pinning.py",
+        "tests/test_private_storage_adapter.py"
+      ],
+      "title": "Bind explicit Kit storage backend with honest durability receipts",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_ipfs_kit_storage_adapter.py tests/test_proof_report_and_pinning.py tests/test_private_storage_adapter.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Session state, evidence, fact graph, private rule evaluations, draft, theorem exports, proof histories, indexes and automatic backups use the private repository/envelope boundary.",
+        "Implement resumable versioned migration with manifest of processed legacy artifacts; verify encrypted readback before offering legacy plaintext cleanup.",
+        "Interrupted migration/locked keys never erase original data or overwrite with fresh empty/default state.",
+        "Use temporary synthetic complaints containing sentinel identifiers; recursive disk/log/backend scan confirms absent plaintext across expected persistent locations.",
+        "Exports intended for user-readable filing are explicit export outputs with user-chosen location and protection state, not automatic hidden plaintext caches."
+      ],
+      "actual_upstream_symbols": [
+        "applications.complaint_workspace.ComplaintWorkspaceService._load_state",
+        "applications.complaint_workspace.ComplaintWorkspaceService._save_state",
+        "integrations.ipfs_datasets.storage.LocalCacheIPFSBackend",
+        "integrations.ipfs_datasets.draft_logic_pipeline.pin_proof_report_to_ipfs"
+      ],
+      "depends_on": [
+        "CIMP-PRIV-002",
+        "CIMP-PRIV-003",
+        "CIMP-PRIV-004",
+        "CIMP-DUR-001"
+      ],
+      "goal_id": "goal.durability",
+      "id": "CIMP-DUR-002",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "Existing session writer stores full JSON plaintext; existing LocalCacheIPFSBackend writes raw shared cache blobs.",
+        "Current session _load_state returns a fresh default on unreadable/corrupt JSON, which must not become silent encrypted-data loss.",
+        "Proof theorem sources can contain case facts even when report summary envelope is small."
+      ],
+      "priority": "P0",
+      "source_candidate_id": "DUR-002",
+      "subgoal_id": "subgoal.durability.backend-persistence",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "applications/complaint_workspace.py",
+        "integrations/ipfs_datasets/storage.py",
+        "integrations/ipfs_datasets/graphs.py",
+        "integrations/ipfs_datasets/draft_logic_pipeline.py",
+        "complaint_generator/legacy_session_migration.py",
+        "tests/test_private_workspace_migration.py"
+      ],
+      "title": "Migrate private workspace persistence without plaintext secondary paths",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_workspace_migration.py tests/test_ipld_logic_storage_dependency.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use stable transaction/effect identifiers for one intake answer and resulting fact-graph/proof revision update; WAL payload/intents contain ciphertext or opaque refs only.",
+        "Commit durability acknowledgement requires configured fsync/commit receipt rather than write/queued state.",
+        "Inject crash before/after begin,intent,effect,commit and reopening; every case yields committed revision or explicit compensated/recoverable state.",
+        "Replay recovery twice without lost or duplicated answer/graph edge/evidence effect; unrecoverable corruption preserves original bytes and produces actionable error.",
+        "Replace fixed shared .tmp filename race and add appropriate ownership/concurrency control; file and directory fsync are handled.",
+        "Run referenced upstream fixture tests from that submodule with its intended package environment as a separately reported compatibility qualification; missing optional upstream fixtures are not counted as passed and must not erase required first-party adapter assertions."
+      ],
+      "actual_upstream_symbols": [
+        "ipfs_kit_py.core.wal.writer.WALWriter",
+        "ipfs_kit_py.core.wal.coordinator.WALTransactionCoordinator.execute",
+        "ipfs_kit_py.core.wal.coordinator.WALTransactionCoordinator.recover",
+        "ipfs_kit_py.core.wal.recovery.WALRecovery",
+        "ipfs_kit_py.core.wal.contracts.WALAckRequirements"
+      ],
+      "depends_on": [
+        "CIMP-DUR-002"
+      ],
+      "goal_id": "goal.durability",
+      "id": "CIMP-DUR-003",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "Atomic os.replace alone does not establish power-loss durability or multi-artifact atomicity.",
+        "Do not journal plaintext transaction intent before encrypting payload; encrypted blob alone does not protect WAL content."
+      ],
+      "priority": "P1",
+      "source_candidate_id": "DUR-003",
+      "subgoal_id": "subgoal.durability.wal-manifests",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "applications/complaint_workspace.py",
+        "integrations/private_storage.py",
+        "tests/test_private_workspace_recovery.py"
+      ],
+      "title": "Join encrypted session, fact graph and proof revisions with Kit WAL",
+      "upstream_validation_commands": [
+        "python -m pytest -q external/ipfs_kit_py/tests/runtime_readiness/wal/test_wal_writer.py external/ipfs_kit_py/tests/runtime_readiness/wal/test_wal_recovery.py external/ipfs_kit_py/tests/runtime_readiness/wal/test_joined_crash_matrix.py"
+      ],
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_workspace_recovery.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "One case manifest ties answer/fact-graph/legal-rule-source/evaluation/proof artifact revisions to an opaque parent generation.",
+        "Concurrent writes use compare-and-swap with expected head/hash and receive conflict instead of lost update.",
+        "Manifest/private graph filenames, labels and provenance containing case facts are inside encrypted envelope; public outer refs remain opaque.",
+        "Restart finds last verified complete head; stale or missing blob is recoverable and does not mint fresh completed receipt.",
+        "Use Kit IrohManifestStore CAS if Iroh backend chosen, or equivalent tested local CAS contract through private repository; do not require starting Iroh to run offline tests.",
+        "Run referenced upstream fixture tests from that submodule with its intended package environment as a separately reported compatibility qualification; missing optional upstream fixtures are not counted as passed and must not erase required first-party adapter assertions."
+      ],
+      "actual_upstream_symbols": [
+        "ipfs_kit_py.iroh.manifest.DirectoryManifest",
+        "ipfs_kit_py.iroh.manifest.ManifestPermissions.owner_only",
+        "ipfs_kit_py.iroh.manifest.IrohManifestStore.publish",
+        "ipfs_kit_py.iroh.manifest.IrohManifestStore.recover_head"
+      ],
+      "depends_on": [
+        "CIMP-DUR-003"
+      ],
+      "goal_id": "goal.durability",
+      "id": "CIMP-DUR-004",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "ManifestPermissions.public_read=false is namespace policy, not encryption of public IPFS blocks.",
+        "Iroh manifests require actual runtime request client; use hermetic client fixture for API tests."
+      ],
+      "priority": "P1",
+      "source_candidate_id": "DUR-004",
+      "subgoal_id": "subgoal.durability.wal-manifests",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "integrations/private_storage.py",
+        "integrations/ipfs_datasets/graphs.py",
+        "tests/test_private_workspace_manifest.py"
+      ],
+      "title": "Add authenticated private case manifests and conflict-safe head publication",
+      "upstream_validation_commands": [
+        "python -m pytest -q external/ipfs_kit_py/tests/test_iroh_manifest.py"
+      ],
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_workspace_manifest.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Configure encrypted local primary plus optional private remote ciphertext replicas with explicit desired/minimum replica policy.",
+        "Count replicas only after readback verifies expected ciphertext digest/version; pin requests queued/deferred/offline are not counted.",
+        "Restart or primary loss restores synthetic complaint, fact graph and proof revision from verified ciphertext replica with user key.",
+        "Bounded retry/backoff and reconciliation receipts expose unavailable provider and next retry without indefinite synchronous UI wait.",
+        "No network sharing/remote storage starts implicitly during import, normal tests or choice of local private mode.",
+        "Run referenced upstream fixture tests from that submodule with its intended package environment as a separately reported compatibility qualification; missing optional upstream fixtures are not counted as passed and must not erase required first-party adapter assertions."
+      ],
+      "actual_upstream_symbols": [
+        "ipfs_kit_py.core.replication.contracts.ReplicaPolicy",
+        "ipfs_kit_py.core.replication.contracts.BackendInventory",
+        "ipfs_kit_py.core.replication.integrity.IntegrityVerifier",
+        "ipfs_kit_py.core.replication.reconciler.ReplicaReconciler.reconcile"
+      ],
+      "depends_on": [
+        "CIMP-DUR-001",
+        "CIMP-DUR-004"
+      ],
+      "goal_id": "goal.durability",
+      "id": "CIMP-DUR-005",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "EncryptionLevel in replication policy is a contract declaration, not automatic payload encryption.",
+        "Local-cache marker pin and arbitrary hash string do not establish an independently durable replica."
+      ],
+      "priority": "P1",
+      "source_candidate_id": "DUR-005",
+      "subgoal_id": "subgoal.durability.verified-replicas",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "integrations/private_storage.py",
+        "integrations/ipfs_datasets/storage.py",
+        "tests/test_private_workspace_replication.py"
+      ],
+      "title": "Implement configurable encrypted replica verification and repair",
+      "upstream_validation_commands": [
+        "python -m pytest -q external/ipfs_kit_py/tests/runtime_readiness/replication/test_replica_contracts.py external/ipfs_kit_py/tests/runtime_readiness/replication/test_reconciler.py external/ipfs_kit_py/tests/runtime_readiness/replication/test_joined_convergence.py"
+      ],
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_workspace_replication.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Case/user names, complaint text, document filenames, graph node labels and legal claim-specific queries are absent from public CID metadata, filenames, global indexes and default logs.",
+        "Private diagnostics redact payloads/keys/tokens while preserving operation ID/status/error category/duration and synthetic source identity.",
+        "Per-case aliases and mappings remain encrypted and do not cross user/case caches; embeddings are treated as private derived data.",
+        "Size/timing/access-pattern residual exposure is documented plainly and padding is optional policy with size bounds, not a promise that encryption hides all metadata."
+      ],
+      "actual_upstream_symbols": [
+        "ipfs_kit_py.iroh.manifest.DirectoryManifest",
+        "ipfs_kit_py.iroh.security",
+        "integrations.ipfs_datasets.llm.get_last_generation_trace"
+      ],
+      "depends_on": [
+        "CIMP-DUR-002",
+        "CIMP-DUR-004"
+      ],
+      "goal_id": "goal.privacy",
+      "id": "CIMP-PRIV-005",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "Kit manifest metadata-key secret filtering does not detect arbitrary complaint text in otherwise ordinary labels.",
+        "Ciphertext randomization prevents direct equality/CID correlation but does not hide length or request timing."
+      ],
+      "priority": "P1",
+      "source_candidate_id": "PRIV-005",
+      "subgoal_id": "subgoal.privacy.egress-metadata",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/storage.py",
+        "integrations/ipfs_datasets/llm.py",
+        "applications/complaint_workspace.py",
+        "complaint_generator/ui_optimizer_daemon.py",
+        "tests/test_private_workspace_metadata.py"
+      ],
+      "title": "Prevent private case metadata leakage through identifiers and diagnostics",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_workspace_metadata.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Cloud processing is genuine persisted opt-in product choice identifying Grok provider/model and scope; local private mode sends zero private complaint bytes to remote inference/routing/telemetry endpoints.",
+        "Build minimal per-turn prompt from redacted relevant facts and rule gaps, with reversible case-local aliases; preserve necessary facts while excluding unrelated evidence.",
+        "Only explicitly permitted provider/model receives final prompt; disabling cloud cannot silently fall back to another cloud or let architecture-router classification transmit original prompt.",
+        "Network/provider spies inspect actual final request payload/cache/trace and assert expected model, privacy choice, no secrets and bounded timeout.",
+        "Supervisor development campaign uses source and synthetic fixtures only; its Grok model setting does not authorize sending stored user complaints."
+      ],
+      "actual_upstream_symbols": [
+        "integrations.ipfs_datasets.llm.generate_text_via_router",
+        "integrations.ipfs_datasets.llm.generate_text_with_metadata",
+        "integrations.ipfs_datasets.llm._build_arch_router_prompt",
+        "integrations.ipfs_accelerate.routers.normalize_accelerate_provider"
+      ],
+      "depends_on": [
+        "CIMP-PRIV-001",
+        "CIMP-PRIV-003",
+        "CIMP-PRIV-005",
+        "CIMP-ROUTE-01"
+      ],
+      "goal_id": "goal.privacy",
+      "id": "CIMP-PRIV-006",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "Current HuggingFace/architecture routing can send an additional routing prompt to OpenRouter; policy must apply before all routing, not just selected generation.",
+        "At-rest encryption does not protect plaintext intentionally sent to remote Grok."
+      ],
+      "priority": "P0",
+      "source_candidate_id": "PRIV-006",
+      "subgoal_id": "subgoal.privacy.egress-metadata",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/llm.py",
+        "integrations/ipfs_accelerate/routers.py",
+        "applications/complaint_workspace.py",
+        "complaint_generator/workspace.py",
+        "tests/test_private_llm_egress.py"
+      ],
+      "title": "Apply user cloud-processing choice and redaction before llm_router",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_llm_egress.py tests/test_ipfs_llm_accelerate_diagnostics.py tests/test_ipfs_llm_huggingface_router.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "User can export ciphertext archive plus versioned manifest and separately protected recovery material; fresh process/system restores exact case/graph/proof revision.",
+        "Wrong passphrase/missing recovery key produces actionable failure without data reset; explain that unrecovered encryption keys cannot be reconstructed by system.",
+        "Rotate wrapping key/data key with rewrap/reencrypt distinction; crash injection at each rotation phase preserves a readable valid generation.",
+        "Old key retention/revocation is explicit policy tied to verified backup migration; no automatic destructive erasure of only recovery path.",
+        "No unwrapped master key is included in same export archive or logs."
+      ],
+      "actual_upstream_symbols": [
+        "ipfs_kit_py.mcp.enterprise.encryption.KeyManager.rotate_key",
+        "ipfs_kit_py.mcp.enterprise.encryption.KeyManager.get_key_metadata",
+        "ipfs_kit_py.core.wal.coordinator.WALTransactionCoordinator",
+        "ipfs_kit_py.core.replication.integrity.IntegrityVerifier"
+      ],
+      "depends_on": [
+        "CIMP-PRIV-004",
+        "CIMP-DUR-004",
+        "CIMP-DUR-005"
+      ],
+      "goal_id": "goal.privacy",
+      "id": "CIMP-PRIV-007",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "KeyManager.rotate_key alone does not migrate existing encrypted blobs or ensure recovery backups now use new key.",
+        "Key recovery is product-owned protocol; upstream key management classes are pieces, not end-to-end case recovery API."
+      ],
+      "priority": "P1",
+      "source_candidate_id": "PRIV-007",
+      "subgoal_id": "subgoal.privacy.recovery-retention",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "integrations/private_storage.py",
+        "complaint_generator/cli.py",
+        "complaint_generator/workspace.py",
+        "tests/test_private_workspace_portability.py"
+      ],
+      "title": "Provide tested encrypted export, recovery import and key rotation",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_workspace_portability.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Separate remove-case references, delete local ciphertext/cache/temp data, unpin managed replicas, request remote deletion and destroy case keys in user-visible result.",
+        "Retention and legal/workspace needs are explicit policy; normal reset does not silently destroy encryption key or irreversible recovery path.",
+        "Per-user/case deletion cannot affect another case sharing legal source artifacts; tombstone prevents stale recovery from resurrecting deleted private state.",
+        "Report pending/unreachable remote removal and external-replica limitation honestly; never claim universal erasure from public IPFS.",
+        "Tests verify scoped cleanup, interrupted deletion resume/idempotence, inaccessible deleted key and truthful residual replica receipt."
+      ],
+      "actual_upstream_symbols": [
+        "ipfs_kit_py.core.replication.reconciler.ReplicaBackend.delete",
+        "ipfs_kit_py.iroh.manifest.ManifestEntry.deleted",
+        "ipfs_kit_py.mcp.enterprise.encryption.KeyManager.delete_key",
+        "integrations.ipfs_datasets.storage.LocalCacheIPFSBackend.unpin"
+      ],
+      "depends_on": [
+        "CIMP-PRIV-007"
+      ],
+      "goal_id": "goal.privacy",
+      "id": "CIMP-PRIV-008",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "Unpin removes a pin marker/reference, not necessarily blob bytes or externally retained replicas.",
+        "Cryptographic deletion depends on all relevant key copies/recovery exports and cannot guarantee remote plaintext never existed."
+      ],
+      "priority": "P1",
+      "source_candidate_id": "PRIV-008",
+      "subgoal_id": "subgoal.privacy.recovery-retention",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "integrations/private_storage.py",
+        "applications/complaint_workspace.py",
+        "complaint_generator/workspace.py",
+        "tests/test_private_workspace_deletion.py"
+      ],
+      "title": "Implement scoped retention, unpin and key destruction receipts",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_workspace_deletion.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Synthetic interactive intake repeatedly answers one gap, updates fact graph and legal-requirement mapping, saves encrypted state, exits and resumes without duplicate questions/facts.",
+        "Exercise local private mode with all network/provider calls forbidden and cloud-enabled mode with captured redacted Grok4.7 fake transport.",
+        "Fault matrix includes bad key/tamper/no crypto, stale manifest/concurrent writer, full disk, crash/replay, unavailable pin/replica and fresh-process recovery.",
+        "Readiness/receipt distinguishes hermetic fake, real local node and permitted remote provider evidence; only locally measured tiers are marked complete.",
+        "Task completion requires behavioral assertions and source-bound test receipts; substring presence or arbitrary nonempty CIDs cannot close tasks."
+      ],
+      "actual_upstream_symbols": [
+        "ipfs_kit_py.core.wal.coordinator.WALTransactionCoordinator",
+        "ipfs_kit_py.core.replication.reconciler.ReplicaReconciler",
+        "applications.complaint_workspace.ComplaintWorkspaceService"
+      ],
+      "depends_on": [
+        "CIMP-PRIV-002",
+        "CIMP-PRIV-003",
+        "CIMP-PRIV-004",
+        "CIMP-PRIV-005",
+        "CIMP-PRIV-006",
+        "CIMP-PRIV-007",
+        "CIMP-PRIV-008",
+        "CIMP-DUR-001",
+        "CIMP-DUR-002",
+        "CIMP-DUR-003",
+        "CIMP-DUR-004",
+        "CIMP-DUR-005",
+        "CIMP-TUI-09",
+        "CIMP-QUEST-04",
+        "CIMP-ROUTE-03"
+      ],
+      "goal_id": "goal.durability",
+      "id": "CIMP-DUR-006",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "pitfalls": [
+        "Proposed test paths do not exist yet and are implementation deliverables, not current passing evidence.",
+        "Real local-node/remote-provider tests must use synthetic case fixtures and explicit runtime configuration."
+      ],
+      "priority": "P1",
+      "source_candidate_id": "DUR-006",
+      "subgoal_id": "subgoal.durability.verified-replicas",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "tests/test_tui_interactive_flow.py",
+        "tests/test_private_workspace_end_to_end.py",
+        "docs/task_boards"
+      ],
+      "title": "Qualify TUI intake resume with private graphs, replicas and Grok egress policy",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_private_workspace_end_to_end.py tests/test_tui_interactive_flow.py",
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_ipfs_kit_storage_adapter.py tests/test_proof_report_and_pinning.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use ipfs_accelerate_py.llm_router as inference owner, explicit provider=grok_cli and model_name=grok-4.7; record requested and selected identities without prompt bodies or secrets.",
+        "Use a synthetic no-tool bounded canary for opt-in live verification; deterministic tests inject the provider and never claim a fake canary is live. Missing auth/binary/model yields actionable unavailable state.",
+        "Do not silently route to Codex, another Grok version, model alias or secondary cloud. Provider refusal leaves resumable state."
+      ],
+      "depends_on": [
+        "CIMP-TUI-01"
+      ],
+      "goal_id": "goal.router",
+      "id": "CIMP-ROUTE-01",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "ROUTE-01",
+      "subgoal_id": "subgoal.router.provider-contract",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_accelerate/routers.py",
+        "integrations/ipfs_datasets/llm.py",
+        "tests/test_grok47_router_contract.py"
+      ],
+      "title": "Verify pinned Grok4.7 routing and publish a no-secret capability/canary receipt",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_grok47_router_contract.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use shared schema for question proposals and factual extraction; validate returned fields/source spans before applying graph changes.",
+        "Bound total timeout, retries, output size and cancellation; malformed output, quota, unavailable provider and timeout are distinct and do not complete intake.",
+        "Preserve router traces with model/version and redacted request identity; propagate one task/session request ID without logging private content."
+      ],
+      "depends_on": [
+        "CIMP-ROUTE-01",
+        "CIMP-TUI-03",
+        "CIMP-PRIV-001"
+      ],
+      "goal_id": "goal.router",
+      "id": "CIMP-ROUTE-02",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "ROUTE-02",
+      "subgoal_id": "subgoal.router.provider-contract",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "backends/llm_router_backend.py",
+        "integrations/ipfs_datasets/llm.py",
+        "mediator/mediator.py",
+        "tests/test_intake_router_requests.py"
+      ],
+      "title": "Unify interview generation behind typed bounded llm_router requests",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_intake_router_requests.py tests/test_llm_router_backend.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Intercept the final serialized provider request and prove only allowed/sanitized fields reach Grok4.7.",
+        "Local-private mode never invokes a remote provider; recorded cloud consent is per case and reusable, with a clear TUI setting.",
+        "No alternate provider, enrichment route, trace, embedding cache or fallback may bypass policy."
+      ],
+      "depends_on": [
+        "CIMP-ROUTE-02",
+        "CIMP-PRIV-006"
+      ],
+      "goal_id": "goal.router",
+      "id": "CIMP-ROUTE-03",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "ROUTE-03",
+      "subgoal_id": "subgoal.router.private-resilient-inference",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/llm.py",
+        "backends/llm_router_backend.py",
+        "tests/test_intake_router_egress.py"
+      ],
+      "title": "Enforce privacy policy at the last remote inference boundary",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_intake_router_egress.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Inject auth failure, rate/quota limits, broken JSON, schema drift, delayed output, disconnect and cancellation; each preserves state and reports exact disposition.",
+        "Retry only eligible transient errors with capped backoff and stable idempotency keys; wrong model/provider is rejected.",
+        "Optional live canary is separately labeled and never blocks offline unit completion or becomes a fabricated pass."
+      ],
+      "depends_on": [
+        "CIMP-ROUTE-02",
+        "CIMP-ROUTE-03",
+        "CIMP-TUI-10"
+      ],
+      "goal_id": "goal.router",
+      "id": "CIMP-ROUTE-04",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "ROUTE-04",
+      "subgoal_id": "subgoal.router.private-resilient-inference",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "tests/test_intake_model_recovery.py",
+        "tests/test_grok47_router_contract.py",
+        "integrations/ipfs_datasets/llm.py"
+      ],
+      "title": "Qualify model outage recovery and schema/model drift using synthetic interviews",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_intake_model_recovery.py tests/test_grok47_router_contract.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Roundtrip the formal-work-plan through native FormalWorkPlan; validate unique identities, all references, no dependency cycles, exact provider binding and every acceptance/validation requirement.",
+        "Ingest every projected task with native parse_task_file; preserve human holds, in-progress ownership and completion receipts when regenerating same plan; refuse unreviewed replacement of active plan.",
+        "Separate structural plan admission from satisfaction of future goals; missing execution evidence cannot be synthesized as completed."
+      ],
+      "depends_on": [
+        "CIMP-TUI-01"
+      ],
+      "goal_id": "goal.supervision",
+      "id": "CIMP-OPS-01",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "OPS-01",
+      "subgoal_id": "subgoal.supervision.ingest-start",
+      "submodules": [
+        "external/ipfs_accelerate_py"
+      ],
+      "targets": [
+        "integrations/ipfs_accelerate/improvement_plan.py",
+        "scripts/run_complaint_improvement_supervisor.py",
+        "tests/test_improvement_plan_contract.py",
+        "tests/test_improvement_runner.py"
+      ],
+      "title": "Ingest native goals/subgoals/tasks and reconcile taskboard projection without losing progress",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_improvement_plan_contract.py tests/test_improvement_runner.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use the actual native implementation supervisor/daemon with explicit complaint repo, isolated state/worktrees, named local integration branch and one initial lane.",
+        "Pin Grok4.7 through canonical llm_router policy and disable fallback; no stdin prompt or missing working-directory/module entrypoint can strand startup.",
+        "Record PID plus process birth identity, detect duplicate starts and PID reuse, start detached and stop only the owned process tree. Do not change unrelated supervisor campaigns."
+      ],
+      "depends_on": [
+        "CIMP-OPS-01",
+        "CIMP-ROUTE-01"
+      ],
+      "goal_id": "goal.supervision",
+      "id": "CIMP-OPS-02",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "OPS-02",
+      "subgoal_id": "subgoal.supervision.ingest-start",
+      "submodules": [
+        "external/ipfs_accelerate_py"
+      ],
+      "targets": [
+        "integrations/ipfs_accelerate/improvement_runner.py",
+        "scripts/run_complaint_improvement_supervisor.py",
+        "tests/test_improvement_runner.py"
+      ],
+      "title": "Make supervisor launch and restart ownership reliable for this repository and campaign",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_improvement_runner.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Health includes real heartbeat, task state, worker identity, provider progress and validation activity; a live PID alone is not healthy.",
+        "Inject crash, stale claim, silent provider, log stall, missing heartbeat, lock contention and temporary unavailable dependency. Retry with capped cooldown and useful diagnostics; do not discard progress or endlessly spin.",
+        "Manual pause/hold/cancellation and legitimate interview awaiting_user are respected; worker liveness and application interview state are different contracts. Recovery never fabricates user answers."
+      ],
+      "depends_on": [
+        "CIMP-OPS-02"
+      ],
+      "goal_id": "goal.supervision",
+      "id": "CIMP-OPS-03",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "OPS-03",
+      "subgoal_id": "subgoal.supervision.recovery-evidence",
+      "submodules": [
+        "external/ipfs_accelerate_py"
+      ],
+      "targets": [
+        "integrations/ipfs_accelerate/improvement_runner.py",
+        "tests/test_improvement_recovery.py"
+      ],
+      "title": "Detect stalled workers and repair eligible dead claims with bounded native recovery",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_improvement_recovery.py tests/test_alignment_watchdog.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Zero test collection, skipped required cases, stale source hashes, missing output, failed assertions and subprocess timeout cannot count as task completion.",
+        "Persist command, environment policy, source binding, exit status, required case results and artifacts; distinguish unit fakes, local-node integration and optional real provider smoke.",
+        "Recompute dependent readiness after corrected facts, model policy, legal data version or implementation changes; rejected evidence leaves a repairable explicit reason."
+      ],
+      "depends_on": [
+        "CIMP-OPS-01",
+        "CIMP-OPS-02"
+      ],
+      "goal_id": "goal.supervision",
+      "id": "CIMP-OPS-04",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "OPS-04",
+      "subgoal_id": "subgoal.supervision.recovery-evidence",
+      "submodules": [
+        "external/ipfs_accelerate_py"
+      ],
+      "targets": [
+        "integrations/ipfs_accelerate/improvement_plan.py",
+        "integrations/ipfs_accelerate/improvement_runner.py",
+        "tests/test_improvement_evidence_gate.py"
+      ],
+      "title": "Gate task completion on current-source behavioral evidence and required test identities",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_improvement_evidence_gate.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Supervisor prompts contain source code and synthetic fixtures only; no existing complaint sessions, evidence, secrets, exports or user-uploaded documents enter context or telemetry.",
+        "Use actual native process/filesystem isolation and test denied-path/symlink/submodule boundaries; do not describe write-protected files as read-confidential.",
+        "Provider permissions and timeouts remain bounded; unavailable isolation or auth is reported before effects and is not bypassed by retries."
+      ],
+      "depends_on": [
+        "CIMP-OPS-02",
+        "CIMP-PRIV-001"
+      ],
+      "goal_id": "goal.supervision",
+      "id": "CIMP-OPS-05",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "OPS-05",
+      "subgoal_id": "subgoal.supervision.privacy-live-qualification",
+      "submodules": [
+        "external/ipfs_accelerate_py"
+      ],
+      "targets": [
+        "integrations/ipfs_accelerate/improvement_runner.py",
+        "tests/test_improvement_context_privacy.py"
+      ],
+      "title": "Protect supervisor context and verify bounded provider/worktree behavior",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_improvement_context_privacy.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Start the real native supervisor against the generated board and demonstrate first task selection, Grok4.7 invocation, a validated output and durable progress with synthetic data only.",
+        "Observe at least two heartbeat cycles; inject an owned worker failure and demonstrate bounded recovery without duplicate claims or unrelated process termination.",
+        "Record actual run handle/state paths and stop/resume commands. A canary/model response or a PID without task execution is not proof of a running supervisor."
+      ],
+      "depends_on": [
+        "CIMP-OPS-03",
+        "CIMP-OPS-04",
+        "CIMP-OPS-05"
+      ],
+      "goal_id": "goal.supervision",
+      "id": "CIMP-OPS-06",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "OPS-06",
+      "subgoal_id": "subgoal.supervision.privacy-live-qualification",
+      "submodules": [
+        "external/ipfs_accelerate_py"
+      ],
+      "targets": [
+        "scripts/run_complaint_improvement_supervisor.py",
+        "tests/test_improvement_live_profile.py"
+      ],
+      "title": "Exercise actual supervisor startup, monitored task progress, restart and resume",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_improvement_live_profile.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Synthetic multi-turn PTY flow starts with narrative, asks graph-targeted follow-ups, updates factual assertions and law-derived dependencies and ends with a truthful reason/unresolved summary.",
+        "Cover complete answers, all-unknown, contradictions, jurisdiction/date change, missing legal source, revoked consent, wrong key, offline storage, corrupt state, cancellation and fresh-process resume.",
+        "Verify encrypted private bytes and no plaintext leakage, provider identity and consent, authority lineage and legal uncertainty. A structurally consistent graph is not represented as legal correctness."
+      ],
+      "depends_on": [
+        "CIMP-TUI-11",
+        "CIMP-QUEST-04",
+        "CIMP-DUR-006",
+        "CIMP-ROUTE-04",
+        "CIMP-OPS-04"
+      ],
+      "goal_id": "goal.release",
+      "id": "CIMP-REL-01",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "REL-01",
+      "subgoal_id": "subgoal.release.acceptance-documentation",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "tests/test_complaint_intake_acceptance.py",
+        "tests/test_tui_interview_acceptance.py"
+      ],
+      "title": "Run end-to-end graph-driven private interview acceptance scenarios",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_complaint_intake_acceptance.py tests/test_tui_interview_acceptance.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "Document one primary TUI command and tested examples for Grok4.7, save/resume, status/why/skip/edit, encryption unlock/export/recovery and supervisor start/status/stop.",
+        "Describe factual assertions versus applicable legal requirements, saturation versus legal sufficiency, remote model processing versus encryption at rest and local deletion versus remote erasure.",
+        "Commands work from a fresh clone with pinned submodules and explicit optional dependencies; no hardcoded user home, Codex defaults or nonexistent interpreter paths."
+      ],
+      "depends_on": [
+        "CIMP-REL-01",
+        "CIMP-OPS-06"
+      ],
+      "goal_id": "goal.release",
+      "id": "CIMP-REL-02",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.",
+      "priority": "P0",
+      "source_candidate_id": "REL-02",
+      "subgoal_id": "subgoal.release.acceptance-documentation",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "README.md",
+        "docs/COMPLAINT_INTAKE_OPERATOR_GUIDE.md",
+        "applications/complaint_cli.py",
+        "tests/test_intake_documented_commands.py"
+      ],
+      "title": "Document usable terminal commands, privacy/key recovery and operational limits",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_intake_documented_commands.py"
+      ]
+    },
+    {
+      "acceptance": [
+        "A reproducible offline runner executes required synthetic TUI, graph, legal/proof, privacy/durability and supervisor recovery tests with live provider/network guards and bounded runtime.",
+        "Separate optional live Grok/local-node/replica validations with explicit results and no fabricated passes; all mandatory cases have current-source evidence.",
+        "Every required task/goal/subgoal completion is backed by receipts and remaining blocked/deferred work is reported accurately. No status-only or source-substring completion."
+      ],
+      "depends_on": [
+        "CIMP-REL-01",
+        "CIMP-REL-02",
+        "CIMP-OPS-06",
+        "CIMP-TUI-12"
+      ],
+      "goal_id": "goal.release",
+      "id": "CIMP-REL-03",
+      "implementation_prompt": "Implement only this bounded task on the provided source checkout and synthetic fixtures. Reuse the cited first-party adapters and verified submodule APIs. Preserve typed degraded/unavailable states. Do not read existing sessions, evidence, exports or secrets; do not send real complaint data to a provider. Do not weaken validation, mark unmet product criteria complete, push, deploy or mutate another campaign. Source-only characterization must label known deficiencies and may not claim the complete interview works. Required tests must collect and pass without silently skipping. Keep application awaiting_user distinct from a stalled development worker.\n\nImplement explicit release-checker phases. The reviewed validation command uses --phase pre-admission: require genuine accepted evidence for all 57 other tasks including CIMP-TUI-12, run bounded mandatory offline suites on the candidate source with live-provider/network guards, and validate this checker's own behavior. Record release_qualified=false, self_completion_pending=true and CIMP-REL-03 as pending; never mark self complete or fabricate receipts. Default and --phase post-completion must strictly require all 58 actual native task completions and goal/subgoal evidence, with no unresolved required work. Only run that final audit after the genuine native merge/completion callback; only it may report release qualified. Preserve the committed pre-admission report and write any final report as a separate owned runtime artifact bound to real integration proof. Keep hash scopes explicit without a self-referential future commit hash, avoid recursive self-validation, and report optional live checks honestly. Missing, held, stale, skipped or unknown required evidence fails closed. This phase distinction waives no acceptance requirement and grants no completion, refund, callback or additional output authority.",
+      "priority": "P0",
+      "source_candidate_id": "REL-03",
+      "subgoal_id": "subgoal.release.acceptance-documentation",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "scripts/validate_complaint_intake.py",
+        "docs/task_boards/complaint_intake_completion.json",
+        "tests/test_intake_release_gate.py"
+      ],
+      "title": "Qualify release evidence and prove the taskboard has no unresolved required work",
+      "validation_commands": [
+        "python -m pytest -q --run-llm --run-network --run-heavy tests/test_intake_release_gate.py",
+        "python scripts/validate_complaint_intake.py --phase pre-admission"
+      ]
+    }
+  ],
+  "title": "Graph-driven private complaint intake: terminal interview, applicable law, formal reasoning and durable encrypted state",
+  "upstream_pins": {
+    "ipfs_accelerate_py": "2fbc97d602616e9a8b74ba1cbff1750289141801",
+    "ipfs_datasets_py": "13061f6783cd2cd7b7ed38080d5c701117643b80",
+    "ipfs_kit_py": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+    "mike": "91c8b8bc13c8bc57528121352e067c3ea2828726"
+  },
+  "verified_upstream_apis": [
+    {
+      "module": "ipfs_datasets_py.knowledge_graphs.extraction.extractor",
+      "notes": "Constructor options use_spacy=False,use_transformers=False,use_tracer=True,use_srl=False. extract_knowledge_graph(text,extraction_temperature=0.7,structure_temperature=0.5). Do not call Wikipedia/Wikidata enrichment for user facts; disable tracing if it causes unintended external content access.",
+      "path": "external/ipfs_datasets_py/ipfs_datasets_py/knowledge_graphs/extraction/extractor.py",
+      "symbols": [
+        "KnowledgeGraphExtractor",
+        "KnowledgeGraphExtractor.extract_knowledge_graph"
+      ],
+      "verified": "source inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.knowledge_graphs",
+      "notes": "integrations/ipfs_datasets/graphs.py uses Client.open(catalog,storage_path=...,raise_on_error=False); preserve graph ID normalization and content idempotency.",
+      "path": "external/ipfs_datasets_py/ipfs_datasets_py/knowledge_graphs/__init__.py",
+      "symbols": [
+        "Client",
+        "GraphTarget",
+        "CLIENT_API_VERSION",
+        "CONTRACT_VERSION"
+      ],
+      "verified": "existing first-party adapter integration inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.processors.legal_scrapers.legal_dataset_api",
+      "notes": "Async parameter-dictionary APIs; state corpus defaults OR upstream too, so validate and pass explicit context at first-party boundary. Retrieval/recovery must be bounded and respect allowed backends; no automatic unbounded scraping/download setup.",
+      "path": "external/ipfs_datasets_py/ipfs_datasets_py/processors/legal_scrapers/legal_dataset_api.py",
+      "symbols": [
+        "search_state_law_corpus_from_parameters",
+        "search_us_code_corpus_from_parameters",
+        "search_federal_register_corpus_from_parameters",
+        "search_court_rules_corpus_from_parameters",
+        "recover_missing_legal_citation_source_from_parameters",
+        "plan_packaged_docket_missing_authority_follow_up_from_parameters"
+      ],
+      "verified": "definitions and state corpus signature inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.api",
+      "notes": "Intended stable facade with optional dependencies and lazy surfaces; actual availability requires capability checks.",
+      "path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/api.py",
+      "symbols": [
+        "FOLConverter",
+        "DeonticConverter",
+        "convert_text_to_fol",
+        "convert_legal_text_to_deontic",
+        "ProofStatus",
+        "ProofResult"
+      ],
+      "verified": "public facade source inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.integration.reasoning.legal_ir_canonical_pipeline",
+      "notes": "compile_canonical_pipeline(request:CompilerRequest); ordered replayable source selection, parse, elaboration, formalization, bridge and target identities. CompilerRequest comes from ipfs_datasets_py.logic.legal_ir.canonical_contracts.",
+      "path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/integration/reasoning/legal_ir_canonical_pipeline.py",
+      "symbols": [
+        "compile_canonical_pipeline",
+        "replay_compiler_pipeline",
+        "CompilerPipelineResult",
+        "CompilerStageRecord"
+      ],
+      "verified": "source/signatures inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.integration.reasoning.legal_ir_source_maps",
+      "notes": "Normalized source text/hash, token/character offsets, one-to-many/many-to-one transforms and artifact traceability. Source text is private complaint data when used for factual graphs; enforce encrypted persistence.",
+      "path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/integration/reasoning/legal_ir_source_maps.py",
+      "symbols": [
+        "LegalIRSourceMapBuilder",
+        "LegalIRSourceDocument",
+        "build_legal_ir_source_map",
+        "validate_legal_ir_source_map",
+        "trace_legal_ir_fact",
+        "assert_legal_ir_artifact_traceable",
+        "bind_legal_ir_artifact_source_map"
+      ],
+      "verified": "source/signatures and upstream fixture suite inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.integration.reasoning.legal_ir_temporal_authority",
+      "notes": "Models jurisdiction/version/source nodes/spans/effective/sunset/repealed/superseded dates. query_date missing returns explicit diagnostic rather than silently picking a current version.",
+      "path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/integration/reasoning/legal_ir_temporal_authority.py",
+      "symbols": [
+        "LegalIRTemporalAuthorityGraphBuilder",
+        "LegalIRLawVersion",
+        "LegalIRTemporalQueryContext",
+        "build_legal_ir_temporal_authority_graph",
+        "query_legal_ir_temporal_applicability",
+        "validate_legal_ir_temporal_authority_graph",
+        "assert_legal_ir_temporal_authority_applicable"
+      ],
+      "verified": "source/signatures and upstream fixture suite inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.integration.reasoning.legal_ir_obligations",
+      "notes": "Use source-bound, versioned proof obligations; formal contract coverage is not substantive legal entailment.",
+      "path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/integration/reasoning/legal_ir_obligations.py",
+      "symbols": [
+        "LegalIRProofObligation",
+        "generate_legal_ir_proof_obligations",
+        "generate_legal_ir_contract_coverage_obligations"
+      ],
+      "verified": "definitions and upstream fixture suite inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.integration.reasoning.legal_ir_proof_router",
+      "notes": "LegalIRProofRouter(pipeline,policy=...,route_runners=...).route(obligation,goal,premises,sample_or_document=...,cancellation_event=...). Policy has total/stage time budgets, enabled routes, trust requirement. Distinguish structural, deterministic and backend trust.",
+      "path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/integration/reasoning/legal_ir_proof_router.py",
+      "symbols": [
+        "LegalIRProofRouter",
+        "ProofRoutingPolicy",
+        "ProofTrustLevel",
+        "ProofRouteStatus",
+        "ProofRouteOutcome",
+        "ProofRouteRequest"
+      ],
+      "verified": "source/signatures and upstream fixture suite inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.integration.reasoning.legal_ir_subgoals",
+      "notes": "Useful for converting unresolved proof obligations into diagnostic follow-up targets; do not let automated repairs create unsupported facts/law.",
+      "path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/integration/reasoning/legal_ir_subgoals.py",
+      "symbols": [
+        "LegalIRSubgoalDecomposer",
+        "build_legal_ir_subgoal_decomposition",
+        "decompose_failed_hammer_obligations"
+      ],
+      "verified": "definitions inspected"
+    }
+  ]
+}

@@ -16,7 +16,7 @@ from adversarial_harness import (
     DEFAULT_HACC_QUERY_SPECS,
     HACC_QUERY_PRESETS,
 )
-from mediator.mediator import Mediator
+from mediator.interface import Mediator
 
 
 class MockLLMBackend:

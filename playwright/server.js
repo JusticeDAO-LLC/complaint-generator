@@ -11,6 +11,31 @@ const ipfsDatasetsTemplatesDir = path.join(root, 'ipfs_datasets_py', 'ipfs_datas
 const ipfsDatasetsStaticDir = path.join(root, 'ipfs_datasets_py', 'ipfs_datasets_py', 'static');
 const port = Number(process.env.PLAYWRIGHT_TEST_PORT || 19030);
 
+function pathDiagnostics(filePath) {
+  const exists = fs.existsSync(filePath);
+  return {
+    path: filePath,
+    exists,
+    state: exists ? 'present' : 'missing',
+  };
+}
+
+function buildEnvironmentPreflight() {
+  const sdkPreview = pathDiagnostics(sdkPreviewPath);
+  const ipfsTemplates = pathDiagnostics(ipfsDatasetsTemplatesDir);
+  const ipfsStatic = pathDiagnostics(ipfsDatasetsStaticDir);
+  const allReady = sdkPreview.exists && ipfsTemplates.exists && ipfsStatic.exists;
+  return {
+    status: allReady ? 'ready' : 'degraded',
+    all_ready: allReady,
+    checks: {
+      sdk_playground_preview: sdkPreview,
+      ipfs_templates_dir: ipfsTemplates,
+      ipfs_static_dir: ipfsStatic,
+    },
+  };
+}
+
 function slugifyFilename(value) {
   return String(value || 'complaint-packet')
     .toLowerCase()
@@ -188,7 +213,8 @@ function formalEvidenceSummaryItem(item, kind) {
   return `documentary exhibit presently identified as '${title}' on the ${elementLabel} element`;
 }
 
-const dashboardEntries = [
+function buildDashboardEntriesFixture() {
+  return [
   {
     slug: 'mcp',
     title: 'IPFS Datasets MCP Dashboard',
@@ -327,7 +353,8 @@ const dashboardEntries = [
     templateName: 'admin/mcp_dashboard.html',
     summary: 'Administrative MCP dashboard.',
   },
-];
+  ];
+}
 
 const profileData = {
   hashed_username: 'demo-user',
@@ -354,6 +381,21 @@ const profileData = {
     ],
   },
 };
+
+function sanitizeProfileDataForClient(value) {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeProfileDataForClient);
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+  return Object.fromEntries(Object.entries(value).map(([key, nestedValue]) => [
+    key,
+    /(^|_)(password|hashed_password|password_hash|credential|secret|token|api_key|session_key|private_key)($|_)/i.test(String(key || ''))
+      ? '[redacted]'
+      : sanitizeProfileDataForClient(nestedValue),
+  ]));
+}
 
 const workspaceQuestions = [
   { id: 'party_name', label: 'Your name', prompt: 'Who is bringing the complaint?', placeholder: 'Jane Doe' },
@@ -720,6 +762,7 @@ function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
   const answeredCount = questions.filter((item) => item.is_answered).length;
   const claimType = String(((sessionPayload.session || {}).claim_type) || 'retaliation');
   const draftStrategy = String(((sessionPayload.draft || {}).draft_strategy) || 'template');
+  const environmentPreflight = buildEnvironmentPreflight();
   return {
     user_id: userId,
     case_synopsis: String(sessionPayload.case_synopsis || '').trim(),
@@ -731,6 +774,7 @@ function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
     ui_readiness: uiReadinessPayload(userId),
     client_release_gate: clientReleaseGatePayload(userId),
     tooling_contract: toolingContractPayload(userId),
+    environment_preflight: environmentPreflight,
     capabilities: [
       { id: 'intake_questions', label: 'Complaint intake questions', available: questions.length > 0, detail: `${answeredCount} of ${questions.length} intake questions answered.` },
       { id: 'mediator_prompt', label: 'Chat mediator handoff', available: true, detail: 'A testimony-ready mediator prompt can be generated from the shared case synopsis and support gaps.' },
@@ -740,6 +784,7 @@ function workflowCapabilitiesPayload(userId = 'did:key:playwright-demo') {
       { id: 'claim_type_alignment', label: 'Claim-type drafting alignment', available: true, detail: `The current complaint type is ${claimType.replace(/_/g, ' ')}.` },
       { id: 'formal_complaint_generation', label: 'Formal complaint generation', available: true, detail: draftStrategy === 'llm_router' ? 'The current draft uses llm_router-backed formal complaint generation.' : 'The current draft is using the deterministic template fallback.' },
       { id: 'complaint_packet', label: 'Complaint packet export', available: true, detail: 'The lawsuit packet can be exported as a structured browser, CLI, or MCP artifact.' },
+      { id: 'ipfs_datasets_py_trace', label: 'Neurosymbolic IPFS trace', available: environmentPreflight.all_ready, detail: environmentPreflight.all_ready ? 'ipfs_datasets_py dashboard and static trace surfaces are present.' : 'ipfs_datasets_py trace surfaces are missing; route-safe fallback guidance should stay visible.' },
     ],
   };
 }
@@ -941,12 +986,162 @@ function formalDiagnosticsPayload(userId = 'did:key:playwright-demo') {
   };
 }
 
+function neurosymbolicTracePayload(userId = 'did:key:playwright-demo') {
+  const sessionPayload = workspaceSessionPayload(userId);
+  const packetPayload = exportComplaintPacketPayload(userId);
+  const analysis = buildComplaintOutputAnalysis(userId);
+  const envPreflight = buildEnvironmentPreflight();
+  const packet = packetPayload.packet || {};
+  const draft = packet.draft || {};
+  const review = sessionPayload.review || {};
+  const overview = review.overview || {};
+  const supportMatrix = Array.isArray(review.support_matrix) ? review.support_matrix : [];
+  const evidence = ((sessionPayload.session || {}).evidence) || {};
+  const testimonyItems = Array.isArray(evidence.testimony) ? evidence.testimony : [];
+  const documentItems = Array.isArray(evidence.documents) ? evidence.documents : [];
+  const uiFeedback = analysis.ui_feedback || {};
+  const releaseGate = uiFeedback.release_gate || {};
+  const formalSections = uiFeedback.formal_sections_present || {};
+  const packetSlug = slugifyFilename(draft.title || 'complaint-packet');
+  const cidStatus = envPreflight.all_ready ? 'ready_for_car_publish' : 'submodule_or_preview_missing';
+  const datasetRefs = [
+    {
+      ref_id: 'complaint_packet_json',
+      piece_id: 'complaint_packet',
+      label: 'Complaint packet JSON',
+      uri: `workspace://${encodeURIComponent(userId)}/packets/${packetSlug}.json`,
+      export_tool: 'complaint.export_complaint_packet',
+      artifact_format: 'json',
+      cid: null,
+      cid_status: cidStatus,
+    },
+    {
+      ref_id: 'complaint_markdown',
+      piece_id: 'complaint_markdown',
+      label: 'Complaint Markdown artifact',
+      uri: `workspace://${encodeURIComponent(userId)}/artifacts/${packetSlug}.md`,
+      export_tool: 'complaint.export_complaint_markdown',
+      artifact_format: 'markdown',
+      cid: null,
+      cid_status: cidStatus,
+    },
+    {
+      ref_id: 'evidence_map',
+      piece_id: 'evidence_items',
+      label: 'Evidence map',
+      uri: `workspace://${encodeURIComponent(userId)}/evidence`,
+      item_count: testimonyItems.length + documentItems.length,
+      testimony_count: testimonyItems.length,
+      document_count: documentItems.length,
+      cid: null,
+      cid_status: cidStatus,
+    },
+    {
+      ref_id: 'support_matrix',
+      piece_id: 'claim_support_matrix',
+      label: 'Claim support matrix',
+      uri: `workspace://${encodeURIComponent(userId)}/review/support-matrix`,
+      supported_elements: Number(overview.supported_elements || 0),
+      missing_elements: Number(overview.missing_elements || 0),
+      cid: null,
+      cid_status: cidStatus,
+    },
+    {
+      ref_id: 'filing_release_gate',
+      piece_id: 'release_gate',
+      label: 'Filing release gate',
+      uri: `workspace://${encodeURIComponent(userId)}/release-gate`,
+      verdict: String(releaseGate.verdict || 'unknown'),
+      cid: null,
+      cid_status: cidStatus,
+    },
+  ];
+  const evidenceRefs = testimonyItems.concat(documentItems).map((item, index) => ({
+    ref_id: `evidence_${index + 1}`,
+    piece_id: 'evidence_item',
+    label: String(item.title || item.id || `Evidence ${index + 1}`),
+    claim_element_id: String(item.claim_element_id || 'unmapped'),
+    kind: String(item.kind || (index < testimonyItems.length ? 'testimony' : 'document')),
+    uri: `workspace://${encodeURIComponent(userId)}/evidence/${encodeURIComponent(String(item.id || index + 1))}`,
+    source: String(item.source || ''),
+    cid: null,
+    cid_status: cidStatus,
+  }));
+  const ruleHits = [
+    {
+      rule_id: 'pleading.caption.present',
+      label: 'Caption and civil action placeholder are visible',
+      status: formalSections.caption ? 'pass' : 'fail',
+      severity: 'critical',
+      evidence_refs: ['complaint_markdown'],
+      explanation: formalSections.caption
+        ? 'The generated complaint includes a court-style caption.'
+        : 'The generated complaint is missing the expected caption structure.',
+    },
+    {
+      rule_id: 'pleading.required_sections.present',
+      label: 'Required pleading sections are present',
+      status: Object.values(formalSections).filter(Boolean).length >= 9 ? 'pass' : 'warning',
+      severity: 'high',
+      evidence_refs: ['complaint_markdown'],
+      explanation: `${Object.values(formalSections).filter(Boolean).length} formal sections were detected in the complaint output.`,
+    },
+    {
+      rule_id: 'claim.support.coverage',
+      label: 'Tracked claim elements have support coverage',
+      status: Number(overview.missing_elements || 0) === 0 ? 'pass' : 'warning',
+      severity: 'high',
+      evidence_refs: ['support_matrix', 'evidence_map'],
+      explanation: `${Number(overview.supported_elements || 0)} supported elements and ${Number(overview.missing_elements || 0)} open support gaps are visible.`,
+    },
+    {
+      rule_id: 'claim.support.corroboration',
+      label: 'Support is corroborated by saved evidence',
+      status: (testimonyItems.length + documentItems.length) > 1 ? 'pass' : 'warning',
+      severity: 'medium',
+      evidence_refs: evidenceRefs.length ? evidenceRefs.slice(0, 6).map((item) => item.ref_id) : ['evidence_map'],
+      explanation: `${testimonyItems.length} testimony item(s) and ${documentItems.length} document item(s) are attached to the record.`,
+    },
+    {
+      rule_id: 'release_gate.verdict',
+      label: 'Client filing-readiness release gate',
+      status: String(releaseGate.verdict || '').toLowerCase() === 'pass' ? 'pass' : 'block',
+      severity: 'critical',
+      evidence_refs: ['filing_release_gate'],
+      explanation: releaseGate.reason || 'No release-gate reason was provided.',
+    },
+  ];
+  return {
+    trace_id: `trace-${packetSlug}`,
+    trace_schema: 'complaint_handoff_neurosymbolic_trace.v1',
+    trace_backend: 'ipfs_datasets_py',
+    ipfs_preflight: envPreflight,
+    dataset_refs: datasetRefs.concat(evidenceRefs),
+    reasoning_summary: {
+      claim_type: String(packet.claim_type || 'retaliation'),
+      draft_strategy: String(draft.draft_strategy || 'template'),
+      support_summary: `${Number(overview.supported_elements || 0)} supported element(s), ${Number(overview.missing_elements || 0)} open gap(s), ${testimonyItems.length + documentItems.length} saved evidence item(s).`,
+      release_gate_verdict: String(releaseGate.verdict || 'unknown'),
+      release_gate_reason: String(releaseGate.reason || ''),
+      filing_shape_score: Number(uiFeedback.filing_shape_score || 0),
+      claim_type_alignment_score: Number(uiFeedback.claim_type_alignment_score || 0),
+      route_summary: [
+        String((draft.draft_backend || {}).provider || draft.draft_strategy || 'template'),
+        String(((uiFeedback.router_review || {}).backend || {}).provider || ''),
+        String(((uiFeedback.router_review || {}).backend || {}).model || ''),
+      ].filter(Boolean).join(' / ') || 'template',
+    },
+    rule_hits: ruleHits,
+  };
+}
+
 function filingProvenancePayload(userId = 'did:key:playwright-demo') {
   const analysis = buildComplaintOutputAnalysis(userId);
   const packetPayload = exportComplaintPacketPayload(userId);
   const draft = (((packetPayload.packet || {}).draft) || {});
   const complaintBackend = Object.assign({}, (((analysis.ui_feedback || {}).router_review || {}).backend || {}));
   const exportCriticBackend = Object.assign({}, complaintBackend);
+  const neurosymbolicTrace = neurosymbolicTracePayload(userId);
   return {
     user_id: userId,
     claim_type: String(((packetPayload.packet || {}).claim_type) || 'retaliation'),
@@ -963,6 +1158,10 @@ function filingProvenancePayload(userId = 'did:key:playwright-demo') {
     ui_workflow_type: 'ui_ux_closed_loop',
     artifact_formats: Array.isArray((packetPayload.packet_summary || {}).artifact_formats) ? packetPayload.packet_summary.artifact_formats : [],
     has_draft: Boolean((packetPayload.packet_summary || {}).has_draft),
+    dataset_refs: neurosymbolicTrace.dataset_refs,
+    reasoning_summary: neurosymbolicTrace.reasoning_summary,
+    rule_hits: neurosymbolicTrace.rule_hits,
+    neurosymbolic_trace: neurosymbolicTrace,
   };
 }
 
@@ -970,7 +1169,7 @@ function providerDiagnosticsPayload(userId = 'did:key:playwright-demo') {
   return {
     user_id: userId,
     forced_provider: null,
-    default_order: ['codex_cli', 'openai', 'copilot_cli', 'hf_inference_api'],
+    default_order: ['codex_cli', 'copilot_cli', 'openai', 'hf_inference_api'],
     effective_default_provider: 'codex_cli',
     complaint_draft_default_order: ['codex_cli', 'copilot_cli', 'hf_inference_api'],
     effective_complaint_draft_provider: 'codex_cli',
@@ -1884,9 +2083,254 @@ function ipfsTemplate(name) {
   return path.join(ipfsDatasetsTemplatesDir, name);
 }
 
-function renderDashboardHub() {
-  const links = dashboardEntries.map((entry) => (
-    `<li><a href="/dashboards/ipfs-datasets/${entry.slug}">${entry.title}</a><span>${entry.summary}</span></li>`
+function buildLaypersonDashboardCardsFixture() {
+  return [
+  {
+    stepNumber: 1,
+    stage: 'Step 1',
+    workflowStage: 'Intake',
+    stepLabel: 'Step 1: Intake',
+    title: 'Start your complaint',
+    description: 'Answer guided questions so the workspace has the story, people, dates, harms, and possible claims.',
+    primaryLabel: 'Start Intake Questions',
+    primaryHref: '/chat',
+    detailLabel: 'See intake details',
+    stateLabel: 'Current',
+    stateKind: 'current',
+    stepperText: 'Step 1: Intake',
+    statusText: 'Current: start here',
+    unlockReason: 'Ready now',
+    prerequisites: [
+      ['Current', 'Ready now'],
+      ['Next', 'Save facts before evidence or draft work'],
+    ],
+    links: [
+      ['Check proof gaps later', '/claim-support-review'],
+      ['Build a draft later', '/document'],
+    ],
+  },
+  {
+    stepNumber: 2,
+    stage: 'Step 2',
+    workflowStage: 'Evidence',
+    stepLabel: 'Step 2: Evidence',
+    title: 'Continue your complaint',
+    description: 'Resume saved work and add documents, laws, or court cases.',
+    primaryLabel: 'Resume evidence workspace',
+    primaryHref: '/workspace',
+    detailLabel: 'See evidence and saved-work details',
+    stateLabel: 'Locked',
+    stateKind: 'locked',
+    stepperText: 'Step 2: Evidence',
+    statusText: 'Locked: complete Step 1 first',
+    locked: true,
+    lockedLabel: 'Locked',
+    lockedActionLabel: 'Disabled: complete Step 1 first',
+    unlockReason: 'Complete Step 1: Intake to unlock Evidence',
+    prerequisites: [
+      ['Locked', 'Complete Step 1: Intake to unlock Evidence'],
+    ],
+    links: [
+      ['Add evidence', '/workspace?stage=evidence'],
+      ['Organize materials', '/workspace?stage=integrations'],
+      ['Review support', '/claim-support-review'],
+    ],
+  },
+  {
+    stepNumber: 3,
+    stage: 'Step 3',
+    workflowStage: 'Review',
+    stepLabel: 'Step 3: Review',
+    title: 'Review a court docket or response',
+    description: 'Inspect filings, deadlines, orders, or a response document.',
+    primaryLabel: 'Open docket review',
+    primaryHref: '/workspace?stage=docket&intent=review_docket',
+    detailLabel: 'See docket review details',
+    stateLabel: 'Locked',
+    stateKind: 'locked',
+    stepperText: 'Step 3: Review',
+    statusText: 'Locked: add a docket file',
+    locked: true,
+    lockedLabel: 'Locked',
+    lockedActionLabel: 'Disabled: add a docket file',
+    unlockReason: 'Add a docket file to unlock Review',
+    prerequisites: [
+      ['Locked', 'Add a docket file to unlock Review'],
+    ],
+    links: [
+      ['Ask about a filing', '/chat?chat_context=docket_document'],
+      ['Add labels or notes', '/workspace?stage=integrations&intent=annotate_documents'],
+      ['Open docket tools', '#dashboard-advanced-tools'],
+    ],
+  },
+  ];
+}
+
+function buildDashboardUtilityCardsFixture() {
+  return [
+  {
+    stage: 'Utility',
+    workflowStage: 'Profile',
+    title: 'Manage your profile',
+    description: 'Check personal and session information used to resume work.',
+    primaryLabel: 'Open profile',
+    primaryHref: '/profile',
+    detailLabel: 'See profile and session details',
+    stateLabel: 'Optional',
+    stateKind: 'utility',
+    prerequisites: [
+      ['Optional', 'Use for identity and saved context'],
+      ['Next', 'Check session information'],
+    ],
+    links: [
+      ['Cookies', '/cookies'],
+      ['Saved work', '/workspace'],
+      ['Technical tools', '#dashboard-advanced-tools'],
+    ],
+  },
+  ];
+}
+
+function buildDashboardSubsectionCardsFixture() {
+  return [
+  {
+    title: 'Start and Review',
+    description: 'Guided questions, proof checks, next recommended action, and draft handoff.',
+    links: [['Guided questions', '/chat'], ['Proof review', '/claim-support-review'], ['Build draft', '/document']],
+  },
+  {
+    title: 'Evidence, Laws, and Court Cases',
+    description: 'Resume work, upload files, organize source materials, find connections, and check duties or conflicts.',
+    links: [['Saved complaint', '/workspace'], ['Add evidence', '/workspace?stage=evidence'], ['Find connections', '/workspace?stage=integrations']],
+  },
+  {
+    title: 'Court Dockets and Responses',
+    description: 'Load docket records, search filings, preview calendar events, and save useful notes.',
+    links: [['Review docket', '/workspace?stage=docket'], ['Ask document question', '/chat?chat_context=docket_document'], ['Add notes', '/workspace?stage=integrations&intent=annotate_documents']],
+  },
+  {
+    title: 'Profile and Technical Tools',
+    description: 'Profile, cookies, session tools, and optional package consoles for administrators.',
+    links: [['Profile', '/profile'], ['Session tools', '/mcp'], ['Advanced consoles', '#dashboard-advanced-tools']],
+  },
+  ];
+}
+
+function buildDashboardFixtures({
+  dashboardEntries = buildDashboardEntriesFixture(),
+  laypersonDashboardCards = buildLaypersonDashboardCardsFixture(),
+  dashboardUtilityCards = buildDashboardUtilityCardsFixture(),
+  dashboardSubsectionCards = buildDashboardSubsectionCardsFixture(),
+  advancedDashboardSlugs = ['mcp', 'admin-caselaw', 'admin-caselaw-mcp', 'admin-graphrag', 'admin-mcp'],
+} = {}) {
+  const entries = [...dashboardEntries];
+  const entryMap = new Map();
+  entries.forEach((entry) => {
+    if (!entry || !entry.slug) {
+      throw new TypeError('Every dashboard fixture entry must define a slug');
+    }
+    if (entryMap.has(entry.slug)) {
+      throw new Error(`Duplicate dashboard fixture slug: ${entry.slug}`);
+    }
+    entryMap.set(entry.slug, entry);
+  });
+  return {
+    dashboardEntries: entries,
+    dashboardEntryMap: entryMap,
+    laypersonDashboardCards: [...laypersonDashboardCards],
+    dashboardUtilityCards: [...dashboardUtilityCards],
+    dashboardSubsectionCards: [...dashboardSubsectionCards],
+    advancedDashboardSlugs: [...advancedDashboardSlugs],
+  };
+}
+
+const defaultDashboardFixtures = buildDashboardFixtures();
+
+function getDashboardFixtures() {
+  return defaultDashboardFixtures;
+}
+
+function getDashboardEntry(slug, fixtures = getDashboardFixtures()) {
+  return fixtures.dashboardEntryMap.get(String(slug || '')) || null;
+}
+
+function getDefaultDashboardEntry(fixtures = getDashboardFixtures()) {
+  const entry = getDashboardEntry('mcp', fixtures) || fixtures.dashboardEntries[0];
+  if (!entry) {
+    throw new Error('Dashboard fixtures must define at least one dashboard entry');
+  }
+  return entry;
+}
+
+function withDashboardContext(href, searchParams) {
+  const userId = searchParams && searchParams.get('user_id');
+  if (!userId || href.startsWith('#') || href.startsWith('/cookies')) {
+    return href;
+  }
+  const separator = href.includes('?') ? '&' : '?';
+  return `${href}${separator}user_id=${encodeURIComponent(userId)}`;
+}
+
+function renderLinkRow(links, searchParams) {
+  return links.map(([label, href]) => (
+    `<a class="jump-link" href="${escapeXml(withDashboardContext(href, searchParams))}">${escapeXml(label)}</a>`
+  )).join('');
+}
+
+function renderDashboardHub(searchParams = new URLSearchParams(), fixtures = getDashboardFixtures()) {
+  const stageControls = fixtures.laypersonDashboardCards.map((card) => {
+    if (card.locked) {
+      return `<article class="stage-control is-locked" data-path-state="${escapeXml(card.stateKind || 'locked')}" aria-label="${escapeXml(card.stepLabel)} locked">
+        <div class="stage-label">${escapeXml(card.stepLabel)}</div>
+        <h3>${escapeXml(card.workflowStage)}</h3>
+        <p><strong>To unlock:</strong> ${escapeXml(card.unlockReason || card.statusText || 'Locked')}</p>
+        <button class="stage-control-action" type="button" disabled aria-disabled="true">${escapeXml(card.lockedActionLabel || 'Disabled until prerequisite is complete')}</button>
+      </article>`;
+    }
+    return `<article class="stage-control is-current recommended-action-panel" id="dashboard-recommended-action-panel" data-path-state="${escapeXml(card.stateKind || 'current')}" aria-label="Recommended next action">
+      <div>
+        <div class="stage-label">${escapeXml(card.stepLabel || 'Step 1: Intake')}</div>
+        <h3 id="dashboard-recommended-action-title">Explain what happened</h3>
+        <p id="dashboard-recommended-action-reason">${escapeXml(card.description)}</p>
+      </div>
+      <div class="primary-action-stack">
+        <a class="primary-action" id="dashboard-recommended-action-link" href="${escapeXml(withDashboardContext(card.primaryHref, searchParams))}">${escapeXml(card.primaryLabel)}</a>
+        <span class="primary-action-note">Opens guided questions and creates your workspace session</span>
+      </div>
+    </article>`;
+  }).join('');
+  const utilityCards = fixtures.dashboardUtilityCards.map((card) => {
+    const prerequisiteMarkup = (card.prerequisites || []).map(([label, text]) => (
+      `<div class="prerequisite-next-line"><strong>${escapeXml(label)}</strong>${escapeXml(text)}</div>`
+    )).join('');
+    const extraMarkup = card.links.length
+      ? `<details class="card-more-actions"><summary><span>${escapeXml(card.detailLabel)}</span><span class="disclosure-cue">Expand</span></summary><div class="link-row">${renderLinkRow(card.links, searchParams)}</div></details>`
+      : '';
+    return `<article class="entry-card is-utility" data-path-state="utility">
+      <div class="stage-label">${escapeXml(card.stage)}</div>
+      <span class="path-state-label">${escapeXml(card.stateLabel || 'Optional')}</span>
+      <span class="path-stage-chip">Stage: ${escapeXml(card.workflowStage)}</span>
+      <h3>${escapeXml(card.title)}</h3>
+      <p>${escapeXml(card.description)}</p>
+      <div class="prerequisite-row" aria-label="${escapeXml(card.title)} prerequisites">${prerequisiteMarkup}</div>
+      <div class="card-action-row">
+        <a class="switch-action" href="${escapeXml(withDashboardContext(card.primaryHref, searchParams))}">${escapeXml(card.primaryLabel)}</a>
+      </div>
+      ${extraMarkup}
+    </article>`;
+  }).join('');
+  const subsectionCards = fixtures.dashboardSubsectionCards.map((card) => (
+    `<article class="subsection-card">
+      <h3>${escapeXml(card.title)}</h3>
+      <p>${escapeXml(card.description)}</p>
+      <div class="link-row">${renderLinkRow(card.links, searchParams)}</div>
+    </article>`
+  )).join('');
+  const advancedEntries = fixtures.advancedDashboardSlugs
+    .map((slug) => getDashboardEntry(slug, fixtures))
+    .filter(Boolean);
+  const advancedLinks = advancedEntries.map((entry) => (
+    `<li><a href="/dashboards/ipfs-datasets/${escapeXml(entry.slug)}">${escapeXml(entry.title)}</a><span>${escapeXml(entry.summary)}</span></li>`
   )).join('');
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1895,22 +2339,134 @@ function renderDashboardHub() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Unified Dashboard Hub</title>
   <style>
-    body { margin: 0; font-family: Arial, sans-serif; background: #f7f7f2; color: #122033; }
-    main { max-width: 960px; margin: 0 auto; padding: 32px 24px 48px; }
-    .card { background: white; border-radius: 18px; padding: 24px; box-shadow: 0 12px 28px rgba(18, 32, 51, 0.08); }
-    ul { padding-left: 20px; }
-    li { margin: 12px 0; }
-    span { display: block; color: #536471; margin-top: 4px; }
-    a { color: #0a4f66; font-weight: 600; }
+    :root {
+      --bg: #f5f3ec;
+      --surface: #fffefa;
+      --ink: #172231;
+      --muted: #394958;
+      --line: rgba(23, 34, 49, 0.13);
+      --accent: #125c63;
+      --accent-strong: #0d4449;
+      --warn: #9a4b19;
+      --good: #226a4b;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: var(--ink); }
+    header { background: #18384f; color: white; padding: 22px 32px; }
+    header p { color: rgba(255,255,255,0.9); max-width: 58ch; }
+    main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 48px; display: grid; gap: 22px; }
+    h1, h2, h3, p { margin-top: 0; }
+    p, span { color: var(--muted); line-height: 1.45; }
+    a { color: var(--accent-strong); font-weight: 700; }
+    .section, details { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 22px; box-shadow: 0 12px 26px rgba(23, 34, 49, 0.07); }
+    .hero { display: grid; gap: 14px; padding: 0; background: transparent; border: 0; box-shadow: none; }
+    .safety-note { border-left: 4px solid rgba(154, 75, 25, 0.70); background: rgba(154, 75, 25, 0.07); border-radius: 8px; padding: 10px 12px; font-size: 0.94rem; color: var(--ink); }
+    .recommended-action-panel { display: grid; gap: 14px; grid-template-columns: 1fr; align-items: start; background: white; border: 3px solid rgba(18, 92, 99, 0.45); border-radius: 8px; padding: 20px; box-shadow: 0 14px 30px rgba(18, 92, 99, 0.13); }
+    .recommended-action-panel h3 { margin: 0; }
+    .recommended-action-panel p { margin: 6px 0 0; }
+    .stage-control-grid { display: grid; gap: 12px; grid-template-columns: minmax(320px, 1.3fr) repeat(2, minmax(220px, 0.85fr)); align-items: stretch; }
+    .stage-control { display: grid; gap: 10px; align-content: start; border-radius: 8px; padding: 18px; border: 1px solid var(--line); background: white; }
+    .stage-control h3 { margin: 0; }
+    .stage-control p { margin: 0; }
+    .stage-control.is-locked { background: rgba(244, 244, 245, 0.82); color: #52525b; border-color: rgba(82, 82, 91, 0.28); box-shadow: none; }
+    .stage-control.is-locked h3,
+    .stage-control.is-locked p,
+    .stage-control.is-locked .stage-label { color: #52525b; }
+    .stage-control-action { width: 100%; min-height: 38px; border-radius: 999px; padding: 8px 12px; border: 1px solid rgba(82, 82, 91, 0.32); background: #e4e4e7; color: #3f3f46; font-weight: 900; cursor: not-allowed; }
+    .entry-grid { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(260px, 1fr)); }
+    .subsection-grid { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(240px, 1fr)); }
+    .entry-card, .subsection-card { display: grid; gap: 10px; align-content: start; background: white; border: 1px solid var(--line); border-radius: 8px; padding: 18px; }
+    .entry-card.is-current { border: 2px solid rgba(18, 92, 99, 0.34); background: rgba(18, 92, 99, 0.045); }
+    .entry-card.is-available, .entry-card.is-utility, .entry-card.is-waiting, .entry-card.is-locked { background: rgba(255, 255, 255, 0.72); }
+    .entry-card.is-waiting { border-color: rgba(82, 82, 91, 0.18); background: rgba(250, 250, 250, 0.72); box-shadow: none; }
+    .entry-card.is-waiting h3,
+    .entry-card.is-waiting .path-stage-chip { color: #3f3f46; }
+    .entry-card.is-waiting .path-state-label { background: rgba(82, 82, 91, 0.12); color: #3f3f46; }
+    .entry-card.is-locked { border-color: rgba(82, 82, 91, 0.20); background: rgba(250, 250, 250, 0.72); box-shadow: none; }
+    .entry-card.later-step { opacity: 0.82; }
+    .entry-card.is-locked h3,
+    .entry-card.is-locked .path-stage-chip { color: #3f3f46; }
+    .entry-card.is-locked .path-state-label { background: rgba(82, 82, 91, 0.12); color: #3f3f46; }
+    .path-state-label { width: fit-content; border-radius: 999px; padding: 5px 9px; background: rgba(23, 34, 49, 0.10); color: var(--ink); font-size: 0.84rem; font-weight: 900; }
+    .entry-card.is-current .path-state-label { background: rgba(18, 92, 99, 0.12); color: var(--accent-strong); }
+    .path-stage-chip { width: fit-content; border-radius: 999px; padding: 4px 8px; background: rgba(18, 92, 99, 0.09); color: var(--accent-strong); font-size: 0.88rem; font-weight: 900; }
+    .prerequisite-row { display: grid; gap: 5px; }
+    .prerequisite-status-line, .prerequisite-next-line { display: block; color: var(--ink); font-size: 0.95rem; line-height: 1.35; }
+    .prerequisite-status-line { padding: 10px 12px; border-radius: 8px; background: rgba(18, 92, 99, 0.11); border: 2px solid rgba(18, 92, 99, 0.20); font-weight: 700; }
+    .entry-card.is-waiting .prerequisite-status-line { background: rgba(244, 244, 245, 0.95); border-color: rgba(82, 82, 91, 0.16); }
+    .prerequisite-next-line { color: var(--muted); }
+    .prerequisite-status-line strong, .prerequisite-next-line strong { color: var(--accent-strong); margin-right: 6px; }
+    .entry-card.is-locked .prerequisite-status-line strong { color: #7c2d12; }
+    .card-status-copy { color: var(--ink); font-weight: 800; margin: 0; }
+    .stage-label { color: var(--accent-strong); font-size: 0.76rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
+    .primary-action, .jump-link { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; border-radius: 999px; padding: 10px 14px; text-decoration: none; }
+    .primary-action { background: var(--accent-strong); color: white; width: fit-content; min-width: 270px; min-height: 54px; font-size: 1.05rem; box-shadow: 0 16px 28px rgba(13, 68, 73, 0.30); }
+    .primary-action-stack { display: grid; justify-items: end; gap: 7px; }
+    .primary-action-note { color: var(--accent-strong); font-size: 0.9rem; font-weight: 800; }
+    .jump-link { background: rgba(18, 92, 99, 0.08); border: 1px solid rgba(18, 92, 99, 0.16); }
+    .switch-action { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; border-radius: 999px; padding: 10px 14px; text-decoration: none; background: white; border: 1px solid rgba(18, 92, 99, 0.34); color: var(--accent-strong); width: fit-content; }
+    .switch-action.is-disabled { border-color: rgba(82, 82, 91, 0.24); background: rgba(244, 244, 245, 0.96); color: #52525b; cursor: not-allowed; font-weight: 800; }
+    .locked-action { margin: 0; color: #52525b; font-size: 0.9rem; font-weight: 900; }
+    .locked-action::before { content: 'Locked: '; }
+    .unlock-line { flex-basis: 100%; color: #7c2d12; font-size: 0.9rem; font-weight: 800; line-height: 1.35; }
+    .link-row, .card-action-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .card-more-actions { padding: 0; border: 0; box-shadow: none; background: transparent; }
+    .card-more-actions > summary { justify-content: space-between; font-size: 0.95rem; color: var(--accent-strong); min-height: 44px; border: 2px solid rgba(18, 92, 99, 0.22); border-radius: 8px; padding: 8px 12px; width: 100%; background: rgba(18, 92, 99, 0.07); }
+    .card-more-actions > summary::before, #dashboard-subsection-index > summary::before, #dashboard-advanced-tools > summary::before { content: '>'; font-weight: 900; color: var(--accent-strong); }
+    .card-more-actions[open] > summary::before, #dashboard-subsection-index[open] > summary::before, #dashboard-advanced-tools[open] > summary::before { transform: rotate(90deg); }
+    .card-more-actions .link-row { margin-top: 8px; }
+    details > summary { cursor: pointer; font-size: 1.08rem; font-weight: 900; color: var(--ink); min-height: 48px; display: flex; align-items: center; gap: 10px; }
+    details > summary:hover, details > summary:focus-visible { outline: 2px solid rgba(18, 92, 99, 0.28); outline-offset: 2px; }
+    .disclosure-cue { margin-left: auto; border-radius: 999px; padding: 3px 8px; background: white; border: 1px solid rgba(18, 92, 99, 0.18); color: var(--accent-strong); font-size: 0.78rem; font-weight: 900; }
+    .summary-count { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 8px; background: rgba(18, 92, 99, 0.10); color: var(--accent-strong); font-size: 0.78rem; font-weight: 800; }
+    .summary-preview { margin: 0 0 14px; max-width: 76ch; }
+    ul { margin-bottom: 0; padding-left: 20px; }
+    li { margin: 10px 0; }
+    li span { display: block; margin-top: 3px; }
+    .mode-chip { display: inline-flex; width: fit-content; border-radius: 999px; padding: 6px 10px; background: rgba(240, 253, 244, 0.18); color: #d7ffe9; font-weight: 900; }
+    @media (max-width: 760px) {
+      header { padding: 22px 20px; }
+      main { padding: 14px 12px 30px; gap: 14px; }
+      .entry-grid, .subsection-grid { grid-template-columns: 1fr; }
+      .stage-control-grid { grid-template-columns: 1fr; }
+      .recommended-action-panel { grid-template-columns: 1fr; padding: 14px; gap: 10px; }
+      .stage-control { padding: 12px; gap: 7px; }
+      .stage-control.is-locked { gap: 6px; }
+      .stage-control h3 { font-size: 1rem; }
+      .stage-control p { font-size: 0.92rem; line-height: 1.32; }
+      .stage-control-action { min-height: 34px; padding: 6px 10px; border-radius: 8px; }
+      .primary-action-stack { justify-items: stretch; }
+      .primary-action { width: 100%; min-height: 46px; }
+      .progress-rule-strip { display: grid; grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
+  <header>
+    <span class="mode-chip">Layperson complaint workspace</span>
+    <h1>Unified Dashboard Hub</h1>
+    <p>Start Intake, then unlock Evidence and Review.</p>
+  </header>
   <main>
-    <section class="card">
-      <h1>Unified Dashboard Hub</h1>
-      <p>One complaint-generator website entry point for compatibility dashboard previews.</p>
-      <ul>${links}</ul>
+    <section class="hero" id="dashboard-start-here">
+      <h2>Start your complaint</h2>
+      <div class="stage-control-grid" id="dashboard-entry-paths" aria-label="Complaint stage controls">${stageControls}</div>
+      <div class="safety-note"><strong>Important:</strong> This tool helps organize facts, documents, and draft text. It does not provide legal advice or decide whether you should file.</div>
     </section>
+    <section class="section" aria-label="Profile and saved context">
+      <h2>Profile and saved context</h2>
+      <div class="entry-grid utility-grid" id="dashboard-utility-paths">${utilityCards}</div>
+    </section>
+    <details class="section" id="dashboard-subsection-index" open>
+      <summary>Find the right tool <span class="summary-count">4 tool groups</span></summary>
+      <p class="summary-preview">Use these shortcuts when you already know which part of the complaint workflow needs attention, including AI-assisted questions about docket documents.</p>
+      <div class="subsection-grid">${subsectionCards}</div>
+    </details>
+    <details id="dashboard-advanced-tools">
+      <summary>Advanced Operations <span class="summary-count">5 admin consoles</span></summary>
+      <p>These package consoles and MCP diagnostics are for administrators, developers, or operators. They are hidden from the default complaint path so users are not asked to choose between internal variants.</p>
+      <ul>${advancedLinks}</ul>
+    </details>
   </main>
 </body>
 </html>`;
@@ -1947,6 +2503,10 @@ function renderDashboardShell(entry) {
 }
 
 function renderSdkPlaygroundShell() {
+  const preflight = buildEnvironmentPreflight();
+  if (!preflight.checks.sdk_playground_preview.exists) {
+    return renderSdkPlaygroundFallback(preflight);
+  }
   const rawHtml = fs.readFileSync(sdkPreviewPath, 'utf-8');
   const nav = `
     <nav class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation" style="display:flex;flex-wrap:wrap;gap:12px;margin:16px auto 0;max-width:1200px;padding:0 20px;">
@@ -1980,6 +2540,213 @@ function renderSdkPlaygroundShell() {
     : `${bodyWithNav}\n${scripts}`;
 }
 
+function renderSdkPlaygroundFallback(preflight) {
+  const sdkState = preflight && preflight.checks && preflight.checks.sdk_playground_preview
+    ? preflight.checks.sdk_playground_preview
+    : { path: sdkPreviewPath, state: 'missing' };
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDK Playground Unavailable</title>
+  <link rel="stylesheet" href="/static/complaint_app_shell.css">
+  <style>
+    :root {
+      --bg: #f7f2e8;
+      --card: #fffdf8;
+      --ink: #1c1f24;
+      --muted: #505760;
+      --line: rgba(28, 31, 36, 0.16);
+      --warn: #8f3c16;
+      --warn-bg: #fde8dd;
+      --ok: #1f6f4a;
+      --ok-bg: #e6f6ee;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 28px 18px 40px;
+      display: grid;
+      gap: 16px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--card);
+      padding: 18px;
+    }
+    .banner {
+      border-color: rgba(143, 60, 22, 0.36);
+      background: var(--warn-bg);
+      color: var(--warn);
+      font-weight: 700;
+    }
+    h1, h2, p { margin: 0 0 10px; }
+    p { color: var(--muted); line-height: 1.5; }
+    pre {
+      margin: 8px 0 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .state-ok {
+      border-color: rgba(31, 111, 74, 0.26);
+      background: var(--ok-bg);
+      color: var(--ok);
+      font-weight: 700;
+    }
+    a {
+      color: #0d4f63;
+      font-weight: 700;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <nav class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation" style="display:flex;flex-wrap:wrap;gap:12px;margin:16px auto 0;max-width:980px;padding:0 18px;">
+    <a class="surface-link" href="/">Landing</a>
+    <a class="surface-link" href="/home">Account</a>
+    <a class="surface-link" href="/chat">Chat</a>
+    <a class="surface-link" href="/profile">Profile</a>
+    <a class="surface-link" href="/results">Results</a>
+    <a class="surface-link" href="/workspace">Workspace</a>
+    <a class="surface-link" href="/claim-support-review">Review</a>
+    <a class="surface-link" href="/document">Builder</a>
+    <a class="surface-link" href="/mlwysiwyg">Editor</a>
+    <a class="surface-link" href="/document/optimization-trace">Trace</a>
+    <a class="surface-link" href="/ipfs-datasets/sdk-playground" aria-current="page">SDK</a>
+    <a class="surface-link" href="/dashboards">Dashboards</a>
+  </nav>
+  <main>
+    <section class="card banner">
+      SDK playground preview is unavailable. The server stayed online and returned this fallback page so other complaint routes continue to work.
+    </section>
+    <section class="card">
+      <h1>Missing Submodule Asset</h1>
+      <p>The SDK preview file was not found at runtime. This usually means the submodule or preview artifact was not initialized in this workspace.</p>
+      <pre>${escapeXml(String(sdkState.path || sdkPreviewPath))}</pre>
+    </section>
+    <section class="card">
+      <h2>Recommended Setup</h2>
+      <pre>git submodule update --init --recursive
+# then make sure SDK_PLAYGROUND_PREVIEW.html is generated in ipfs_datasets_py/ipfs_accelerate_py/</pre>
+      <p>Diagnostics endpoint: <a href="/api/environment/preflight">/api/environment/preflight</a></p>
+    </section>
+    <section class="card state-ok">
+      Other complaint surfaces remain available: /workspace, /chat, /profile, /results, /document, /claim-support-review.
+    </section>
+  </main>
+  <script src="/static/complaint_mcp_sdk.js"></script>
+  <script src="/static/complaint_app_shell.js"></script>
+</body>
+</html>`;
+}
+
+function renderRawDashboardFallback(entry) {
+  const missingPath = ipfsTemplate(entry.templateName);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeXml(entry.title)} Fallback Dashboard</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f7f2e8; color: #1c1f24; }
+    main { max-width: 960px; margin: 0 auto; padding: 32px 18px; }
+    section { background: #fffdf8; border: 1px solid rgba(28, 31, 36, 0.14); border-radius: 16px; padding: 22px; box-shadow: 0 14px 30px rgba(28, 31, 36, 0.08); }
+    h1 { margin: 0 0 10px; }
+    p { line-height: 1.55; color: #505760; }
+    code, pre { background: #fff; border: 1px solid rgba(28, 31, 36, 0.14); border-radius: 10px; }
+    code { padding: 2px 6px; }
+    pre { padding: 12px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>${escapeXml(entry.title)}</h1>
+      <p>${escapeXml(entry.summary)}</p>
+      <p>This raw dashboard route is mounted, but the corresponding <code>ipfs_datasets_py</code> template asset is missing in this checkout. The Playwright server returns this fallback so the complaint-generator navigation remains testable while the submodule is unavailable.</p>
+      <pre>${escapeXml(missingPath)}</pre>
+      <p>Initialize the submodule assets to restore the full Dashboard, Admin, Investigation, News, Software, Analytics, GraphRAG, Patent, Discord, Finance, Medicine, Caselaw, or RAG experience.</p>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
+function handleDashboardFixtureRoute(
+  request,
+  response,
+  url,
+  fixtures = getDashboardFixtures(),
+) {
+  if (request.method !== 'GET') {
+    return false;
+  }
+
+  if (url.pathname === '/mcp') {
+    sendText(
+      response,
+      renderDashboardShell(getDefaultDashboardEntry(fixtures)),
+      'text/html; charset=utf-8',
+    );
+    return true;
+  }
+
+  if (url.pathname === '/dashboards') {
+    sendText(
+      response,
+      renderDashboardHub(url.searchParams, fixtures),
+      'text/html; charset=utf-8',
+    );
+    return true;
+  }
+
+  if (url.pathname.startsWith('/dashboards/ipfs-datasets/')) {
+    const slug = url.pathname.replace('/dashboards/ipfs-datasets/', '');
+    const entry = getDashboardEntry(slug, fixtures);
+    if (!entry) {
+      response.writeHead(404);
+      response.end('Not found');
+      return true;
+    }
+    sendText(response, renderDashboardShell(entry), 'text/html; charset=utf-8');
+    return true;
+  }
+
+  if (url.pathname.startsWith('/dashboards/raw/ipfs-datasets/')) {
+    const slug = url.pathname.replace('/dashboards/raw/ipfs-datasets/', '');
+    const entry = getDashboardEntry(slug, fixtures);
+    if (!entry) {
+      response.writeHead(404);
+      response.end('Not found');
+      return true;
+    }
+    const dashboardPath = ipfsTemplate(entry.templateName);
+    if (!fs.existsSync(dashboardPath)) {
+      sendText(response, renderRawDashboardFallback(entry), 'text/html; charset=utf-8');
+      return true;
+    }
+    sendFile(response, dashboardPath);
+    return true;
+  }
+
+  return false;
+}
+
 const routes = new Map([
   ['/', template('index.html')],
   ['/home', template('home.html')],
@@ -1995,11 +2762,22 @@ const routes = new Map([
   ['/claim-support-review', template('claim_support_review.html')],
 ]);
 
-const server = http.createServer(async (request, response) => {
+async function handlePlaywrightRequest(
+  request,
+  response,
+  dashboardFixtures = getDashboardFixtures(),
+) {
   const url = new URL(request.url, `http://localhost:${port}`);
 
   if (request.method === 'GET' && url.pathname === '/health') {
-    return sendJson(response, { status: 'healthy' });
+    return sendJson(response, {
+      status: 'healthy',
+      preflight: buildEnvironmentPreflight(),
+    });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/environment/preflight') {
+    return sendJson(response, buildEnvironmentPreflight());
   }
 
   if (request.method === 'GET' && url.pathname === '/cookies') {
@@ -2017,7 +2795,7 @@ const server = http.createServer(async (request, response) => {
     const result = {
       hashed_username: reqPayload.hashed_username || profileData.hashed_username,
       hashed_password: reqPayload.hashed_password || profileData.hashed_password,
-      data: JSON.stringify(profileData),
+      data: JSON.stringify(sanitizeProfileDataForClient(profileData)),
     };
     return sendJson(response, reqPayload.username ? { results: result } : result);
   }
@@ -2692,8 +3470,8 @@ const server = http.createServer(async (request, response) => {
     return sendText(response, renderSdkPlaygroundShell(), 'text/html; charset=utf-8');
   }
 
-  if (request.method === 'GET' && url.pathname === '/mcp') {
-    return sendText(response, renderDashboardShell(dashboardEntries[0]), 'text/html; charset=utf-8');
+  if (handleDashboardFixtureRoute(request, response, url, dashboardFixtures)) {
+    return;
   }
 
   if (request.method === 'GET' && url.pathname === '/api/mcp/analytics/history') {
@@ -2704,32 +3482,6 @@ const server = http.createServer(async (request, response) => {
         { last_updated: '2026-03-22T11:00:00+00:00', success_rate: 96.4, average_query_time: 1.28 },
       ],
     });
-  }
-
-  if (request.method === 'GET' && url.pathname === '/dashboards') {
-    return sendText(response, renderDashboardHub(), 'text/html; charset=utf-8');
-  }
-
-  if (request.method === 'GET' && url.pathname.startsWith('/dashboards/ipfs-datasets/')) {
-    const slug = url.pathname.replace('/dashboards/ipfs-datasets/', '');
-    const entry = dashboardEntries.find((item) => item.slug === slug);
-    if (!entry) {
-      response.writeHead(404);
-      response.end('Not found');
-      return;
-    }
-    return sendText(response, renderDashboardShell(entry), 'text/html; charset=utf-8');
-  }
-
-  if (request.method === 'GET' && url.pathname.startsWith('/dashboards/raw/ipfs-datasets/')) {
-    const slug = url.pathname.replace('/dashboards/raw/ipfs-datasets/', '');
-    const entry = dashboardEntries.find((item) => item.slug === slug);
-    if (!entry) {
-      response.writeHead(404);
-      response.end('Not found');
-      return;
-    }
-    return sendFile(response, ipfsTemplate(entry.templateName));
   }
 
   if (request.method === 'GET' && url.pathname.startsWith('/static/')) {
@@ -2750,6 +3502,29 @@ const server = http.createServer(async (request, response) => {
 
   response.writeHead(404);
   response.end('Not found');
-});
+}
 
-server.listen(port, '127.0.0.1');
+function createPlaywrightServer({ dashboardFixtures = getDashboardFixtures() } = {}) {
+  return http.createServer((request, response) => (
+    handlePlaywrightRequest(request, response, dashboardFixtures)
+  ));
+}
+
+if (require.main === module) {
+  createPlaywrightServer().listen(port, '127.0.0.1');
+}
+
+module.exports = {
+  buildDashboardEntriesFixture,
+  buildLaypersonDashboardCardsFixture,
+  buildDashboardUtilityCardsFixture,
+  buildDashboardSubsectionCardsFixture,
+  buildDashboardFixtures,
+  getDashboardFixtures,
+  getDashboardEntry,
+  getDefaultDashboardEntry,
+  renderDashboardHub,
+  handleDashboardFixtureRoute,
+  handlePlaywrightRequest,
+  createPlaywrightServer,
+};

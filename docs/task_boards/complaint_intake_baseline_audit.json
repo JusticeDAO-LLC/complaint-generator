@@ -1,0 +1,263 @@
+{
+  "schema_version": "complaint-generator.intake-baseline-audit.v1",
+  "baseline_commit": "65ba0fb931a88ebf48e58ebec0209dc9708a1479",
+  "task_count": 58,
+  "goals": 10,
+  "subgoals": 29,
+  "first_ready_task": "CIMP-TUI-01",
+  "terminal": {
+    "repository": "/home/barberb/.cache/codex-worktrees/complaint-generator-publish-20261021",
+    "revision": "65ba0fb9",
+    "read_only": true,
+    "network_and_provider_processes_blocked": true,
+    "synthetic_sessions_only": true
+  },
+  "findings": {
+    "terminal": [
+      {
+        "id": "TUI-BASE-PTY",
+        "classification": "passed_baseline",
+        "observation": "An actual PTY child invoked applications.complaint_cli.main with chat --user-id pty-synthetic --max-turns 2, accepted Jordan Example and Acme Company, saved both answers, displayed the resume prompt and exited 0 within one second. Provider subprocesses and socket connects were blocked; session lived in a TemporaryDirectory."
+      },
+      {
+        "id": "TUI-BASE-RESUME",
+        "classification": "passed_baseline",
+        "observation": "CliRunner actual chat paused after two answers, resumed the remaining five with the same user ID, exited 0, and fresh ComplaintWorkspaceService read the persisted seven-answer completion."
+      },
+      {
+        "id": "TUI-GAP-NARRATIVE",
+        "classification": "reproduced_gap",
+        "observation": "run_intake_chat_turn(message=\"My landlord evicted me after my accommodation request.\") records the initial complaint narrative as party_name."
+      },
+      {
+        "id": "TUI-GAP-UNKNOWN",
+        "classification": "reproduced_gap",
+        "observation": "Seven unknown answers produce conversation_state.is_complete=true and Intake complete. This is seven nonempty strings rather than resolved, answerable graph issues."
+      },
+      {
+        "id": "TUI-GAP-GRAPHS",
+        "classification": "reproduced_gap",
+        "observation": "Completed workspace intake session has only annotation_knowledge_graph; run_intake_chat_turn does not invoke the factual KG/dependency-graph workflow."
+      },
+      {
+        "id": "TUI-GAP-EOF",
+        "classification": "reproduced_gap",
+        "observation": "CliRunner chat with empty input exits 1 with SystemExit instead of a documented pause outcome."
+      },
+      {
+        "id": "TUI-GAP-PRIVACY",
+        "classification": "reproduced_gap",
+        "observation": "Synthetic workspace JSON persisted plaintext with mode 0664 under this environment umask. Encryption/private permissions require explicit implementation."
+      },
+      {
+        "id": "TUI-SOURCE-LEGACY",
+        "classification": "source_inspection",
+        "observation": "Legacy applications.cli.CLI uses Mediator.process, whose finalize raises UserPresentableException(not-implemented); CLI generic loop catches this and continues. scripts/run_cli_mediator.sh hardcodes llm-router-codex and expects root .venv absent in published worktree."
+      },
+      {
+        "id": "TUI-SOURCE-REUSE",
+        "classification": "source_inspection",
+        "observation": "Reuse Mediator.start_three_phase_process and process_denoising_answer, ComplaintDenoiser candidate/answer APIs, and PhaseManager.get_intake_readiness. start_three_phase_process currently calls DependencyGraphBuilder.build_from_claims(claims) without legal_requirements; SummaryJudgmentHook.generate_requirements returns LLM-derived list[str], whereas graph builder expects structured requirement dictionaries."
+      },
+      {
+        "id": "TUI-SOURCE-STOP",
+        "classification": "source_inspection",
+        "observation": "PhaseManager.has_converged checks a five-loss plateau; ComplaintDenoiser.is_exhausted uses empty question pool or >50 asked. Neither alone establishes legal sufficiency."
+      }
+    ],
+    "graphs_law_logic": [
+      {
+        "id": "F1",
+        "severity": "high",
+        "path": "mediator/mediator.py",
+        "symbols": [
+          "Mediator.start_three_phase_process",
+          "Mediator.advance_to_formalization_phase"
+        ],
+        "finding": "Intake calls DependencyGraphBuilder.build_from_claims(claims) without legal_requirements. Actual statute graph is built only during formalization, so current initial questioning is not driven by retrieved verified legal requirements."
+      },
+      {
+        "id": "F2",
+        "severity": "high",
+        "path": "complaint_phases/legal_graph.py",
+        "symbols": [
+          "LegalGraphBuilder._extract_requirements_from_statute",
+          "LegalGraphBuilder.build_rules_of_procedure"
+        ],
+        "finding": "Statute requirement extraction is explicitly a placeholder using claim-type keywords; procedure builder uses simplified hardcoded federal requirements. Treat both as templates/candidates, not verified applicable law."
+      },
+      {
+        "id": "F3",
+        "severity": "high",
+        "path": "integrations/ipfs_datasets/legal.py",
+        "symbols": [
+          "_resolve_state_code",
+          "search_legal_authority_program"
+        ],
+        "finding": "Missing/unrecognized state silently defaults to OR. Legal requirements must not be selected from a guessed jurisdiction; missing jurisdiction should remain unknown and trigger intake question."
+      },
+      {
+        "id": "F4",
+        "severity": "high",
+        "path": "integrations/ipfs_datasets/legal.py",
+        "symbols": [
+          "constrain_assertions_to_corpus"
+        ],
+        "finding": "Any corpus search hit currently classifies assertion as grounded. Retrieval is candidate evidence, not entailment, factual verification, applicability, or proof."
+      },
+      {
+        "id": "F5",
+        "severity": "high",
+        "path": "complaint_phases/knowledge_graph.py",
+        "symbols": [
+          "KnowledgeGraphBuilder.build_from_text",
+          "Entity",
+          "Relationship"
+        ],
+        "finding": "build_from_text marks all extracted entities/relationships source=complaint but does not attach source spans or provider receipts. Entity/Relationship provenance fields already exist and should carry user message identity/span/hash and extraction lineage."
+      },
+      {
+        "id": "F6",
+        "severity": "high",
+        "path": "complaint_phases/denoiser.py",
+        "symbols": [
+          "Denoiser.is_exhausted",
+          "Denoiser.generate_questions"
+        ],
+        "finding": "is_exhausted treats more than 50 questions as exhaustion; question generation adds standard prompts and accumulates pool entries. Need stable question-target deduplication and distinct saturation, turn-cap, unknown/refused, deferred and unavailable dispositions."
+      },
+      {
+        "id": "F7",
+        "severity": "high",
+        "path": "mediator/mediator.py",
+        "symbols": [
+          "Mediator.process_denoising_answer"
+        ],
+        "finding": "Question exhaustion is ORed with phase convergence. A cap, failed backend or empty question list must not imply all answerable questions resolved."
+      },
+      {
+        "id": "F8",
+        "severity": "medium",
+        "path": "integrations/ipfs_datasets/logic.py",
+        "symbols": [
+          "get_logic_capability",
+          "get_logic_capability_report",
+          "text_to_fol",
+          "legal_text_to_deontic",
+          "prove_claim_elements",
+          "run_hybrid_reasoning"
+        ],
+        "finding": "Existing typed capability contract distinguishes implemented/degraded/unavailable; several legacy operations remain explicitly degraded despite provider imports. Preserve truthfulness while adding real canonical compiler/proof routing adapters."
+      },
+      {
+        "id": "F9",
+        "severity": "medium",
+        "path": "integrations/ipfs_datasets/graphs.py",
+        "symbols": [
+          "extract_graph_from_text",
+          "persist_graph_snapshot",
+          "query_graph_snapshot",
+          "resolve_duplicate_entities",
+          "attach_provenance_edges"
+        ],
+        "finding": "Reusable first-party provenance/persistence/query contracts exist. Client persistence already uses actual upstream knowledge_graphs.Client. Current extraction helper primarily makes sentence facts; keep claim-element and law nodes separate from asserted factual facts."
+      },
+      {
+        "id": "F10",
+        "severity": "medium",
+        "path": "complaint_phases/legal_graph.py",
+        "symbols": [
+          "LegalGraphBuilder.build_from_authorities"
+        ],
+        "finding": "Authority graph already supports treatment edges and source-bound rule candidates/governs edges; reuse rather than replace. Existing good-law-unconfirmed and adverse treatment must not be erased by retrieval relevance."
+      },
+      {
+        "id": "F11",
+        "severity": "medium",
+        "path": "lib/formal_logic/core.py",
+        "symbols": [
+          "Predicate.evaluate"
+        ],
+        "finding": "Local Boolean model lookups default missing predicates to false. Intake support reasoning must represent unknown separately from refutation and avoid closed-world rejection of missing complaint facts."
+      },
+      {
+        "id": "F12",
+        "severity": "medium",
+        "path": "tests/test_legal_authority_hooks.py",
+        "symbols": [],
+        "finding": "Several existing authority tests skip on missing imports/dependencies. Native supervisor completion must inspect JUnit required identities/skips, not only pytest exit code."
+      }
+    ],
+    "privacy_storage": [
+      {
+        "path": "applications/complaint_workspace.py:848",
+        "finding": "Lossy _slugify_user_id can map distinct identities onto same session filename."
+      },
+      {
+        "path": "applications/complaint_workspace.py:2388",
+        "finding": "Plaintext JSON sessions; corrupt/unreadable payload returns default state; fixed .tmp writer then os.replace lacks file/directory fsync or writer lock."
+      },
+      {
+        "path": "integrations/ipfs_datasets/storage.py:45",
+        "finding": "Shared plaintext local fallback; bafy prefix plus truncated SHA256 is synthetic identifier, not verified standard CID; marker file pin is local marker."
+      },
+      {
+        "path": "integrations/ipfs_datasets/storage.py:298",
+        "finding": "Explicit enable flag gates optional Kit constructor; high-level API construction can start node; CanonicalStorageService is protocol, not byte backend."
+      },
+      {
+        "path": "integrations/ipfs_datasets/draft_logic_pipeline.py:445",
+        "finding": "Plain theorem/report blobs; pin errors swallowed; sha256 fallback and bool(nonempty_report_cid) misreport pinned."
+      },
+      {
+        "path": "external/ipfs_kit_py/ipfs_kit_py/aes_encryption.py:92",
+        "finding": "Actual reusable AES256GCM random salt/nonce PBKDF2 primitive; text only, no AAD."
+      },
+      {
+        "path": "external/ipfs_kit_py/ipfs_kit_py/mcp/enterprise/encryption.py:188",
+        "finding": "KeyManager supports explicit KEYRING/MEMORY, FILE raw key storage; HSM/VAULT/TPM enum options not implemented."
+      },
+      {
+        "path": "external/ipfs_kit_py/ipfs_kit_py/mcp/enterprise/encryption.py:674",
+        "finding": "EncryptionManager AES256GCM bytes+AAD branch reusable after qualification; avoid CBC and invalid16-byte nonce ChaCha branch."
+      },
+      {
+        "path": "external/ipfs_kit_py/ipfs_kit_py/enhanced_secrets_manager.py:233",
+        "finding": "Unsafe for private case defaults: machine-id/hostname-derived key with constant fallback; can downgrade AES to XOR."
+      },
+      {
+        "path": "external/ipfs_kit_py/ipfs_kit_py/secure_config.py:80",
+        "finding": "SecureConfigManager has random Fernet generation/restrictive local master.key but stores raw (including password-derived) master key unwrapped and disables encryption when dependency absent; not private-user vault."
+      },
+      {
+        "path": "external/ipfs_kit_py/ipfs_kit_py/credential_manager.py:119",
+        "finding": "CredentialManager may fall back keyring->file; must not inherit silent fallback for user case key."
+      },
+      {
+        "path": "external/ipfs_kit_py/ipfs_kit_py/core/wal/coordinator.py:58",
+        "finding": "WALTransactionCoordinator has stable effects, fsynced decisions, crash injection and repeatable replay; caller must encrypt intent."
+      },
+      {
+        "path": "external/ipfs_kit_py/ipfs_kit_py/core/replication/reconciler.py:173",
+        "finding": "ReplicaReconciler bounded passes verifies readback digest/version and keeps deferred operations out of verified count."
+      },
+      {
+        "path": "external/ipfs_kit_py/ipfs_kit_py/iroh/manifest.py:587",
+        "finding": "IrohManifestStore offers cryptographically linked revisions, expected-head CAS and recover_head; owner-only permissions do not encrypt blobs."
+      },
+      {
+        "path": "integrations/ipfs_datasets/llm.py:371",
+        "finding": "Architecture-router prompt can create additional cloud egress beyond generation; privacy policy must precede routing."
+      }
+    ]
+  },
+  "grok_canary": {
+    "provider": "grok_cli",
+    "model": "grok-4.7",
+    "route": "ipfs_accelerate_py.llm_router.generate_text",
+    "ok": true,
+    "answer": "COMPLAINT_GROK_47_READY",
+    "seconds": 6.029
+  },
+  "scope": "Read-only source inspection and synthetic offline terminal characterization. Known product defects are findings, not passing product acceptance. The synthetic router canary is a separate live provider observation."
+}

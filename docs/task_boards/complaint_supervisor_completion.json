@@ -1,0 +1,396 @@
+{
+  "schema_version": "complaint-generator.supervisor_completion.v1",
+  "completed_at": "2026-10-20T20:49:39.285165+00:00",
+  "reviewed_grok_session": {
+    "id": "01a155f0-95f6-76d2-bdc8-0e7af752ac22",
+    "summary": "Align complaint-generator with Mike and IPFS stacks",
+    "stored_updated_at": "2026-10-20T08:06:36.136270806Z",
+    "finding": "The named session created a local formal alignment plan and source-check watchdog. Its saved history did not launch a native Grok-provider supervisor campaign."
+  },
+  "completion": {
+    "total_tasks": 49,
+    "completed_tasks": 49,
+    "pending_tasks": 0,
+    "blocked_tasks": 0,
+    "in_progress_tasks": 0
+  },
+  "boards": {
+    "ipfs_backlog": {
+      "path": "docs/task_boards/ipfs_supervisor_task_board.json",
+      "sha256": "eab039a60c69816b2b4e49ec419fc79971824923a18361ff90d0cf1bc3d39b41",
+      "tasks": 30,
+      "task_counts": {
+        "complete": 30
+      },
+      "task_statuses": {
+        "CSR-M0": "complete",
+        "CSR-M1": "complete",
+        "CSR-M2": "complete",
+        "CSR-M3": "complete",
+        "CSR-M4": "complete",
+        "CSR-M5": "complete",
+        "CSR-M6": "complete",
+        "IE-B0": "complete",
+        "IE-B1": "complete",
+        "IE-B2": "complete",
+        "IE-B3": "complete",
+        "IE-B4": "complete",
+        "IE-B5": "complete",
+        "IE-B6": "complete",
+        "IE-B7": "complete",
+        "IE-B8": "complete",
+        "IPFS-M0": "complete",
+        "IPFS-M1": "complete",
+        "IPFS-M2": "complete",
+        "IPFS-M3": "complete",
+        "IPFS-M4": "complete",
+        "IPFS-M5": "complete",
+        "TEMP-T0": "complete",
+        "TEMP-T1": "complete",
+        "TEMP-T2": "complete",
+        "TEMP-T3": "complete",
+        "TEMP-T4": "complete",
+        "TEMP-T5": "complete",
+        "TEMP-T6": "complete",
+        "CONTRACT-PAYLOADS": "complete"
+      },
+      "markdown_projection": {
+        "path": "docs/task_boards/ipfs_supervisor_task_board.md",
+        "sha256": "f3746a64303cd35fc55d0497169ff5bbd253802a52e9276b18dffcc86a6a4666"
+      }
+    },
+    "alignment": {
+      "path": "docs/task_boards/complaint_alignment_execution_board.json",
+      "sha256": "0e962e5f729e33fb5744830e9c051142fbde831cf706713a038d6b781b1a564c",
+      "tasks": 19,
+      "task_counts": {
+        "completed": 19
+      },
+      "task_statuses": {
+        "task.embedding_router_facade": "completed",
+        "task.graph_client_persist": "completed",
+        "task.kit_gate_default_off": "completed",
+        "task.legal_symbol_loader": "completed",
+        "task.llm_router_facade": "completed",
+        "task.logic_adapter_paths": "completed",
+        "task.mike_compatibility_stamp": "completed",
+        "task.mike_connector_tools": "completed",
+        "task.mike_http_route_gate": "completed",
+        "task.mike_protocol_versions": "completed",
+        "task.mike_registration_text": "completed",
+        "task.multimedia_attachment_adapter": "completed",
+        "task.multimodal_router_facade": "completed",
+        "task.operator_scripts_use_adapter": "completed",
+        "task.storage_fallback_order": "completed",
+        "task.supervisor_cli_has_three_operations": "completed",
+        "task.supervisor_jobs_off_request_path": "completed",
+        "task.watchdog_cli_off_control_plane": "completed",
+        "task.watchdog_repairs_board": "completed"
+      },
+      "formal_plan": {
+        "path": "docs/task_boards/complaint_alignment_formal_work_plan.json",
+        "sha256": "5f6049359d5730717beadef7fd52f31d58d5025dc3c9ad108d04baad2f240851"
+      },
+      "runtime_state": {
+        "path": ".complaint_workspace/supervisor/alignment_execution_state.json",
+        "sha256": "0e962e5f729e33fb5744830e9c051142fbde831cf706713a038d6b781b1a564c"
+      },
+      "runtime_matches_published_board": true,
+      "source_fingerprint": "efc5fd6224aa3a84298a0211b83d85e131f75750396f6c7db6274b6d4c363896",
+      "source_fingerprint_current": true,
+      "plan_id": "baguqeeraal5dqwy6oovwusjyem3ut6kl72inutanmavzaa76ceyq22etxl3a"
+    }
+  },
+  "validation": {
+    "junit_suites": {
+      "alignment_and_recovery": {
+        "path": ".complaint_workspace/supervisor/alignment_validation.xml",
+        "sha256": "da589a797444e947749ba279cc68da9854b90f15657d9442fe9d10fcef9050c2",
+        "tests": 252,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 252
+      },
+      "previously_pending_backlog": {
+        "path": ".complaint_workspace/supervisor/ipfs_backlog_validation.xml",
+        "sha256": "4b59c65e30b6c62de81f1772a6bf2935b0a2c3dd1c04346be324a52c3b549755",
+        "tests": 406,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 406
+      },
+      "required_python_workflow_regression": {
+        "path": ".complaint_workspace/supervisor/ipfs_regression_validation.xml",
+        "sha256": "83f57b9dce5e416fb1e5fc4cde4851f52d6c6a4635910eb1732eb9b998d3942c",
+        "tests": 373,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 16,
+        "passed": 357
+      },
+      "gated_package_surface": {
+        "path": ".complaint_workspace/supervisor/package_surface_validation.xml",
+        "sha256": "cdf62f7d7c83748a10756ff5182becd4a7055254252f07ff178aa9122bd37987",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 16
+      },
+      "operator_proof_surfaces": {
+        "path": ".complaint_workspace/supervisor/operator_surface_validation.xml",
+        "sha256": "c9390f4c896ab51ff67f092aa79a0b94f4ded6cd3d5e191c3f260b6b710ef474",
+        "tests": 18,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 18
+      },
+      "site_browser_workflows": {
+        "path": ".complaint_workspace/supervisor/ipfs_site_browser_validation.xml",
+        "sha256": "7111acc1c2a95cb5fcd902fb603dad824c4c134697827d4d174a60479b6d3a00",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 6
+      },
+      "native_grok_reachability": {
+        "path": ".complaint_workspace/supervisor/native_grok_reachability_validation.xml",
+        "sha256": "43466183938a4cbb0cfe5228b5daf14a04d7553d29f7b94c306cde310574e8ff",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 16
+      }
+    },
+    "counting_note": "Suites overlap. Counts are per run and are not a sum of unique tests.",
+    "required_regression_driver": {
+      "schema_version": "complaint-generator.regression_driver_receipt.v1",
+      "recorded_at": "2026-10-20T20:48:22.173239+00:00",
+      "command": "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PLAYWRIGHT_JUNIT_OUTPUT_FILE=.complaint_workspace/supervisor/ipfs_regression_node.xml /home/barberb/ipfs_datasets_py/.venv/bin/python -u scripts/run_claim_support_review_regression.py --browser on --network off --junitxml=.complaint_workspace/supervisor/ipfs_regression_validation.xml",
+      "exit_code": 0,
+      "exit_code_evidence": "Observed terminal completion of exec session 32097 with exit code 0.",
+      "log": ".complaint_workspace/supervisor/ipfs_regression_validation.log",
+      "log_sha256": "6b45d2e8b07507455e4bbb6f73845621bcf6945dd64da1570d9c29933d4f704e",
+      "python": {
+        "tests": 373,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 16,
+        "passed": 357,
+        "junit_report": ".complaint_workspace/supervisor/ipfs_regression_validation.xml",
+        "junit_sha256": "83f57b9dce5e416fb1e5fc4cde4851f52d6c6a4635910eb1732eb9b998d3942c"
+      },
+      "node": {
+        "passed": 34,
+        "listed_success_rows": 34,
+        "summary": "34 passed (2.4m)",
+        "evidence": "Completed driver log; the configured list reporter did not emit a Node JUnit file."
+      },
+      "gated_package_cases": {
+        "skipped_in_driver": 16,
+        "separately_passed": 16,
+        "report": ".complaint_workspace/supervisor/package_surface_validation.xml"
+      },
+      "network": "off",
+      "receipt": {
+        "path": ".complaint_workspace/supervisor/ipfs_regression_driver_receipt.json",
+        "sha256": "2d17246e043858e1dd490945812451b4a34130ef9d264712398af770700573e8"
+      }
+    },
+    "backlog_manifest": {
+      "path": ".complaint_workspace/supervisor/ipfs_backlog_validation_manifest.json",
+      "sha256": "f307b94ddee5b0ceba3ce731a6d0e7f96da0a391c90ae7dc7153949fb7b42c84"
+    },
+    "optional_live_provider_tests": {
+      "deselected": 2,
+      "counted_as_passed": false,
+      "reason": "Explicit optional live Hugging Face smokes; names and reasons are in the backlog manifest."
+    },
+    "gated_package_skip_coverage": {
+      "driver_skips": 16,
+      "separate_passes": 16,
+      "test_names_match_exactly": true
+    },
+    "native_watchdog_regression": {
+      "path": "external/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/rescue/supervisor_watchdog.py",
+      "sha256": "6259343e7a0d76f8e0f5c25875421fd721ff3fbd0b282f8037fb674b68ce1be0",
+      "problem": "Restart backoff incremented the attempt count on every skipped cycle and never expired.",
+      "behavior": "A separate cooldown counts down, then retries through the existing fenced lifecycle callback; explicit holds remain respected.",
+      "test_command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=. /home/barberb/lift_coding/external/ipfs_datasets/.venv/bin/python -m pytest --import-mode=importlib -q test/api/test_agent_supervisor_supervisor_watchdog.py",
+      "test_cwd": "external/ipfs_accelerate_py",
+      "passed": 25,
+      "skipped": 1,
+      "skip_reason": "existing repository AST test seal",
+      "source_sha256_unchanged_since_run": true,
+      "evidence": "Previously observed local pytest result retained from alignment-specific receipt; unchanged watchdog source independently hash-verified."
+    },
+    "board_contract": {
+      "command": "python scripts/validate_task_boards.py",
+      "exit_code": 0,
+      "result": "Validated 30 tasks and 6 source docs after final completion."
+    },
+    "independent_review": "Read-only completion audit found no material unresolved blocker in recovery, native Grok streaming/routing, board publication, or final validation evidence."
+  },
+  "fixes": [
+    {
+      "area": "Native supervisor recovery",
+      "result": "Restart cooldown now expires and retries through the existing fenced callback; healthy cycles reset backoff and explicit operator holds remain respected."
+    },
+    {
+      "area": "Native Grok execution",
+      "result": "Sparse provider progress flushes without waiting for a full buffer; incremental decoding preserves split UTF-8 and reserved framing; the builder and merge fallback agree on the canonical runtime module. Timeout and descendant cleanup are covered by hermetic tests."
+    },
+    {
+      "area": "Local alignment monitoring",
+      "result": "Exclusive ownership, atomic state writes, bounded checker processes, retries, state reloads, stale-claim repair, and source/plan fingerprint revalidation prevent silent stale completion and hung local checks."
+    },
+    {
+      "area": "Board visibility",
+      "result": "Default monitoring publishes current receipts to the visible board; regeneration preserves matching progress and manual holds. Contract validation rejects divergent Markdown status and untracked or duplicate task sections."
+    },
+    {
+      "area": "Adapter integration",
+      "result": "Lazy facades avoid optional heavy startup, first-party imports use adapters, and Graph Client persists valid stable IDs with content-sensitive update keys."
+    },
+    {
+      "area": "Review and operator surfaces",
+      "result": "Document review links receive their required context. Existing proof operations are available consistently through package, CLI, MCP, and both JavaScript SDK builds, with tooling inventories derived from actual declarations."
+    }
+  ],
+  "local_source_identity": [
+    {
+      "path": "integrations/ipfs_accelerate/watchdog.py",
+      "sha256": "de56c9fb70c057693e4970442a0e3a9ddbcf26665800ab2de033eab8b08b72d8"
+    },
+    {
+      "path": "integrations/ipfs_accelerate/alignment_plan.py",
+      "sha256": "ef35baee9c018b569ca01fd47a6cc2dd9baa2d6a0826041a0e705306256144e3"
+    },
+    {
+      "path": "integrations/ipfs_accelerate/alignment_checks.py",
+      "sha256": "f2317a1b0a900c59940d1a7781b095defab41ff43bd6a112408bfe870c79223a"
+    },
+    {
+      "path": "scripts/run_alignment_watchdog.py",
+      "sha256": "0213970b3b390b66c2fd3821d22714c30a459fc39d9dee3b162cf75de46b4183"
+    },
+    {
+      "path": "scripts/validate_alignment.py",
+      "sha256": "8087a58f2fa8e0cdd8711dd1a1fedc3f5e5bd19d0ffe986bf1e715305e8938d2"
+    },
+    {
+      "path": "scripts/validate_task_boards.py",
+      "sha256": "22e8017b9cb2546d94bda814cefefcf4adf8cd29b23b057d5aad096742970147"
+    },
+    {
+      "path": "integrations/__init__.py",
+      "sha256": "30078c125470af6312603ea0a80579186da9fcf5cc58ebff81f03fee4114bd10"
+    },
+    {
+      "path": "integrations/ipfs_datasets/__init__.py",
+      "sha256": "cefaf9c207f4459d7b7b58b96e32fed41e3164a5868f1b6bbeaeabc9546e907c"
+    },
+    {
+      "path": "integrations/ipfs_datasets/graphs.py",
+      "sha256": "6cab198122bb0690a58594a1fadd524cb115e4ab4979d544fd5d01b2f29ad6ee"
+    },
+    {
+      "path": "applications/complaint_workspace.py",
+      "sha256": "9785ccd7e8a2467ab5ea17184c2672e8ed96b47749573fda00697bb4d90a98dd"
+    },
+    {
+      "path": "applications/complaint_cli.py",
+      "sha256": "c9dfadae93af4760ecd780ca5aefa772199e16b087e2ab0001bdfedb72b353dd"
+    },
+    {
+      "path": "applications/document_api.py",
+      "sha256": "a9c0a1261f9653d526f64228b6332505725e1b7f2c77fb294451d82114b251a5"
+    },
+    {
+      "path": "adversarial_harness/optimizer.py",
+      "sha256": "e2b6f14dea80812abc32b8d4f95a660bd7a737ca1d87278a445d3373228b6b59"
+    },
+    {
+      "path": "lib/knowledge_graph_export.py",
+      "sha256": "3354d4e981a943245cf6de91355cbe126a0f81a3c27a42dc8e01dcaf1f9b73b8"
+    },
+    {
+      "path": "lib/knowledge_graph_formats.py",
+      "sha256": "065a6dbef0d3e50eef715222d780987f54cdf15469e7ff74aa04cc7cc4021d11"
+    },
+    {
+      "path": "complaint_generator/__init__.py",
+      "sha256": "95701a99f0f2c6c6b4dc735abe8e3e3e40e619261b5d9a5129a30e18c4711d5c"
+    },
+    {
+      "path": "complaint_generator/workspace.py",
+      "sha256": "9a5b6a71dff335be7d3ff14be01458dcba091e9798e4c2ebb5412fd1f4dadbbe"
+    },
+    {
+      "path": "templates/document.html",
+      "sha256": "6a057d13a51ca32bdc658a7c70cc845070778390787e73909f094bf45862b16a"
+    },
+    {
+      "path": "static/complaint_mcp_sdk.js",
+      "sha256": "59fc3f306190ead456c6df93ba27d023208acc469305bc2b3e704003878f9a0b"
+    },
+    {
+      "path": "static/complaint_mcp_sdk.mjs",
+      "sha256": "c2cc785a69a37887988df5e959885e7e5bec5688ff5cd55dba5c0ccd8ced8061"
+    },
+    {
+      "path": "external/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/rescue/supervisor_watchdog.py",
+      "sha256": "6259343e7a0d76f8e0f5c25875421fd721ff3fbd0b282f8037fb674b68ce1be0"
+    },
+    {
+      "path": "external/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "sha256": "d947309ecb8fe8a631dc5651a476dd0d21777304ae59ae903a53386f0c7c3e7d"
+    },
+    {
+      "path": "external/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/integrations/llm_merge_resolver_fallback.py",
+      "sha256": "64d2f5694b6b8e6f9dcf34068cbb1288dd43786584c1b84f1cc21a3dee1978c1"
+    },
+    {
+      "path": "external/ipfs_accelerate_py/test/api/test_agent_supervisor_supervisor_watchdog.py",
+      "sha256": "0b36450bcacb6a503616aaf108b15fc662a34faec0f31e83b82b2d45ec96decb"
+    },
+    {
+      "path": "external/ipfs_accelerate_py/test/api/test_agent_supervisor_provider_live_streaming.py",
+      "sha256": "4639e67db1792e1c70c11fdd4fa872241af32f16272dd67853f3ef4e2025ce40"
+    }
+  ],
+  "supersedes": {
+    "historical_alignment_receipt": {
+      "completed_at": "2026-10-20T08:29:30.642330+00:00",
+      "task_scope": "19 alignment tasks only",
+      "report_sha256_before_refresh": "a588278a3f5d01aae6fa113528a7a64f28b0e5c71e6a7b09898f8aca78c87c05",
+      "backlog_coverage": "Older 30-task IPFS backlog was excluded by that historical report."
+    },
+    "refreshed_alignment_receipt": {
+      "path": "docs/task_boards/complaint_alignment_completion.json",
+      "sha256": "850ddef742a3ef29df69f7651f598d0afbbf323a6a6a63c2ef2501d8a0cfd82b"
+    }
+  },
+  "scope_notes": [
+    "Completion covers both taskboards referenced by the named session, including all ten IPFS tasks that initially required validation.",
+    "Native Grok and recovery behavior was tested hermetically; no live production Grok deployment or inference campaign is attested.",
+    "The local watch CLI monitors the formal alignment source checks until completion. Bounded retry exhaustion remains visible until inputs are repaired; manual holds are preserved.",
+    "Unrelated lift_coding supervisors were not changed or restarted.",
+    "An initial exploratory package test attempted the implicit default Codex provider. That owned test and its descendant were stopped. Final package validation blocked provider spawns and socket connections.",
+    "Four exploratory Docker-integration assertions expect old provider/model defaults and were left unchanged; they are outside the required taskboard validation commands and are not claimed as passed.",
+    "The full required driver ran with network off; browser flows used local fixtures. Optional live-provider tests were not counted as passed.",
+    "No task remains active in these boards. No ongoing background monitor is claimed after completion.",
+    "Source changes remain local and uncommitted, including changes within the ipfs_accelerate_py submodule. Preexisting unrelated workspace edits were preserved."
+  ],
+  "publication_context": {
+    "source_snapshot_commit": "cc2c2ea3",
+    "snapshot_note": "Completion-time counts, file hashes and local/uncommitted statements describe the source before integration with origin/main. They are historical evidence, not hashes of the later merged tree.",
+    "merged_tree_validation": "docs/task_boards/complaint_supervisor_publication.json",
+    "local_evidence_note": "Referenced .complaint_workspace reports are local artifacts and are not included in a GitHub clone."
+  }
+}

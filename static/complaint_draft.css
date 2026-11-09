@@ -1,0 +1,119 @@
+.complaint-draft-editor {
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px solid #d6d3d1;
+    border-radius: 12px;
+    background: #fffaf3;
+    color: #1c1917;
+}
+
+.complaint-draft-editor h4,
+.complaint-draft-editor p {
+    margin: 0 0 0.75rem;
+}
+
+.complaint-draft-editor textarea {
+    width: 100%;
+    min-height: 8rem;
+    font: inherit;
+    box-sizing: border-box;
+}
+
+.complaint-draft-editor button {
+    min-height: 44px;
+    margin: 0 0.5rem 0.5rem 0;
+}
+
+.complaint-draft-editor [data-role="save-state"][data-save-state="saving"] {
+    color: #92400e;
+}
+
+.complaint-draft-editor [data-role="save-state"][data-save-state="saved"] {
+    color: #166534;
+}
+
+.complaint-draft-editor [data-role="save-state"][data-save-state="conflict"],
+.complaint-draft-editor [data-role="save-state"][data-save-state="unavailable"] {
+    color: #991b1b;
+}
+
+.complaint-draft-editor [data-op="insert"] {
+    background: #dcfce7;
+}
+
+.complaint-draft-editor [data-op="delete"] {
+    background: #fee2e2;
+    text-decoration: line-through;
+}
+
+.complaint-draft-editor [data-role="revision-diff"] {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.complaint-outline__layout {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr) !important;
+    gap: 1rem;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.complaint-draft-editor,
+.complaint-outline__layout,
+[data-role="draft-column"],
+[data-role="support-column"],
+[data-role="draft-text"],
+[data-role="authority-span"],
+[data-role="model-prose"],
+[data-role="gap"],
+[data-role="section-body"] {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+[data-role="gap"] {
+    white-space: normal;
+}
+
+[data-tab-panel="draft"] {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+[data-tab-panel="draft"] button,
+.complaint-draft-editor button,
+.draft-section-nav button {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+}
+
+@media (max-width: 767px) {
+    .complaint-outline__layout,
+    [data-tab-panel="draft"] .stage-banner,
+    [data-tab-panel="draft"] * {
+        grid-template-columns: minmax(0, 1fr) !important;
+        min-width: 0;
+    }
+}
+
+@media (max-width: 390px) {
+    .complaint-outline__layout {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .complaint-draft-editor button,
+    .draft-section-nav button,
+    [data-tab-panel="draft"] .button-row button {
+        flex: 1 1 100%;
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+}

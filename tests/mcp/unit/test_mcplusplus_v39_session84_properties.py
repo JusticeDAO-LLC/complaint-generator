@@ -27,6 +27,7 @@ from ipfs_datasets_py.logic.security.llm_circuit_breaker import (
 )
 
 from ipfs_datasets_py.logic.observability.structured_logging import (
+    JSONLogFormatter,
     LogContext,
     get_logger,
     EventType,
@@ -193,18 +194,21 @@ class TestCircuitBreakerProperties:
         
         for i in range(call_count):
             if i % 2 == 0:
-                try:
-                    cb.call(lambda: "ok")
-                except Exception:
-                    pass
+                result = cb.call(lambda: "ok")
+                assert result == "ok"
             else:
-                try:
+                with pytest.raises(
+                    ZeroDivisionError,
+                    match="division by zero",
+                ):
                     cb.call(lambda: 1/0)
-                except Exception:
-                    pass
         
         metrics = cb.metrics
-        # Total calls must equal sum of successes and failures
+        expected_successes = (call_count + 1) // 2
+        expected_failures = call_count // 2
+        assert metrics.total_calls == call_count
+        assert metrics.success_count == expected_successes
+        assert metrics.failure_count == expected_failures
         assert metrics.total_calls == metrics.success_count + metrics.failure_count
 
 
@@ -261,42 +265,38 @@ class TestStructuredLoggingProperties:
     @settings(max_examples=50)
     def test_json_output_always_parses(self, log_message):
         """Property: All JSON log entries parse successfully."""
-        import json
+        import logging
         import tempfile
         from pathlib import Path
-        
-        # Create temporary log file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
-            temp_log = f.name
-        
-        try:
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_log = Path(temp_dir) / "structured.log"
             logger = get_logger("test", handlers=[])
-            
+
             # Add handler that writes to temp file
-            import logging
             handler = logging.FileHandler(temp_log)
-            from ipfs_datasets_py.logic.observability.structured_logging import JSONLogFormatter
-            handler.setFormatter(JSONLogFormatter())
-            logger.addHandler(handler)
-            
-            # Log message
-            logger.info(log_message)
-            handler.flush()
-            
-            # Parse and verify
-            entries = parse_json_log_file(Path(temp_log))
-            
-            # All entries must parse successfully
-            assert len(entries) > 0, "No log entries found"
-            assert all(isinstance(e, dict) for e in entries), \
-                "Some entries did not parse as dictionaries"
-        finally:
-            # Cleanup
-            import os
             try:
-                os.unlink(temp_log)
-            except:
-                pass
+                handler.setFormatter(JSONLogFormatter())
+                logger.addHandler(handler)
+
+                # Log message
+                logger.info(log_message)
+                handler.flush()
+
+                # Parse and verify
+                entries = parse_json_log_file(temp_log)
+
+                # All entries must parse successfully
+                assert len(entries) > 0, "No log entries found"
+                assert all(isinstance(e, dict) for e in entries), \
+                    "Some entries did not parse as dictionaries"
+            finally:
+                # A named logger survives across Hypothesis examples. Detach and
+                # close its per-example file handler before deleting the directory.
+                try:
+                    logger.removeHandler(handler)
+                finally:
+                    handler.close()
     
     @given(st.sampled_from([e.value for e in EventType]))
     @settings(max_examples=30)
@@ -406,6 +406,7 @@ class TestAdvancedProperties:
     """Tests for stretch goal properties (stretch goals for Session 84+)."""
     
     @example([])
+    @example([True])
     @given(st.lists(st.booleans(), max_size=50))
     @settings(max_examples=5)
     def test_empty_and_edge_case_sequences(self, sequence):
@@ -419,10 +420,10 @@ class TestAdvancedProperties:
             # Single item sequence
             if len(sequence) == 1:
                 cb = LLMCircuitBreaker(failure_threshold=10)
-                try:
-                    cb.call(lambda: "ok")
-                except Exception:
-                    pass
+                result = cb.call(lambda: "ok")
                 
                 metrics = cb.metrics
+                assert result == "ok"
                 assert metrics.total_calls == 1
+                assert metrics.success_count == 1
+                assert metrics.failure_count == 0

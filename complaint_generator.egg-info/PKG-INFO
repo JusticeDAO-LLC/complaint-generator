@@ -4,17 +4,31 @@ Version: 0.1.0
 Summary: Complaint generator workspace with package imports, CLI tools, MCP tools, and web surfaces.
 Requires-Python: >=3.12
 Description-Content-Type: text/markdown
-Requires-Dist: ipfs_datasets_py[file_conversion,knowledge_graphs,scraping,vectors]>=0.2.0
+Requires-Dist: ipfs_datasets_py[api,file_conversion,ipld,knowledge_graphs,logic,scraping,vectors]>=0.2.0
 Requires-Dist: mcp>=1.2.0
 Requires-Dist: fastapi>=0.104.0
 Requires-Dist: uvicorn<1.0.0,>=0.30.0
 Requires-Dist: pydantic>=2.0.0
+Requires-Dist: duckdb>=0.9.0
+Requires-Dist: cachetools>=5.3.0
+Requires-Dist: matplotlib>=3.5.0
+Requires-Dist: plotly>=5.9.0
+Requires-Dist: rdflib>=6.0.0
+Requires-Dist: neo4j>=5.20.0
+Requires-Dist: seaborn>=0.12.0
+Requires-Dist: spacy>=3.0.0
+Requires-Dist: yt-dlp>=2025.6.30
+Requires-Dist: ffmpeg-python>=0.2.0
 Requires-Dist: requests>=2.31.0
 Requires-Dist: httpx<1.0.0,>=0.28.1
 Requires-Dist: python-multipart>=0.0.9
 Requires-Dist: PyJWT<3.0.0,>=2.8.0
 Requires-Dist: beautifulsoup4<5.0.0,>=4.12.0
+Requires-Dist: newspaper3k<1.0.0,>=0.2.8
+Requires-Dist: readability-lxml<1.0.0,>=0.8.0
+Requires-Dist: lxml_html_clean>=0.4.0
 Requires-Dist: cryptography>=41.0.0
+Requires-Dist: cffi>=1.16.0
 Requires-Dist: python-docx>=1.1.2
 Requires-Dist: reportlab>=4.2.5
 Requires-Dist: typer>=0.12.0
@@ -143,6 +157,24 @@ Operator workflow for testimony capture, document intake, and legal sufficiency 
 
 [Dashboard Improvement Plan →](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md) | [Execution Backlog →](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md)
 
+### 📝 Mike Legal Document Editing Interface
+
+This repository now includes the `endomorphosis/mike` application as a submodule at `mike/` to provide a stronger legal document editing interface:
+
+- `mike/frontend` - Next.js editor and document workflow UI
+- `mike/backend` - Express API for document processing and persistence
+- `mike/backend/schema.sql` - one-shot Supabase schema for fresh databases
+- `mike/backend/migrations` - incremental updates for existing databases
+- `mike/docs` - product and implementation documentation
+
+Complaint workspace now also includes a Mike handoff/sync bridge:
+
+- `POST /api/complaint-workspace/mike/handoff` builds a prefilled Mike launch payload from intake, evidence, review, and draft state
+- `GET /api/complaint-workspace/mike/status` returns handoff/sync correlation status and next recommended action
+- `POST /api/complaint-workspace/mike/sync` writes Mike-edited draft content back into the complaint workspace session
+
+[Mike Integration Operator Playbook →](docs/MIKE_INTEGRATION_PLAYBOOK.md)
+
 ### 🧠 GraphRAG Ontology Optimization
 
 Knowledge-graph-powered document analysis and reasoning:
@@ -178,7 +210,24 @@ pip install -r requirements.txt
 # (Optional) Configure API keys
 export OPENAI_API_KEY="your-key"
 export BRAVE_SEARCH_API_KEY="your-key"
+# (Optional) Override Mike editor launch base URL used by handoff payloads
+export COMPLAINT_MIKE_BASE_URL="http://localhost:3000"
 ```
+
+### Mike Interface Setup
+
+Initialize the submodule, then install and run the Mike services:
+
+```bash
+git submodule update --init --recursive
+npm install --prefix mike/backend
+npm install --prefix mike/frontend
+# Run these in separate terminals
+npm run dev --prefix mike/backend
+npm run dev --prefix mike/frontend
+```
+
+Then open `http://localhost:3000` for the Mike interface.
 
 ### Package, CLI, MCP, and SDK Surfaces
 
@@ -827,6 +876,63 @@ rm statefiles/*.duckdb-wal
 
 ---
 
+## 🤖 Mike LLM Router Patch
+
+The Mike editor is monkey-patched at handoff time to route **all text generation requests** through the workspace `llm_router` rather than issuing calls directly.
+
+### How it works
+
+1. `apply_mike_llm_router_patch(handoff_payload)` is called from `ComplaintWorkspace.build_mike_handoff()`.
+2. The patch adds a `mike_llm_patch` block to the handoff payload that declares `workspace_llm_router_owns_generation: true` and enforces all `narrow_adapter_boundary` policy flags.
+3. Every MCP call from Mike's frontend that would normally call an external model is intercepted and re-routed through `integrations/mike/llm_patch.py → get_router_generate_fn()` → `generate_text_with_metadata()`.
+
+See `integrations/mike/llm_patch.py` and `integrations/mike/__init__.py`.
+
+---
+
+## 🧮 Draft-Text → Formal Logic → Theorem Prover Pipeline
+
+Complaint drafts can be validated against the legal corpus using a formal-logic pipeline before submission.
+
+### Pipeline steps (A → E)
+
+| Step | Function | Description |
+|------|----------|-------------|
+| A | `text_to_fol(body)` | Extracts First-Order Logic predicates from draft text using `ipfs_datasets_py.logic.fol.converter.FOLConverter` (falls back to regex) |
+| B | `legal_text_to_deontic(body)` | Extracts deontic (O/P/F) norms using `ipfs_datasets_py.logic.types.deontic_types.DeonticConverter` (falls back to regex) |
+| C | `constrain_assertions_to_corpus(predicates)` | Rejects predicates that cannot be grounded to the legal corpus (HuggingFace `justicedao/ipfs_state_laws` + federal register) |
+| D | `prove_claim_elements(predicates)` | Runs the hybrid reasoner + Z3 SMT prover via the `ipfs_datasets_py` reasoner bridge |
+| E | Policy check | Calls `check_policy_rules_with_deontic_norms()` to flag rule violations |
+
+The pipeline returns a `DraftProofReport`:
+
+```json
+{
+  "proof_status": "passed | needs_review | error | failed",
+  "contradiction_count": 0,
+  "chronology_blocked": false,
+  "ungrounded_assertions": [...],
+  "corpus_coverage_percent": 87.5,
+  "draft_proof_pipeline_version": "draft-logic-pipeline-v1"
+}
+```
+
+### Enabling the pipeline
+
+The pipeline is **opt-in** via environment variable to avoid slow corpus lookups during tests:
+
+```bash
+export COMPLAINT_USE_DRAFT_LOGIC_PIPELINE=1
+```
+
+### Integration point
+
+The pipeline is wired into `ComplaintWorkspace.sync_mike_final_draft()`. After a draft body is accepted, `_run_draft_logic_pipeline_safely()` is called and its `DraftProofReport` is merged into the existing `logic_review` via `_merge_draft_proof_report()`. The merged report surfaces `ungrounded_assertions` and `corpus_coverage_percent` in `_build_mike_editor_guardrails()` → `proof_readiness_flags`.
+
+See `integrations/ipfs_datasets/draft_logic_pipeline.py`.
+
+---
+
 ## 📈 Project Status
 
 ✅ Core systems implemented
@@ -835,8 +941,10 @@ rm statefiles/*.duckdb-wal
 ✅ Claim Support Review Dashboard
 ✅ Agentic document optimization with HF router
 ✅ Adversarial autopatch (demo and live modes)
+✅ Mike LLM router patch (integrations/mike/llm_patch.py)
+✅ Draft-text → formal logic → theorem prover pipeline
+✅ ipfs_datasets_py logic processors + legal corpus containment
 🚧 Web UI polish (in progress)
-🚧 IPFS Datasets Py full integration (in progress)
 📋 Mobile app (planned)
 
 ---

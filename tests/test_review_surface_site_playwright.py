@@ -2,6 +2,7 @@ import json
 import socket
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -479,6 +480,20 @@ def _serve_app(app):
         thread.join(timeout=5)
 
 
+@contextmanager
+def _launch_browser():
+    """Build and reliably dispose the Chromium fixture used by site smoke tests."""
+    _require_browser_stack()
+
+    with sync_playwright() as playwright_context:
+        browser = playwright_context.chromium.launch()
+        try:
+            yield browser
+        finally:
+            if browser.is_connected():
+                browser.close()
+
+
 def _wait_for_text(page, selector: str, expected_text: str) -> None:
     page.wait_for_function(
         """
@@ -503,6 +518,434 @@ def _wait_for_input_value(page, selector: str, expected_value: str) -> None:
     )
 
 
+def _build_review_surface_fixture(tmp_path: Path):
+    """Return a site app backed by a fresh, stateful review mediator."""
+    mediator = _SiteFlowMediator(tmp_path / "artifacts")
+    return mediator, create_review_surface_app(mediator)
+
+
+def _load_representative_review(page, base_url: str) -> None:
+    page.goto(
+        f"{base_url}/claim-support-review?claim_type=retaliation",
+        wait_until="domcontentloaded",
+    )
+    page.get_by_role("button", name="Load Review").click()
+    _wait_for_text(page, "#status-line", "Review payload loaded.")
+    _wait_for_text(page, "#confirm-intake-summary-status", "awaiting complainant confirmation")
+
+
+def _add_representative_testimony(page) -> None:
+    page.locator("#testimony-element-id").fill("retaliation:1")
+    page.locator("#testimony-element-text").fill("Protected activity")
+    page.locator("#testimony-actor").fill("Jane Doe")
+    page.locator("#testimony-act").fill("Reported discrimination to HR")
+    page.locator("#testimony-harm").fill("Supervisor retaliation")
+    page.locator("#testimony-narrative").fill(
+        "I reported discrimination to HR, and my supervisor started retaliating the next day."
+    )
+    page.get_by_role("button", name="Save Testimony").click()
+    _wait_for_text(page, "#testimony-summary-chips", "Records: 1")
+    _wait_for_text(page, "#testimony-list", "Protected activity")
+    _wait_for_text(page, "#testimony-list", "Reported discrimination to HR")
+
+
+def _add_representative_document(page) -> None:
+    page.locator("#document-element-id").fill("retaliation:1")
+    page.locator("#document-element-text").fill("Protected activity")
+    page.locator("#document-label").fill("Supervisor write-up")
+    page.locator("#document-filename").fill("writeup.txt")
+    page.locator("#document-text").fill(
+        "Supervisor issued a disciplinary write-up immediately after the protected report."
+    )
+    page.get_by_role("button", name="Save Document").click()
+    _wait_for_text(page, "#document-summary-chips", "Documents: 1")
+    _wait_for_text(page, "#document-list", "Supervisor write-up")
+    _wait_for_text(page, "#document-list", "Fact previews")
+
+
+def _confirm_representative_intake_summary(page) -> None:
+    page.locator("#confirm-intake-summary-note").fill(
+        "Reviewed with complainant on the dashboard."
+    )
+    page.locator("#confirm-intake-summary-button").click()
+    _wait_for_text(page, "#status-line", "Intake summary confirmed.")
+    _wait_for_text(page, "#confirm-intake-summary-status", "Intake summary confirmed")
+    assert page.locator("#confirm-intake-summary-button").is_disabled()
+
+
+def _add_representative_support_states(page) -> None:
+    """Populate testimony, documentary, and confirmed-intake review states."""
+    _add_representative_testimony(page)
+    _add_representative_document(page)
+    _confirm_representative_intake_summary(page)
+
+
+def _capture_fixture_screenshot(page, path: Path) -> Path:
+    """Capture a fixture screenshot and fail clearly when no image was rendered."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(path), full_page=True)
+    assert path.is_file()
+    assert path.stat().st_size > 0
+    return path
+
+
+def _write_sectioned_parquet(path: Path, rows: list[dict]) -> Path:
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.Table.from_pylist(rows), path)
+    return path
+
+
+def _bundle_row(
+    *,
+    dataset_id: str,
+    docket_id: str = "",
+    workspace_id: str = "",
+    case_name: str = "",
+    workspace_name: str = "",
+    section: str,
+    row_index: int,
+    row_id: str,
+    title: str = "",
+    text: str = "",
+    payload: dict | None = None,
+) -> dict:
+    payload_dict = dict(payload or {})
+    return {
+        "dataset_id": dataset_id,
+        "docket_id": docket_id,
+        "workspace_id": workspace_id,
+        "case_name": case_name,
+        "workspace_name": workspace_name,
+        "court": payload_dict.get("court", "D. Example"),
+        "section": section,
+        "row_index": row_index,
+        "row_id": row_id,
+        "title": title,
+        "document_number": str(payload_dict.get("document_number") or ""),
+        "source_url": str(payload_dict.get("source_url") or ""),
+        "text": text,
+        "payload_json": json.dumps(payload_dict, sort_keys=True),
+    }
+
+
+def _write_dashboard_docket_parquet(tmp_path: Path) -> Path:
+    dataset_id = "docket_dataset_dashboard_playwright"
+    docket_id = "dashboard-docket-playwright"
+    case_name = "Dashboard Playwright Docket"
+    return _write_sectioned_parquet(
+        tmp_path / "dashboard_docket.dataset.parquet",
+        [
+            _bundle_row(
+                dataset_id=dataset_id,
+                docket_id=docket_id,
+                case_name=case_name,
+                section="dataset_core",
+                row_index=1,
+                row_id="dataset_core_1",
+                title=case_name,
+                payload={
+                    "dataset_id": dataset_id,
+                    "docket_id": docket_id,
+                    "case_name": case_name,
+                    "court": "D. Example",
+                    "metadata": {"fixture": "dashboard-playwright"},
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                docket_id=docket_id,
+                case_name=case_name,
+                section="documents",
+                row_index=1,
+                row_id="docket-doc-1",
+                title="Motion to Compel Accommodation Records",
+                text="Plaintiff moves to compel production of accommodation records.",
+                payload={
+                    "id": "docket-doc-1",
+                    "title": "Motion to Compel Accommodation Records",
+                    "document_number": "17",
+                    "text": "Plaintiff moves to compel production of accommodation records.",
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                docket_id=docket_id,
+                case_name=case_name,
+                section="documents",
+                row_index=2,
+                row_id="docket-doc-2",
+                title="Notice of Hearing",
+                text="The court sets a hearing for April 21, 2026.",
+                payload={
+                    "id": "docket-doc-2",
+                    "title": "Notice of Hearing",
+                    "date_filed": "2026-04-01",
+                    "document_number": "22",
+                    "text": "The court sets a hearing for April 21, 2026.",
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                docket_id=docket_id,
+                case_name=case_name,
+                section="bm25_documents",
+                row_index=1,
+                row_id="docket-doc-2",
+                title="Notice of Hearing",
+                text="Notice of Hearing The court sets a hearing for April 21, 2026.",
+                payload={
+                    "document_id": "docket-doc-2",
+                    "title": "Notice of Hearing",
+                    "text": "Notice of Hearing The court sets a hearing for April 21, 2026.",
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                docket_id=docket_id,
+                case_name=case_name,
+                section="knowledge_graph_entities",
+                row_index=1,
+                row_id="issue-hearing",
+                title="Hearing issue",
+                payload={"id": "issue-hearing", "type": "legal_issue", "label": "Hearing issue"},
+            ),
+        ],
+    )
+
+
+def _write_dashboard_workspace_parquet(tmp_path: Path) -> Path:
+    dataset_id = "workspace_dataset_dashboard_playwright"
+    workspace_id = "dashboard-workspace-playwright"
+    workspace_name = "Dashboard Playwright Workspace"
+    return _write_sectioned_parquet(
+        tmp_path / "dashboard_workspace.dataset.parquet",
+        [
+            _bundle_row(
+                dataset_id=dataset_id,
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                section="dataset_core",
+                row_index=1,
+                row_id="dataset_core_1",
+                title=workspace_name,
+                payload={
+                    "dataset_id": dataset_id,
+                    "workspace_id": workspace_id,
+                    "workspace_name": workspace_name,
+                    "source_type": "workspace",
+                    "metadata": {
+                        "fixture": "dashboard-playwright",
+                        "formal_logic_summary": {
+                            "deontic_statement_count": 2,
+                            "proof_count": 1,
+                            "deontic_conflict_count": 1,
+                        },
+                        "formal_logic": {
+                            "document_analyses": {
+                                "workspace-doc-1": {
+                                    "deontic_statements": [
+                                        {
+                                            "id": "stmt-accommodation-1",
+                                            "entity": "Housing Provider",
+                                            "modality": "obligation",
+                                            "action": "review reasonable accommodation",
+                                            "conditions": ["tenant requests disability-related accommodation"],
+                                            "exceptions": ["request is only a preference"],
+                                            "source_document": "workspace-doc-1",
+                                            "source_text": "Housing Provider must review reasonable accommodation.",
+                                        },
+                                        {
+                                            "id": "stmt-accommodation-2",
+                                            "entity": "Housing Provider",
+                                            "modality": "prohibition",
+                                            "action": "deny reasonable accommodation without review",
+                                            "conditions": ["request is complete"],
+                                            "exceptions": [],
+                                            "source_document": "workspace-doc-1",
+                                            "source_text": "Housing Provider cannot deny reasonable accommodation without review.",
+                                        }
+                                    ],
+                                    "events": [
+                                        {
+                                            "id": "stmt-accommodation-1:event",
+                                            "agent": "Housing Provider",
+                                            "label": "review reasonable accommodation",
+                                            "time": "",
+                                        },
+                                        {
+                                            "id": "stmt-accommodation-2:event",
+                                            "agent": "Housing Provider",
+                                            "label": "deny reasonable accommodation without review",
+                                            "time": "",
+                                        },
+                                    ],
+                                    "frames": [
+                                        {
+                                            "frame_id": "frame-accommodation-1",
+                                            "object_id": "stmt-accommodation-1",
+                                            "slots": {"document_id": "workspace-doc-1"},
+                                        }
+                                    ],
+                                }
+                            },
+                            "deontic_conflicts": [
+                                {
+                                    "id": "conflict-accommodation-1",
+                                    "severity": "medium",
+                                    "explanation": "Accommodation review timing conflict",
+                                }
+                            ],
+                            "temporal_fol": {"backend": "tdfol_constructor", "formulas": ["Eventually(accommodation_reviewed)"]},
+                            "first_order_logic": {"backend": "fol_constructor", "formulas": ["Prohibited(provider, deny_without_review)"]},
+                            "deontic_cognitive_event_calculus": {"backend": "eng_dcec_wrapper", "formulas": ["Obligation(provider, review)"]},
+                            "frame_logic": {
+                                "frame-accommodation-1": {
+                                    "frame_id": "frame-accommodation-1",
+                                    "isa": "DeonticStatement",
+                                }
+                            },
+                            "proof_store": {
+                                "proofs": {
+                                    "proof-accommodation-1": {
+                                        "proof_id": "proof-accommodation-1",
+                                        "status": "proved",
+                                        "query": "deny reasonable accommodation without review",
+                                        "root_conclusion": "provider is prohibited from denial without review",
+                                        "proof_hash": "proofhash1",
+                                        "certificates": ["cert-accommodation-1"],
+                                    }
+                                },
+                                "certificates": [
+                                    {
+                                        "certificate_id": "cert-accommodation-1",
+                                        "backend": "groth16",
+                                        "format": "groth16_zksnark",
+                                        "theorem": "deny reasonable accommodation without review",
+                                        "assumptions": ["request is complete"],
+                                    }
+                                ],
+                                "summary": {"proof_count": 1},
+                                "metadata": {
+                                    "backend": "formal_logic_proof_store",
+                                    "zkp_status": {
+                                        "available": True,
+                                        "backend": "groth16",
+                                        "backend_info": {"binary_available": True, "curve_id": "bn254"},
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                section="documents",
+                row_index=1,
+                row_id="workspace-doc-1",
+                title="Accommodation Request Email",
+                text="Tenant requested a reasonable accommodation and attached medical support.",
+                payload={
+                    "document_id": "workspace-doc-1",
+                    "title": "Accommodation Request Email",
+                    "document_type": "email",
+                    "claim_type": "housing_discrimination",
+                    "claim_element_id": "causation",
+                    "text": "Tenant requested a reasonable accommodation and attached medical support.",
+                    "metadata": {
+                        "collection_id": "workspace-collection-1",
+                        "document_type": "email",
+                        "claim_type": "housing_discrimination",
+                        "claim_element_id": "causation",
+                    },
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                section="collections",
+                row_index=1,
+                row_id="workspace-collection-1",
+                title="Accommodation Evidence",
+                payload={
+                    "id": "workspace-collection-1",
+                    "title": "Accommodation Evidence",
+                    "document_ids": ["workspace-doc-1"],
+                    "source_type": "workspace",
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                section="bm25_documents",
+                row_index=1,
+                row_id="workspace-doc-1",
+                title="Accommodation Request Email",
+                text="Accommodation Request Email Tenant requested a reasonable accommodation and attached medical support.",
+                payload={
+                    "document_id": "workspace-doc-1",
+                    "title": "Accommodation Request Email",
+                    "text": "Accommodation Request Email Tenant requested a reasonable accommodation and attached medical support.",
+                    "metadata": {
+                        "collection_id": "workspace-collection-1",
+                        "document_type": "email",
+                        "claim_type": "housing_discrimination",
+                        "claim_element_id": "causation",
+                    },
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                section="knowledge_graph_entities",
+                row_index=1,
+                row_id="entity-request",
+                title="Accommodation request",
+                payload={"id": "entity-request", "type": "event", "label": "Accommodation request"},
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                section="knowledge_graph_relationships",
+                row_index=1,
+                row_id="relationship-request-doc",
+                title="Accommodation request relationship",
+                payload={
+                    "id": "relationship-request-doc",
+                    "type": "DESCRIBES",
+                    "source": "workspace-doc-1",
+                    "target": "entity-request",
+                },
+            ),
+            _bundle_row(
+                dataset_id=dataset_id,
+                workspace_id=workspace_id,
+                workspace_name=workspace_name,
+                section="vector_items",
+                row_index=1,
+                row_id="workspace-doc-1",
+                title="Accommodation Request Email",
+                text="Accommodation Request Email Tenant requested a reasonable accommodation and attached medical support.",
+                payload={
+                    "document_id": "workspace-doc-1",
+                    "title": "Accommodation Request Email",
+                    "vector": [0.2, 0.4, 0.6, 0.8],
+                    "metadata": {"collection_id": "workspace-collection-1", "document_type": "email"},
+                },
+            ),
+        ],
+    )
+
+
 def test_review_surface_site_navigation_serves_all_operator_pages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     _require_browser_stack()
 
@@ -523,11 +966,10 @@ def test_review_surface_site_navigation_serves_all_operator_pages(monkeypatch: p
         lambda cid: {"status": "available", "data": trace_bytes, "size": len(trace_bytes)},
     )
 
-    app = create_review_surface_app(_SiteFlowMediator(tmp_path / "artifacts"))
+    _, app = _build_review_surface_fixture(tmp_path)
 
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             try:
                 page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -598,11 +1040,10 @@ def test_review_surface_site_navigation_supports_review_to_builder_to_trace_loop
         lambda cid: {"status": "available", "data": trace_bytes, "size": len(trace_bytes)},
     )
 
-    app = create_review_surface_app(_SiteFlowMediator(tmp_path / "artifacts"))
+    _, app = _build_review_surface_fixture(tmp_path)
 
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             try:
                 page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -649,52 +1090,18 @@ def test_review_surface_site_navigation_supports_review_to_builder_to_trace_loop
 def test_review_surface_dashboard_actions_update_live_review(tmp_path: Path):
     _require_browser_stack()
 
-    mediator = _SiteFlowMediator(tmp_path / "artifacts")
-    app = create_review_surface_app(mediator)
+    mediator, app = _build_review_surface_fixture(tmp_path)
 
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             try:
-                page.goto(
-                    f"{base_url}/claim-support-review?claim_type=retaliation",
-                    wait_until="domcontentloaded",
-                )
-                page.get_by_role("button", name="Load Review").click()
-                _wait_for_text(page, "#status-line", "Review payload loaded.")
-                _wait_for_text(page, "#confirm-intake-summary-status", "awaiting complainant confirmation")
+                _load_representative_review(page, base_url)
+                _add_representative_support_states(page)
 
-                page.locator("#testimony-element-id").fill("retaliation:1")
-                page.locator("#testimony-element-text").fill("Protected activity")
-                page.locator("#testimony-actor").fill("Jane Doe")
-                page.locator("#testimony-act").fill("Reported discrimination to HR")
-                page.locator("#testimony-harm").fill("Supervisor retaliation")
-                page.locator("#testimony-narrative").fill(
-                    "I reported discrimination to HR, and my supervisor started retaliating the next day."
-                )
-                page.get_by_role("button", name="Save Testimony").click()
-                _wait_for_text(page, "#testimony-summary-chips", "Records: 1")
-                _wait_for_text(page, "#testimony-list", "Protected activity")
-                _wait_for_text(page, "#testimony-list", "Reported discrimination to HR")
-
-                page.locator("#document-element-id").fill("retaliation:1")
-                page.locator("#document-element-text").fill("Protected activity")
-                page.locator("#document-label").fill("Supervisor write-up")
-                page.locator("#document-filename").fill("writeup.txt")
-                page.locator("#document-text").fill(
-                    "Supervisor issued a disciplinary write-up immediately after the protected report."
-                )
-                page.get_by_role("button", name="Save Document").click()
-                _wait_for_text(page, "#document-summary-chips", "Documents: 1")
-                _wait_for_text(page, "#document-list", "Supervisor write-up")
-                _wait_for_text(page, "#document-list", "Fact previews")
-
-                page.locator("#confirm-intake-summary-note").fill("Reviewed with complainant on the dashboard.")
-                page.locator("#confirm-intake-summary-button").click()
-                _wait_for_text(page, "#status-line", "Intake summary confirmed.")
-                _wait_for_text(page, "#confirm-intake-summary-status", "Intake summary confirmed")
-                assert page.locator("#confirm-intake-summary-button").is_disabled()
+                assert len(mediator._testimony_records) == 1
+                assert len(mediator._evidence_records) == 1
+                assert mediator._summary_confirmation["confirmed"] is True
             finally:
                 browser.close()
 
@@ -702,63 +1109,30 @@ def test_review_surface_dashboard_actions_update_live_review(tmp_path: Path):
 def test_review_surface_live_dashboard_captures_loaded_and_updated_review_screenshots(tmp_path: Path):
     _require_browser_stack()
 
-    mediator = _SiteFlowMediator(tmp_path / "artifacts")
-    app = create_review_surface_app(mediator)
+    mediator, app = _build_review_surface_fixture(tmp_path)
     screenshot_dir = tmp_path / "review-surface-live-dashboard-snapshots"
-    screenshot_dir.mkdir(parents=True, exist_ok=True)
 
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page(viewport={"width": 1440, "height": 1200})
             try:
-                page.goto(
-                    f"{base_url}/claim-support-review?claim_type=retaliation",
-                    wait_until="domcontentloaded",
-                )
-                page.get_by_role("button", name="Load Review").click()
-                _wait_for_text(page, "#status-line", "Review payload loaded.")
-                _wait_for_text(page, "#confirm-intake-summary-status", "awaiting complainant confirmation")
+                _load_representative_review(page, base_url)
                 _wait_for_text(page, "body", "Operator Review Surface")
 
-                loaded_screenshot = screenshot_dir / "review-loaded.png"
-                page.screenshot(path=str(loaded_screenshot), full_page=True)
-                assert loaded_screenshot.exists()
-                assert loaded_screenshot.stat().st_size > 0
-
-                page.locator("#testimony-element-id").fill("retaliation:1")
-                page.locator("#testimony-element-text").fill("Protected activity")
-                page.locator("#testimony-actor").fill("Jane Doe")
-                page.locator("#testimony-act").fill("Reported discrimination to HR")
-                page.locator("#testimony-harm").fill("Supervisor retaliation")
-                page.locator("#testimony-narrative").fill(
-                    "I reported discrimination to HR, and my supervisor started retaliating the next day."
+                loaded_screenshot = _capture_fixture_screenshot(
+                    page, screenshot_dir / "review-loaded.png"
                 )
-                page.get_by_role("button", name="Save Testimony").click()
-                _wait_for_text(page, "#testimony-summary-chips", "Records: 1")
-                _wait_for_text(page, "#testimony-list", "Protected activity")
 
-                page.locator("#document-element-id").fill("retaliation:1")
-                page.locator("#document-element-text").fill("Protected activity")
-                page.locator("#document-label").fill("Supervisor write-up")
-                page.locator("#document-filename").fill("writeup.txt")
-                page.locator("#document-text").fill(
-                    "Supervisor issued a disciplinary write-up immediately after the protected report."
+                _add_representative_support_states(page)
+                assert len(mediator._testimony_records) == 1
+                assert len(mediator._evidence_records) == 1
+                assert mediator._summary_confirmation["confirmed"] is True
+
+                updated_screenshot = _capture_fixture_screenshot(
+                    page, screenshot_dir / "review-updated.png"
                 )
-                page.get_by_role("button", name="Save Document").click()
-                _wait_for_text(page, "#document-summary-chips", "Documents: 1")
-                _wait_for_text(page, "#document-list", "Supervisor write-up")
 
-                page.locator("#confirm-intake-summary-note").fill("Reviewed with complainant on the dashboard.")
-                page.locator("#confirm-intake-summary-button").click()
-                _wait_for_text(page, "#status-line", "Intake summary confirmed.")
-                _wait_for_text(page, "#confirm-intake-summary-status", "Intake summary confirmed")
-                assert page.locator("#confirm-intake-summary-button").is_disabled()
-
-                updated_screenshot = screenshot_dir / "review-updated.png"
-                page.screenshot(path=str(updated_screenshot), full_page=True)
-                assert updated_screenshot.exists()
-                assert updated_screenshot.stat().st_size > 0
+                assert loaded_screenshot.read_bytes() != updated_screenshot.read_bytes()
             finally:
                 browser.close()
 
@@ -766,11 +1140,10 @@ def test_review_surface_live_dashboard_captures_loaded_and_updated_review_screen
 def test_review_surface_restores_review_focus_after_reopen(tmp_path: Path):
     _require_browser_stack()
 
-    app = create_review_surface_app(_SiteFlowMediator(tmp_path / "artifacts"))
+    _, app = _build_review_surface_fixture(tmp_path)
 
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             context = browser.new_context()
             try:
                 page = context.new_page()
@@ -798,11 +1171,10 @@ def test_review_surface_restores_review_focus_after_reopen(tmp_path: Path):
 def test_review_surface_restores_document_builder_state_and_review_resume_link(tmp_path: Path):
     _require_browser_stack()
 
-    app = create_review_surface_app(_SiteFlowMediator(tmp_path / "artifacts"))
+    _, app = _build_review_surface_fixture(tmp_path)
 
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             context = browser.new_context()
             try:
                 review_page = context.new_page()
@@ -858,13 +1230,11 @@ def test_review_surface_restores_document_builder_state_and_review_resume_link(t
 def test_review_surface_resume_loop_captures_builder_and_review_screenshots(tmp_path: Path):
     _require_browser_stack()
 
-    app = create_review_surface_app(_SiteFlowMediator(tmp_path / "artifacts"))
+    _, app = _build_review_surface_fixture(tmp_path)
     screenshot_dir = tmp_path / "review-surface-resume-snapshots"
-    screenshot_dir.mkdir(parents=True, exist_ok=True)
 
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             context = browser.new_context(viewport={"width": 1440, "height": 1200})
             try:
                 review_page = context.new_page()
@@ -903,10 +1273,9 @@ def test_review_surface_resume_loop_captures_builder_and_review_screenshots(tmp_
                 )
                 resume_link = resumed_builder.get_by_role("link", name="Resume Review Focus")
                 assert resume_link.is_visible()
-                builder_screenshot = screenshot_dir / "builder-resume-link.png"
-                resumed_builder.screenshot(path=str(builder_screenshot), full_page=True)
-                assert builder_screenshot.exists()
-                assert builder_screenshot.stat().st_size > 0
+                _capture_fixture_screenshot(
+                    resumed_builder, screenshot_dir / "builder-resume-link.png"
+                )
 
                 resume_href = resume_link.get_attribute("href") or ""
                 assert resume_href.startswith("/claim-support-review?")
@@ -918,10 +1287,9 @@ def test_review_surface_resume_loop_captures_builder_and_review_screenshots(tmp_
                 _wait_for_input_value(resumed_builder, "#claim-type", "retaliation")
                 _wait_for_input_value(resumed_builder, "#user-id", "resume-user")
                 _wait_for_text(resumed_builder, "#status-line", "Review payload loaded.")
-                review_screenshot = screenshot_dir / "review-resumed-focus.png"
-                resumed_builder.screenshot(path=str(review_screenshot), full_page=True)
-                assert review_screenshot.exists()
-                assert review_screenshot.stat().st_size > 0
+                _capture_fixture_screenshot(
+                    resumed_builder, screenshot_dir / "review-resumed-focus.png"
+                )
             finally:
                 context.close()
                 browser.close()
@@ -930,11 +1298,10 @@ def test_review_surface_resume_loop_captures_builder_and_review_screenshots(tmp_
 def test_review_surface_ipfs_dashboard_shells_render_all_registered_dashboards(tmp_path: Path):
     _require_browser_stack()
 
-    app = create_review_surface_app(_SiteFlowMediator(tmp_path / "artifacts"))
+    _, app = _build_review_surface_fixture(tmp_path)
 
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             try:
                 page.goto(f"{base_url}/dashboards", wait_until="domcontentloaded")
@@ -953,11 +1320,10 @@ def test_review_surface_ipfs_dashboard_shells_render_all_registered_dashboards(t
 def test_review_surface_ipfs_dashboard_raw_routes_render_all_registered_dashboards(tmp_path: Path):
     _require_browser_stack()
 
-    app = create_review_surface_app(_SiteFlowMediator(tmp_path / "artifacts"))
+    _, app = _build_review_surface_fixture(tmp_path)
 
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             try:
                 for slug, title in _IPFS_DASHBOARD_ROUTES:
@@ -971,6 +1337,116 @@ def test_review_surface_ipfs_dashboard_raw_routes_render_all_registered_dashboar
                     body_text = page.locator("body").inner_text().strip()
                     assert body_text
                     assert page.title().strip()
+            finally:
+                browser.close()
+
+
+@pytest.mark.no_auto_llm
+def test_review_surface_dashboard_parquet_cards_support_search_review_and_annotation(tmp_path: Path):
+    _require_browser_stack()
+
+    docket_parquet = _write_dashboard_docket_parquet(tmp_path)
+    workspace_parquet = _write_dashboard_workspace_parquet(tmp_path)
+    user_id = f"dashboard-playwright-user-{uuid.uuid4().hex}"
+    _, app = _build_review_surface_fixture(tmp_path)
+    screenshot_dir = tmp_path / "dashboard-parquet-review-screenshots"
+
+    with _serve_app(app) as base_url:
+        with _launch_browser() as browser:
+            page = browser.new_page(viewport={"width": 1440, "height": 1100})
+            try:
+                page.goto(f"{base_url}/dashboards?user_id={user_id}", wait_until="domcontentloaded")
+                assert page.get_by_role("heading", name="Unified Dashboard Hub").is_visible()
+                assert page.get_by_role("heading", name="Docket Dataset Parquet Dashboard").is_visible()
+                assert page.get_by_role("heading", name="Workspace Dataset Parquet Entry Point").is_visible()
+                assert page.get_by_role("heading", name="Dataset Document Annotation").is_visible()
+
+                page.locator("#dashboard-docket-dataset-path").fill(str(docket_parquet))
+                page.locator("#dashboard-docket-dataset-query").fill("hearing")
+                page.locator("#dashboard-load-docket-dataset").click()
+                _wait_for_text(page, "#dashboard-docket-dataset-status", "Loaded docket dataset view")
+                _wait_for_text(page, "#dashboard-docket-dataset-preview", "Notice of Hearing")
+                assert page.locator("#dashboard-docket-dataset-documents").inner_text() == "2"
+                assert page.locator("#dashboard-docket-dataset-events").inner_text() == "1"
+
+                page.locator("#dashboard-search-docket-dataset").click()
+                _wait_for_text(page, "#dashboard-docket-dataset-status", "Loaded docket dataset search")
+                _wait_for_text(page, "#dashboard-docket-dataset-preview", "docket-doc-2")
+                _wait_for_input_value(page, "#dashboard-dataset-annotation-document-id", "docket-doc-2")
+                assert int(page.locator("#dashboard-docket-dataset-results").inner_text()) >= 1
+                _capture_fixture_screenshot(
+                    page, screenshot_dir / "docket-dataset-search.png"
+                )
+
+                page.locator("#dashboard-workspace-dataset-path").fill(str(workspace_parquet))
+                page.locator("#dashboard-workspace-dataset-query").fill("accommodation")
+                page.locator("#dashboard-workspace-dataset-claim-type").fill("housing_discrimination")
+                page.locator("#dashboard-workspace-dataset-document-type").fill("email")
+                page.locator("#dashboard-load-workspace-dataset").click()
+                _wait_for_text(page, "#dashboard-workspace-dataset-status", "Loaded workspace dataset view")
+                _wait_for_text(page, "#dashboard-workspace-dataset-preview", "Accommodation Request Email")
+                assert page.locator("#dashboard-workspace-dataset-documents").inner_text() == "1"
+                assert page.locator("#dashboard-workspace-dataset-collections").inner_text() == "1"
+                assert int(page.locator("#dashboard-workspace-dataset-entities").inner_text()) >= 1
+                assert int(page.locator("#dashboard-workspace-dataset-relationships").inner_text()) >= 1
+                assert int(page.locator("#dashboard-workspace-dataset-vectors").inner_text()) >= 1
+                assert int(page.locator("#dashboard-workspace-dataset-logic").inner_text()) >= 1
+                assert int(page.locator("#dashboard-workspace-dataset-proofs").inner_text()) >= 1
+
+                page.locator("#dashboard-search-workspace-dataset").click()
+                _wait_for_text(page, "#dashboard-workspace-dataset-status", "Loaded workspace dataset search")
+                _wait_for_text(page, "#dashboard-workspace-dataset-preview", "workspace-doc-1")
+                _wait_for_input_value(page, "#dashboard-dataset-annotation-document-id", "workspace-doc-1")
+                assert int(page.locator("#dashboard-workspace-dataset-results").inner_text()) >= 1
+
+                page.locator("#dashboard-workspace-graph-query").fill("accommodation")
+                page.locator("#dashboard-workspace-graph-relationship-type").fill("DESCRIBES")
+                page.locator("#dashboard-workspace-graph-modality").select_option("prohibited")
+                page.locator("#dashboard-load-workspace-graph").click()
+                _wait_for_text(page, "#dashboard-workspace-graph-status", "Loaded workspace graph explorer")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "relationship-request-doc")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "stmt-accommodation-2")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "deny reasonable accommodation without review")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "request is complete")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "event_flow_edges")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "prohibited")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "flow_edges")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "deontic_temporal_first_order_logic")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "deontic_cognitive_event_calculus")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "first_order_logic")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "proof_system")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "zero_knowledge_proofs")
+                _wait_for_text(page, "#dashboard-workspace-graph-preview", "groth16")
+                assert int(page.locator("#dashboard-workspace-graph-matches").inner_text()) >= 1
+                assert int(page.locator("#dashboard-workspace-flow-statements").inner_text()) >= 1
+                assert int(page.locator("#dashboard-workspace-flow-events").inner_text()) >= 1
+                assert int(page.locator("#dashboard-workspace-flow-prohibited").inner_text()) >= 1
+                assert int(page.locator("#dashboard-workspace-flow-conflicts").inner_text()) >= 1
+                assert int(page.locator("#dashboard-workspace-flow-tdfol").inner_text()) >= 1
+                assert int(page.locator("#dashboard-workspace-flow-dcec").inner_text()) >= 1
+                assert int(page.locator("#dashboard-workspace-flow-zkp").inner_text()) >= 1
+
+                page.locator("#dashboard-dataset-annotation-user-id").fill(user_id)
+                page.locator("#dashboard-dataset-annotation-user-name").fill("Playwright Reviewer")
+                page.locator("#dashboard-dataset-annotation-user-role").fill("browser QA reviewer")
+                page.locator("#dashboard-dataset-annotation-tags").fill("accommodation, causation, playwright-reviewed")
+                page.locator("#dashboard-dataset-annotation-note").fill(
+                    "Reviewed in Playwright: this document supports the accommodation causation theory."
+                )
+                page.locator("#dashboard-save-dataset-annotation").click()
+                _wait_for_text(page, "#dashboard-dataset-annotation-status", "Saved annotation for workspace-doc-1")
+                _wait_for_text(page, "#dashboard-dataset-annotation-preview", "dashboard-workspace-dataset-annotation")
+                _wait_for_text(page, "#dashboard-dataset-annotation-preview", "Accommodation Request Email annotation")
+                _wait_for_text(page, "#dashboard-dataset-annotation-preview", "playwright-reviewed")
+                _wait_for_text(page, "#dashboard-dataset-annotation-preview", "Playwright Reviewer")
+                _wait_for_text(page, "#dashboard-dataset-annotation-preview", "tagged_with")
+                _wait_for_text(page, "#dashboard-dataset-annotation-preview", "workspace_annotation_index")
+                _wait_for_text(page, "#dashboard-dataset-annotation-preview", "workspace-collection-1")
+                _wait_for_text(page, "#dashboard-dataset-annotation-preview", "email")
+                assert page.locator("#dashboard-workspace-evidence").inner_text() == "1"
+                _capture_fixture_screenshot(
+                    page, screenshot_dir / "workspace-dataset-annotation.png"
+                )
             finally:
                 browser.close()
 
@@ -1049,8 +1525,7 @@ def test_review_surface_workspace_sdk_flow_exercises_mcp_tools(
     app = create_review_surface_app(mediator=object())
 
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             try:
                 page.goto(f"{base_url}/workspace", wait_until="domcontentloaded")

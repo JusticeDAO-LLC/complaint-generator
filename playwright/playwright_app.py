@@ -37,6 +37,21 @@ PROFILE_DATA = {
 }
 
 
+def sanitize_profile_data_for_client(value):
+    if isinstance(value, list):
+        return [sanitize_profile_data_for_client(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    sanitized = {}
+    for key, nested_value in value.items():
+        normalized_key = str(key).lower()
+        if any(token in normalized_key for token in ("password", "credential", "secret", "token", "api_key", "session_key", "private_key")):
+            sanitized[key] = "[redacted]"
+        else:
+            sanitized[key] = sanitize_profile_data_for_client(nested_value)
+    return sanitized
+
+
 app = FastAPI(title="Complaint Generator Playwright Surface")
 
 if STATIC.is_dir():
@@ -113,7 +128,7 @@ async def load_profile(request: Request) -> JSONResponse:
     result = {
         "hashed_username": request_payload.get("hashed_username") or PROFILE_DATA["hashed_username"],
         "hashed_password": request_payload.get("hashed_password") or PROFILE_DATA["hashed_password"],
-        "data": json.dumps(PROFILE_DATA),
+        "data": json.dumps(sanitize_profile_data_for_client(PROFILE_DATA)),
     }
     return JSONResponse({"results": result} if "username" in request_payload else result)
 

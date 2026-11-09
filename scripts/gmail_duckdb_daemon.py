@@ -16,11 +16,29 @@ from typing import Any
 import anyio
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
-from ipfs_datasets_py.processors.legal_data.email_auth import resolve_gmail_credentials
-from ipfs_datasets_py.processors.legal_data.email_pipeline import run_gmail_duckdb_pipeline
+from integrations.ipfs_datasets.legal_data import load_legal_symbol
+from integrations.ipfs_datasets.loader import import_failure_message
+
+
+def _require_ipfs_attr(module_name: str, attr_name: str, label: str):
+    try:
+        return load_legal_symbol(attr_name, module=module_name)
+    except ImportError as error:
+        raise ImportError(
+            f"Unable to import ipfs_datasets_py {label}: "
+            f"{import_failure_message(error) or f'missing {attr_name}'}"
+        ) from error
+
+
+async def run_gmail_duckdb_pipeline(**kwargs):
+    """Load the upstream-owned pipeline only when a daemon cycle runs."""
+    pipeline = _require_ipfs_attr(
+        "email_pipeline",
+        "run_gmail_duckdb_pipeline",
+        "Gmail DuckDB pipeline",
+    )
+    return await pipeline(**kwargs)
 
 
 _STOP_REQUESTED = False
@@ -61,9 +79,18 @@ def _pid_is_running(pid: int) -> bool:
     return True
 
 
+def _json_default(value: Any) -> str:
+    if isinstance(value, Path):
+        return str(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False, default=_json_default),
+        encoding="utf-8",
+    )
 
 
 def _build_progress_summary(args: argparse.Namespace) -> dict[str, Any]:
@@ -166,6 +193,38 @@ def _build_progress_summary(args: argparse.Namespace) -> dict[str, Any]:
     return summary
 
 
+def _status_artifacts(
+    *,
+    args: argparse.Namespace,
+    pid_file: Path,
+    status_file: Path,
+    log_file: Path,
+    progress_summary: dict[str, Any],
+    last_result: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the stable artifact manifest used by daemon status consumers."""
+
+    artifacts: dict[str, Any] = {
+        "evidence_root": str(Path(args.evidence_root).expanduser().resolve()),
+        "duckdb_output_dir": str(Path(args.duckdb_output_dir).expanduser().resolve()),
+        "pid_file": str(pid_file),
+        "status_file": str(status_file),
+        "log_file": str(log_file),
+    }
+    for key in ("artifact_root", "manifest_path", "checkpoint_path", "progress_path"):
+        value = progress_summary.get(key)
+        if value:
+            artifacts[key] = str(value)
+
+    if isinstance(last_result, dict):
+        duckdb_index = last_result.get("duckdb_index")
+        if isinstance(duckdb_index, dict):
+            for key, value in duckdb_index.items():
+                if value and (key.endswith("_path") or key.endswith("_dir")):
+                    artifacts[key] = str(value)
+    return artifacts
+
+
 def _write_status(
     *,
     status_file: Path,
@@ -185,8 +244,22 @@ def _write_status(
             pid = int(pid_file.read_text(encoding="utf-8").strip() or "0")
         except Exception:
             pid = None
+    now = datetime.now(UTC).isoformat()
+    progress_summary = _build_progress_summary(args)
+    artifacts = _status_artifacts(
+        args=args,
+        pid_file=pid_file,
+        status_file=status_file,
+        log_file=log_file,
+        progress_summary=progress_summary,
+        last_result=last_result,
+    )
     payload = {
         "status": state,
+        "pid": pid,
+        "updated_at": now,
+        "artifacts": artifacts,
+        "last_error": error,
         "user_id": args.user_id,
         "gmail_user": str(args.gmail_user or ""),
         "addresses": list(args.addresses or []),
@@ -204,15 +277,15 @@ def _write_status(
         "cycle_count": int(cycle_count),
         "phase": str(phase or state),
         "consecutive_errors": int(consecutive_errors or 0),
-        "pid": pid,
         "pid_file": str(pid_file),
+        "status_file": str(status_file),
         "log_file": str(log_file),
         "duckdb_output_dir": str(Path(args.duckdb_output_dir).expanduser().resolve()),
         "evidence_root": str(Path(args.evidence_root).expanduser().resolve()),
-        "last_updated_at": datetime.now(UTC).isoformat(),
+        "last_updated_at": now,
         "last_result": last_result,
         "error": error,
-        "progress_summary": _build_progress_summary(args),
+        "progress_summary": progress_summary,
     }
     _write_json(status_file, payload)
     return payload
@@ -290,7 +363,16 @@ def _add_shared_pipeline_args(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run a resumable Gmail-to-DuckDB daemon.")
+    parser = argparse.ArgumentParser(
+        description="Run a resumable Gmail-to-DuckDB daemon.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Ingestion options for run/start include:\n"
+            "  --uid-range-span\n"
+            "  --duckdb-build-every-batches\n"
+            "Use run --help or start --help for the full option list."
+        ),
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run_parser = subparsers.add_parser("run", help="Run the Gmail DuckDB daemon in the foreground.")
@@ -324,6 +406,11 @@ def _resolve_credentials(args: argparse.Namespace, parser: argparse.ArgumentPars
         if not getattr(args, "gmail_oauth_client_secrets", None):
             parser.error("--gmail-oauth-client-secrets is required when --use-gmail-oauth is enabled.")
         return gmail_user, ""
+    resolve_gmail_credentials = _require_ipfs_attr(
+        "email_auth",
+        "resolve_gmail_credentials",
+        "Gmail credential resolver",
+    )
     return resolve_gmail_credentials(
         gmail_user=str(args.gmail_user or ""),
         gmail_app_password=str(args.gmail_app_password or ""),
@@ -340,7 +427,7 @@ async def _run_cycle(args: argparse.Namespace) -> dict[str, Any]:
     return await run_gmail_duckdb_pipeline(
         user_id=args.user_id,
         addresses=args.addresses,
-        collect_all_messages=bool(args.collect_all_messages),
+        collect_all_messages=bool(getattr(args, "collect_all_messages", False)),
         claim_element_id=args.claim_element_id,
         folder=args.folder,
         folders=args.scan_folder,
@@ -494,6 +581,7 @@ def _run_daemon(args: argparse.Namespace) -> dict[str, Any]:
             state=final_state,
             args=args,
             last_result=last_result,
+            error=status_state.get("error"),
             cycle_count=cycle_count,
             phase=final_state,
             consecutive_errors=consecutive_errors,
@@ -513,14 +601,15 @@ def _run_daemon(args: argparse.Namespace) -> dict[str, Any]:
 def _build_run_command(args: argparse.Namespace, *, pid_file: Path, status_file: Path, log_file: Path) -> tuple[list[str], dict[str, str]]:
     cmd = [
         sys.executable,
-        str(Path(__file__).resolve()),
+        "-m",
+        "scripts.gmail_duckdb_daemon",
         "run",
         "--user-id",
         args.user_id,
     ]
     for address in list(args.addresses or []):
         cmd.extend(["--address", address])
-    if args.collect_all_messages:
+    if getattr(args, "collect_all_messages", False):
         cmd.append("--collect-all-messages")
     cmd.extend(["--claim-element-id", args.claim_element_id])
     cmd.extend(["--folder", args.folder])
@@ -575,9 +664,6 @@ def _build_run_command(args: argparse.Namespace, *, pid_file: Path, status_file:
     env = dict(os.environ)
     if args.gmail_app_password:
         env["GMAIL_APP_PASSWORD"] = str(args.gmail_app_password)
-    repo_root = Path("/home/barberb/ipfs_datasets_py").resolve()
-    existing_pythonpath = str(env.get("PYTHONPATH") or "").strip()
-    env["PYTHONPATH"] = f"{repo_root}:{existing_pythonpath}" if existing_pythonpath else str(repo_root)
     return cmd, env
 
 
@@ -623,6 +709,14 @@ def _status_payload(args: argparse.Namespace) -> dict[str, Any]:
     pid_file, status_file, log_file = _resolve_runtime_paths(args)
     payload: dict[str, Any] = {
         "status": "missing",
+        "updated_at": datetime.now(UTC).isoformat(),
+        "artifacts": {
+            "duckdb_output_dir": str(Path(args.duckdb_output_dir).expanduser().resolve()),
+            "pid_file": str(pid_file),
+            "status_file": str(status_file),
+            "log_file": str(log_file),
+        },
+        "last_error": None,
         "pid_file": str(pid_file),
         "status_file": str(status_file),
         "log_file": str(log_file),
@@ -638,7 +732,16 @@ def _status_payload(args: argparse.Namespace) -> dict[str, Any]:
     payload["running"] = _pid_is_running(int(payload["pid"] or 0))
     if status_file.exists():
         payload["status"] = "ok"
-        payload["status_payload"] = json.loads(status_file.read_text(encoding="utf-8"))
+        status_payload = json.loads(status_file.read_text(encoding="utf-8"))
+        payload["status_payload"] = status_payload
+        if isinstance(status_payload, dict):
+            payload["updated_at"] = str(
+                status_payload.get("updated_at")
+                or status_payload.get("last_updated_at")
+                or payload["updated_at"]
+            )
+            payload["artifacts"] = dict(status_payload.get("artifacts") or payload["artifacts"])
+            payload["last_error"] = status_payload.get("last_error", status_payload.get("error"))
     return payload
 
 

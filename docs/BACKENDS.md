@@ -9,7 +9,7 @@ The complaint generator uses a flexible backend architecture that supports multi
 1. **LLM Router Backend** - Multi-provider routing with automatic fallback
 2. **Provider-Specific Backends** - Direct integrations with OpenAI, HuggingFace, etc.
 3. **Workstation Backend** - Local model inference
-4. **IPFS Integration** - Distributed storage and content addressing
+4. **IPFS Integration** - Content-addressed storage through `integrations/ipfs_datasets/storage.py`. `ipfs_kit_py` is the storage owner when `COMPLAINT_GENERATOR_ENABLE_IPFS_KIT` is enabled. The datasets IPFS backend router remains the bridge, and the local cache is the degraded mode when neither kit nor the datasets router is available. Inference routers live in `ipfs_accelerate_py`.
 
 ## LLM Router Backend (`backends/llm_router_backend.py`)
 

@@ -101,9 +101,11 @@ integrations/__init__.py
 integrations/ipfs_datasets/__init__.py
 integrations/ipfs_datasets/capabilities.py
 integrations/ipfs_datasets/documents.py
+integrations/ipfs_datasets/draft_logic_pipeline.py
 integrations/ipfs_datasets/graphrag.py
 integrations/ipfs_datasets/graphs.py
 integrations/ipfs_datasets/legal.py
+integrations/ipfs_datasets/legal_data.py
 integrations/ipfs_datasets/llm.py
 integrations/ipfs_datasets/loader.py
 integrations/ipfs_datasets/logic.py
@@ -111,12 +113,17 @@ integrations/ipfs_datasets/mcp_gateway.py
 integrations/ipfs_datasets/multimodal.py
 integrations/ipfs_datasets/policy_rules.py
 integrations/ipfs_datasets/provenance.py
+integrations/ipfs_datasets/quality.py
 integrations/ipfs_datasets/router_status.py
 integrations/ipfs_datasets/scraper_daemon.py
 integrations/ipfs_datasets/search.py
 integrations/ipfs_datasets/storage.py
+integrations/ipfs_datasets/theorem_export.py
 integrations/ipfs_datasets/types.py
 integrations/ipfs_datasets/vector_store.py
+integrations/mike/__init__.py
+integrations/mike/llm_patch.py
+integrations/mike/skills/__init__.py
 lib/__init__.py
 lib/chat_payloads.py
 lib/deontic_logic.py
@@ -178,6 +185,7 @@ tests/test_agentic_scraper_cli.py
 tests/test_application_launcher.py
 tests/test_attachment_text_extractor.py
 tests/test_backfill_claim_testimony_links_cli.py
+tests/test_batch3_ambiguity_contradiction_workflow.py
 tests/test_batch_205_neurosymbolic_methods.py
 tests/test_batch_206_denoiser_methods.py
 tests/test_batch_207_legalgraph_methods.py
@@ -220,6 +228,7 @@ tests/test_batch_264_api_type_contracts.py
 tests/test_batch_265_path_validation_security.py
 tests/test_cache_invalidation.py
 tests/test_canary_ops_validation.py
+tests/test_check_contradictions_and_graphrag_local.py
 tests/test_claim_support_hooks.py
 tests/test_claim_support_regression_workflow_contract.py
 tests/test_claim_support_review_dashboard_flow.py
@@ -251,6 +260,7 @@ tests/test_document_pipeline.py
 tests/test_document_pipeline_fallbacks.py
 tests/test_document_workflow_targeting_summary.py
 tests/test_domain_adaptation_learning.py
+tests/test_draft_logic_pipeline.py
 tests/test_email_agentic_search.py
 tests/test_email_authority_enrichment.py
 tests/test_email_duckdb_index.py
@@ -278,6 +288,7 @@ tests/test_import_local_eml_directory.py
 tests/test_inquiries.py
 tests/test_inquiries_priority.py
 tests/test_intake_case_file.py
+tests/test_intake_evidence_backlog_batch0_2.py
 tests/test_intake_status.py
 tests/test_integration.py
 tests/test_ipfs_adapter_import_boundary.py
@@ -289,6 +300,7 @@ tests/test_ipfs_llm_accelerate_diagnostics.py
 tests/test_ipfs_llm_huggingface_router.py
 tests/test_ipfs_logic_adapter.py
 tests/test_ipfs_provenance.py
+tests/test_ipld_logic_storage_dependency.py
 tests/test_legal_authority_hooks.py
 tests/test_legal_document_parsing.py
 tests/test_legal_hooks.py
@@ -303,6 +315,7 @@ tests/test_llm_fallback_integration.py
 tests/test_llm_router_backend.py
 tests/test_llm_router_circuit_breaker.py
 tests/test_llm_router_codex_quota_detection.py
+tests/test_llm_router_p2p_task_queue_provider.py
 tests/test_llm_router_provider_priority.py
 tests/test_llm_router_shim_claude_code.py
 tests/test_llm_router_shim_codex_cli.py
@@ -320,6 +333,12 @@ tests/test_logic_integrations_import_quiet.py
 tests/test_logic_local_formal_logic_bridge.py
 tests/test_logic_public_api_contract.py
 tests/test_logic_zkp_import_quiet.py
+tests/test_m3_graph_snapshot_support_paths.py
+tests/test_m3_graphrag_quality_scoring.py
+tests/test_m3_predicate_templates.py
+tests/test_m4_operator_drilldown.py
+tests/test_m4_retrieval_sessions.py
+tests/test_m5_legal_proof_contradiction_engine.py
 tests/test_main_chat_payload.py
 tests/test_master_case_email.py
 tests/test_mediator.py
@@ -327,6 +346,8 @@ tests/test_mediator_inquiry_payload.py
 tests/test_mediator_legal_support_context.py
 tests/test_mediator_three_phase.py
 tests/test_merge_email_manifests.py
+tests/test_mike_skills.py
+tests/test_mike_status_contract.py
 tests/test_multimodal_router_backend.py
 tests/test_negation_handling_extraction.py
 tests/test_no_duckdb_fallbacks.py
@@ -342,7 +363,9 @@ tests/test_performance_profiling_suite.py
 tests/test_phase_manager_temporal_registry.py
 tests/test_pipeline_json_logger_types.py
 tests/test_primary_surface_button_contract.py
+tests/test_proof_report_and_pinning.py
 tests/test_property_based_extraction_testing.py
+tests/test_quality_scorer_and_new_mcp_tools.py
 tests/test_refinement_feedback_loops.py
 tests/test_relationship_inference_accuracy.py
 tests/test_response_validators_types.py
@@ -360,6 +383,7 @@ tests/test_run_hacc_preset_matrix.py
 tests/test_run_hacc_unit_regression_cli.py
 tests/test_run_package_install_smoke_cli.py
 tests/test_run_standard_regression_cli.py
+tests/test_score_improve_proof_history.py
 tests/test_search_hooks.py
 tests/test_sgd_cycle_integration.py
 tests/test_show_hacc_grounded_history_cli.py
@@ -367,9 +391,13 @@ tests/test_state.py
 tests/test_support_map.py
 tests/test_surya_ocr_compat.py
 tests/test_sweep_ranker.py
+tests/test_symbolicai_logic_dependency.py
 tests/test_synonym_handling_resolution.py
 tests/test_synthesize_hacc_complaint.py
+tests/test_t1_t3_temporal_next_steps.py
 tests/test_temporal_reasoning_extraction.py
+tests/test_temporal_rule_profiles.py
+tests/test_theorem_export.py
 tests/test_ui_optimizer_daemon_cli.py
 tests/test_ui_review_multimodal.py
 tests/test_ui_review_router_fallback_regression.py
@@ -379,6 +407,7 @@ tests/test_ui_ux_workflow.py
 tests/test_validate_intake_follow_up_worksheet.py
 tests/test_validation_cache_types.py
 tests/test_vector_phase2_integration.py
+tests/test_w94_authority_graph_integration.py
 tests/test_web_evidence_hooks.py
 tests/test_website_cohesion_playwright.py
 tests/test_workflow_phase_guidance.py

@@ -30,6 +30,105 @@ High-level architecture of the complaint-generator system, showing how all compo
 
 ## Component Layers
 
+## Runtime Entrypoint and Ownership Map
+
+This section is the refactor baseline for deciding where new code belongs and
+which modules should be split first. The current package exposes thin script
+entrypoints in `pyproject.toml`; those entrypoints mostly delegate into
+`applications/` modules or daemon modules. Refactor work should preserve these
+public command names while moving implementation detail behind smaller internal
+modules.
+
+### Public Runtime Entrypoints
+
+| Surface | Public entrypoint | Current owner | Responsibility | Refactor guidance |
+|---|---|---|---|---|
+| Main package command | `complaint-generator` -> `complaint_generator.entrypoints:main` | `complaint_generator/entrypoints.py`, `run.py` | Legacy top-level command dispatch. | Keep as compatibility wrapper; move behavior into named application or service modules. |
+| Workspace CLI | `complaint-workspace`, `complaint-generator-workspace` -> `complaint_generator.cli:main` | `applications/complaint_cli.py`, `applications/complaint_workspace.py` | Typer CLI for sessions, intake, evidence, review, document generation, imports, and daemon commands. | Keep CLI parsing thin; route workflow behavior through `ComplaintWorkspaceService` or smaller service modules. |
+| MCP server | `complaint-mcp-server`, `complaint-generator-mcp` -> `complaint_generator.mcp_server:main` | `applications/complaint_mcp_server.py`, `applications/complaint_mcp_protocol.py` | MCP protocol surface and tool exposure. | Treat protocol schemas as stable contracts; do not place business logic in protocol handlers. |
+| UI/UX workflow | `complaint-ui-ux-workflow` -> `complaint_generator.ui_ux_workflow:main` | `complaint_generator/ui_ux_workflow.py`, `applications/ui_review.py` | Browser audit, review, and actor-critic UI workflow orchestration. | Keep automation orchestration separate from UI payload builders and workspace state helpers. |
+| UI optimizer daemon | `complaint-ui-optimizer-daemon` -> `complaint_generator.ui_optimizer_daemon:main` | `complaint_generator/ui_optimizer_daemon.py` | Long-running UI optimization daemon with status, logs, screenshots, and review artifacts. | Align daemon status payloads with other daemons; keep task derivation separate from process lifecycle code. |
+| Review API | `applications.review_api:create_review_api_app` | `applications/review_api.py`, `applications/document_api.py` | FastAPI claim-support and document review endpoints. | Keep route handlers as DTO adapters; move normalization and payload assembly behind explicit helpers. |
+| Dashboard UI | `applications.dashboard_ui` | `applications/dashboard_ui.py`, templates/static assets | Browser dashboard, review hub, IPFS dashboard links, and fixture-backed display surfaces. | Split fixture/data assembly from route rendering before changing UI behavior. |
+| Refactor supervisor | `scripts/refactor_agent_supervisor.py` | `data/refactor_supervisor/*`, `docs/REFACTOR_SUPERVISOR_TASKBOARD.md` | Codebase scan, goal/subgoal generation, DuckDB taskboard refill using `ipfs_accelerate_py.p2p_tasks.TaskQueue`. | Planning-only daemon; implementation agents should claim scoped tasks and run the task's validation command. |
+
+### Package Ownership Boundaries
+
+| Package or directory | Owner role | Inputs | Outputs | Refactor notes |
+|---|---|---|---|---|
+| `applications/` | User-facing transport layer for CLI, FastAPI, dashboard, review, and browser workflows. | HTTP requests, CLI options, uploaded files, user/session IDs. | DTO payloads, rendered HTML, files, and calls into workspace or mediator services. | Should not own deep legal workflow logic. Extract route groups and fixture builders before feature changes. |
+| `complaint_generator/` | Public package compatibility layer plus workspace and daemon orchestration. | Console script calls, workspace requests, UI optimization cycles. | Stable package imports, CLI/MCP wrappers, workspace service responses, daemon status artifacts. | Keep top-level modules import-light and preserve existing public exports. |
+| `mediator/` | Core workflow orchestration and stateful legal/evidence hooks. | Normalized case state, evidence, authorities, graph outputs, adapter capabilities. | Claim support payloads, review plans, follow-up execution, formal document inputs. | `mediator/mediator.py` and `mediator/claim_support_hooks.py` are highest-risk extraction targets; split by cohesive service while preserving public method names. |
+| `complaint_phases/` | Workflow graph primitives and three-phase complaint processing. | Complaint narratives, claim requirements, entities, facts, authorities. | Knowledge graphs, dependency graphs, intake case files, denoiser questions, legal graph matches. | Keep domain graph algorithms here; optional graph persistence/query calls may use the integration port, but avoid importing application or transport modules. |
+| `integrations/ipfs_datasets/` | Optional dependency adapter boundary for `ipfs_datasets_py` and related capabilities. | Adapter calls from mediator, workspace, document, search, graph, GraphRAG, logic, storage, and LLM code. | Degraded-mode safe results, capability reports, provenance, parsed documents, graph/query outputs. | Production code should route optional dependency behavior through this layer rather than direct imports or ad hoc `sys.path` mutation. |
+| `backends/` | LLM/provider backend adapters. | Provider configuration, prompts, model choices, rate limits. | Text or multimodal model responses. | Keep provider-specific failure handling here and expose typed errors to callers. |
+| `lib/` | Cross-consumer utility contracts for formal logic, document rendering, graph export, support maps, and payload helpers. | Pure data structures or local file inputs. | Reusable utilities without user-interface side effects. | Shared code should land here only when it has at least two real consumers. |
+| `scripts/` | Operator and batch workflows. | Shell/CLI invocation, local paths, batch options. | Reports, imports, generated docs, local artifacts. | Run repository scripts from an installed environment or as modules from the repository root. Entrypoints must not mutate `sys.path` to discover project or sibling modules. |
+| `tests/` | Regression and contract coverage. | Public APIs, fixtures, snapshots, browser flows. | Safety net for refactor slices. | Add focused lanes before large extractions: imports, adapter degraded mode, mediator, document pipeline, and UI smoke. |
+
+### Current Extraction Priorities
+
+The codebase scan that seeded the refactor taskboard found 433 Python files,
+260 test files, and 243,492 Python lines. The largest runtime modules and their
+first extraction direction are:
+
+| Module | Current size signal | First safe extraction |
+|---|---:|---|
+| `mediator/mediator.py` | 10,852 lines | Move one cohesive workflow service behind private helpers while keeping `Mediator` public methods stable. |
+| `applications/complaint_workspace.py` | 7,881 lines | Extract route/service payload builders and workspace state helpers from request-level orchestration. |
+| `scripts/synthesize_hacc_complaint.py` | 6,933 lines | Split batch orchestration, data loading, and report rendering into importable helpers before behavior changes. |
+| `complaint_phases/denoiser.py` | 5,691 lines | Separate scoring, prompt/question generation, and graph gap analysis. |
+| `applications/dashboard_ui.py` | 5,562 lines | Extract dashboard entry catalogs, fixture builders, and render helpers from route setup. |
+| `mediator/claim_support_hooks.py` | 5,309 lines | Split persistence/query helpers from review payload assembly and follow-up planning. |
+
+### Allowed Import Direction
+
+The dependency rule for production packages is top-down: user-facing surfaces
+call orchestration, orchestration calls domain workflow and adapter packages,
+and stable cross-consumer helpers sit at the bottom in `lib/`. Lower layers must
+not import higher layers. The same contract is recorded in `pyproject.toml`
+under `[tool.complaint_generator.import_boundaries]` and is enforced by
+`tests/test_package_imports.py`.
+
+| Package | May import these project packages | Must not import |
+|---|---|---|
+| `applications/` | `applications/`, `mediator/`, `complaint_phases/`, `integrations/`, `lib/` | Keep reusable legal, evidence, graph, and document workflow logic out of route handlers, CLI commands, Typer setup, FastAPI setup, and browser fixtures. |
+| `mediator/` | `mediator/`, `complaint_phases/`, `integrations/`, `lib/` | Do not import `applications/`, UI frameworks, CLI frameworks, browser fixtures, templates, static assets, or script-only modules. |
+| `complaint_phases/` | `complaint_phases/`, `integrations/`, `lib/` | Do not import `applications/`, `mediator/`, provider backends, or concrete `ipfs_datasets_py` modules. Integration imports are limited to explicit persistence/query ports; phase algorithms should stay deterministic and domain-focused. |
+| `integrations/` | `integrations/`, `lib/` | Do not import `applications/`, `mediator/`, or `complaint_phases/` from adapter code; integration modules translate optional dependencies into local contracts. |
+| `lib/` | `lib/` | Do not import application, mediator, phase, integration, backend, script, template, or static-asset modules. |
+
+`complaint_generator/` remains the public compatibility package for console
+scripts and import aliases. Its wrappers may delegate to `applications/`, but
+new workflow behavior should still be implemented in the layer that owns it and
+then exposed through a thin compatibility wrapper only when a public import path
+requires it.
+
+### Shared Code Rule
+
+Keep code in its owning layer until two or more production consumers need the
+same side-effect-light helper or data contract. At that point, move the stable
+shared piece to `lib/` and keep transport concerns, persistence setup, provider
+calls, and optional dependency loading in their original owner packages. Shared
+code in `lib/` should accept plain values or small local data objects, avoid
+network or database side effects, and be useful without importing application or
+mediator state.
+
+### Refactor Dependency Rules
+
+1. New production imports between `applications/`, `mediator/`,
+   `complaint_phases/`, `integrations/`, and `lib/` must match the allowed
+   import table above.
+2. Production optional dependency access should flow through
+   `integrations/ipfs_datasets/`; direct `ipfs_datasets_py` imports are allowed
+   only in adapters, tests, benchmarks, or explicitly documented shims.
+3. Long-running automation should expose `status`, `pid`, `updated_at`,
+   artifact paths, queue counts where applicable, and a stop path.
+4. Each refactor slice should name a validation lane before code movement.
+5. Operator entrypoints must resolve normal project imports from the installed
+   package (or module execution from the repository root), never by modifying
+   `sys.path`. File-based loading is reserved for isolated tooling and tests.
+
 ### Layer 1: User Interface
 - **CLI Application** - Command-line interface for interactive complaints
 - **Web Application** - Browser-based UI (future)

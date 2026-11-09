@@ -397,22 +397,38 @@ def _serve_app(app: FastAPI):
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
 
-    base_url = f"http://{host}:{port}"
-    deadline = time.time() + 15
-    while time.time() < deadline:
-        try:
-            response = requests.get(f"{base_url}/health", timeout=0.5)
-            if response.ok:
-                break
-        except Exception:
-            pass
-        time.sleep(0.1)
-    else:  # pragma: no cover - startup hard failure
-        server.should_exit = True
-        thread.join(timeout=5)
-        raise RuntimeError("Timed out waiting for browser fixture app")
-
     try:
+        base_url = f"http://{host}:{port}"
+        deadline = time.time() + 15
+        last_request_error = None
+        last_health_status = None
+        while time.time() < deadline:
+            try:
+                response = requests.get(f"{base_url}/health", timeout=0.5)
+            except requests.RequestException as exc:
+                # Connection failures are expected while Uvicorn starts.
+                # Restrict retries to request-layer errors so test and fixture
+                # defects remain visible, and retain the failure for a useful
+                # timeout diagnostic.
+                last_request_error = exc
+                last_health_status = None
+            else:
+                last_request_error = None
+                last_health_status = response.status_code
+                if response.ok:
+                    break
+            time.sleep(0.1)
+        else:  # pragma: no cover - startup hard failure
+            if last_request_error is not None:
+                raise RuntimeError(
+                    "Timed out waiting for browser fixture app; "
+                    f"last health request failed: {last_request_error}"
+                ) from last_request_error
+            raise RuntimeError(
+                "Timed out waiting for browser fixture app; "
+                f"last health response status: {last_health_status}"
+            )
+
         yield base_url
     finally:
         server.should_exit = True

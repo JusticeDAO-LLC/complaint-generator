@@ -1,0 +1,916 @@
+{
+  "schema_version": "complaint-generator.supervisor_task_board.v1",
+  "generated_for": "ipfs_accelerate_py_agent_supervisor",
+  "updated_at": "2026-10-20",
+  "purpose": "Canonical machine-readable board for coordinating the complaint-generator IPFS datasets, claim-support review, intake/evidence, payload-contract, and temporal-proof backlogs with an external agent supervisor or daemon.",
+  "source_documents": [
+    "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+    "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+    "docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md",
+    "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md",
+    "docs/PAYLOAD_CONTRACTS.md",
+    "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md"
+  ],
+  "status_values": [
+    "complete",
+    "validation_required",
+    "in_progress",
+    "planned",
+    "deferred",
+    "blocked"
+  ],
+  "priority_values": [
+    "P0",
+    "P1",
+    "P2"
+  ],
+  "supervisor": {
+    "repository": "endomorphosis/ipfs_accelerate_py",
+    "compatible_entrypoints": [
+      "ipfs-accelerate mcp start",
+      "python -m ipfs_accelerate_py.mcp.cli --p2p-task-worker --p2p-service --p2p-queue ~/.cache/ipfs_datasets_py/task_queue.duckdb",
+      "python -m ipfs_accelerate_py.mcp_server.fastapi_service"
+    ],
+    "queue_contract": {
+      "claim_strategy": "claim_before_execute",
+      "completion_strategy": "complete_only_after_validation",
+      "failure_strategy": "store_failure_with_validation_output",
+      "idempotency_key_fields": [
+        "task_id",
+        "source_doc",
+        "validation_commands"
+      ]
+    },
+    "task_payload_requirements": [
+      "task_id",
+      "title",
+      "source_doc",
+      "status",
+      "priority",
+      "target_files",
+      "acceptance_criteria",
+      "validation_commands"
+    ]
+  },
+  "execution_rules": [
+    "Do not bypass integrations/ipfs_datasets/ for production ipfs_datasets_py usage.",
+    "Treat PAYLOAD_CONTRACTS.md as the public payload source of truth and keep json fences parseable.",
+    "Do not mark a task complete until its validation_commands pass or an explicit degraded-mode rationale is recorded.",
+    "Prefer queue-backed execution for long-running acquisition, parsing, graph, retrieval, proof, and review-enrichment work.",
+    "Preserve degraded-mode behavior when optional graph, vector, logic, OCR, archive, or P2P features are unavailable."
+  ],
+  "tasks": [
+    {
+      "task_id": "CSR-M0",
+      "title": "Question and testimony foundation",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "templates/claim_support_review.html",
+        "mediator/claim_support_hooks.py",
+        "complaint_phases/denoiser.py",
+        "complaint_phases/knowledge_graph.py",
+        "complaint_phases/dependency_graph.py",
+        "docs/PAYLOAD_CONTRACTS.md",
+        "docs/APPLICATIONS.md"
+      ],
+      "acceptance_criteria": [
+        "Recommended questions map to unresolved elements, contradictions, or gaps.",
+        "Testimony persists as raw narrative plus structured facts.",
+        "Review payloads show testimony-to-element support.",
+        "Dashboard explains why each question is being asked."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py -q",
+        "python -m pytest tests/test_review_api.py -q"
+      ]
+    },
+    {
+      "task_id": "CSR-M1",
+      "title": "Document intake and decomposition plane",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "templates/claim_support_review.html",
+        "integrations/ipfs_datasets/documents.py",
+        "mediator/evidence_hooks.py",
+        "mediator/web_evidence_hooks.py",
+        "mediator/claim_support_hooks.py",
+        "docs/PAYLOAD_CONTRACTS.md"
+      ],
+      "acceptance_criteria": [
+        "Dashboard-ingested materials produce normalized parse records and chunk references.",
+        "Chunks trace to artifact and page or span provenance.",
+        "Low-quality parses are visible and remediable."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_evidence_hooks.py -q",
+        "python -m pytest tests/test_web_evidence_hooks.py -q",
+        "python -m pytest tests/test_review_api.py -q"
+      ]
+    },
+    {
+      "task_id": "CSR-M2",
+      "title": "Fact registry and element support ledger",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "mediator/claim_support_hooks.py",
+        "integrations/ipfs_datasets/types.py",
+        "integrations/ipfs_datasets/provenance.py",
+        "docs/PAYLOAD_CONTRACTS.md",
+        "templates/claim_support_review.html"
+      ],
+      "acceptance_criteria": [
+        "Element status can be explained by concrete fact IDs.",
+        "Facts trace to testimony, document chunks, or authorities.",
+        "Support ledgers can feed replay and document handoff."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py -q"
+      ]
+    },
+    {
+      "task_id": "CSR-M3",
+      "title": "Graph snapshot persistence and support paths",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P1",
+      "depends_on": [
+        "CSR-M2"
+      ],
+      "target_files": [
+        "integrations/ipfs_datasets/graphs.py",
+        "complaint_phases/knowledge_graph.py",
+        "complaint_phases/dependency_graph.py",
+        "mediator/claim_support_hooks.py",
+        "templates/claim_support_review.html"
+      ],
+      "acceptance_criteria": [
+        "Each claim element can show a graph-backed support path.",
+        "Review flows reuse persisted graph snapshots.",
+        "Entity resolution reduces duplicate source nodes."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py -q",
+        "python -m pytest tests/test_review_api.py -q"
+      ]
+    },
+    {
+      "task_id": "CSR-M4",
+      "title": "Retrieval sessions and evidence ranking",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P1",
+      "depends_on": [
+        "CSR-M2"
+      ],
+      "target_files": [
+        "integrations/ipfs_datasets/vector_store.py",
+        "integrations/ipfs_datasets/documents.py",
+        "mediator/claim_support_hooks.py",
+        "templates/claim_support_review.html",
+        "docs/PAYLOAD_CONTRACTS.md"
+      ],
+      "acceptance_criteria": [
+        "Operators can inspect ranked chunks for a claim element.",
+        "Retrieval sessions are replayable.",
+        "Questions can cite retrieval context."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_m4_retrieval_sessions.py -q",
+        "python -m pytest tests/test_claim_support_hooks.py -q"
+      ]
+    },
+    {
+      "task_id": "CSR-M5",
+      "title": "Legal proof and contradiction engine",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "depends_on": [
+        "CSR-M2"
+      ],
+      "target_files": [
+        "integrations/ipfs_datasets/logic.py",
+        "integrations/ipfs_datasets/graphrag.py",
+        "mediator/claim_support_hooks.py",
+        "complaint_phases/legal_graph.py",
+        "complaint_phases/neurosymbolic_matcher.py",
+        "templates/claim_support_review.html",
+        "docs/PAYLOAD_CONTRACTS.md"
+      ],
+      "acceptance_criteria": [
+        "Review payloads distinguish supported, missing, contradicted, uncertain, and exception-barred elements.",
+        "Proof results include concise explanations tied to facts, authorities, or failed predicates.",
+        "Dashboard shows facts applied to law."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py -q",
+        "python -m pytest tests/test_probate_integration.py -q"
+      ]
+    },
+    {
+      "task_id": "CSR-M6",
+      "title": "Operator productization and document handoff",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P1",
+      "depends_on": [
+        "CSR-M5"
+      ],
+      "target_files": [
+        "templates/claim_support_review.html",
+        "templates/document.html",
+        "mediator/claim_support_hooks.py",
+        "applications/server.py",
+        "docs/APPLICATIONS.md",
+        "docs/PAYLOAD_CONTRACTS.md"
+      ],
+      "acceptance_criteria": [
+        "Operators can move from intake to proof review to drafting impact in one workflow.",
+        "Unresolved elements expose visible next actions.",
+        "Document generation consumes validated support state."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_document_pipeline.py -q",
+        "python -m pytest tests/test_review_api.py -q"
+      ],
+      "completed_at": "2026-10-20T20:23:28.524039+00:00",
+      "completion_evidence": {
+        "kind": "pytest_module_superset",
+        "report": ".complaint_workspace/supervisor/ipfs_backlog_validation.xml",
+        "report_sha256": "4b59c65e30b6c62de81f1772a6bf2935b0a2c3dd1c04346be324a52c3b549755",
+        "manifest": ".complaint_workspace/supervisor/ipfs_backlog_validation_manifest.json",
+        "passed": 406,
+        "optional_live_provider_tests_deselected": 2
+      }
+    },
+    {
+      "task_id": "IE-B0",
+      "title": "Timeline ledger foundation",
+      "source_doc": "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "complaint_phases/intake_case_file.py",
+        "mediator/mediator.py",
+        "complaint_phases/phase_manager.py",
+        "intake_status.py"
+      ],
+      "acceptance_criteria": [
+        "Event and relation IDs created during intake are visible downstream.",
+        "Chronology blockers identify missing anchors, relations, or contradictions."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_mediator_three_phase.py -q",
+        "python -m pytest tests/test_intake_status.py -q",
+        "python -m pytest tests/test_review_api.py -q"
+      ]
+    },
+    {
+      "task_id": "IE-B1",
+      "title": "Intake structure foundation",
+      "source_doc": "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "complaint_phases/intake_case_file.py",
+        "mediator/mediator.py",
+        "intake_status.py"
+      ],
+      "acceptance_criteria": [
+        "Intake answers produce structured facts and proof leads with stable references.",
+        "Open intake work is explicit queueable work."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_mediator_three_phase.py -q",
+        "python -m pytest tests/test_intake_status.py -q"
+      ]
+    },
+    {
+      "task_id": "IE-B2",
+      "title": "Proof-directed question planner",
+      "source_doc": "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "complaint_phases/denoiser.py",
+        "mediator/mediator.py"
+      ],
+      "acceptance_criteria": [
+        "Mediator explains each question proof objective.",
+        "Repeated questions fall without reducing claim-element coverage."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_mediator.py -q",
+        "python -m pytest tests/test_mediator_three_phase.py -q"
+      ]
+    },
+    {
+      "task_id": "IE-B3",
+      "title": "Claim ambiguity and contradiction workflow",
+      "source_doc": "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "complaint_phases/phase_manager.py",
+        "mediator/mediator.py",
+        "intake_status.py"
+      ],
+      "acceptance_criteria": [
+        "Intake summaries distinguish contradictions from missingness.",
+        "Blocking contradictions prevent silent advancement."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_mediator.py -q",
+        "python -m pytest tests/test_intake_status.py -q"
+      ]
+    },
+    {
+      "task_id": "IE-B4",
+      "title": "Minimum fact bundles and evidence task board",
+      "source_doc": "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "mediator/claim_support_hooks.py",
+        "mediator/mediator.py",
+        "complaint_phases/phase_manager.py",
+        "complaint_phases/denoiser.py"
+      ],
+      "acceptance_criteria": [
+        "Unresolved elements produce explainable tasks with success targets.",
+        "Phase 2 questioning is task-structure driven."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_mediator_three_phase.py -q",
+        "python -m pytest tests/test_claim_support_hooks.py -q"
+      ]
+    },
+    {
+      "task_id": "IE-B5",
+      "title": "Support lane unification and provenance quality",
+      "source_doc": "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P1",
+      "target_files": [
+        "mediator/evidence_hooks.py",
+        "mediator/claim_support_hooks.py",
+        "docs/EVIDENCE_MANAGEMENT.md"
+      ],
+      "acceptance_criteria": [
+        "Support summaries explain type and quality of support.",
+        "Operators can trace packet conclusions to source lineage."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py -q",
+        "python -m pytest tests/test_document_pipeline.py -q"
+      ]
+    },
+    {
+      "task_id": "IE-B6",
+      "title": "Proof-readiness gates",
+      "source_doc": "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "complaint_phases/phase_manager.py",
+        "mediator/mediator.py"
+      ],
+      "acceptance_criteria": [
+        "Complaint-ready and proof-ready are distinct states.",
+        "Unsupported core elements surface before drafting."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_document_pipeline.py -q",
+        "python -m pytest tests/test_parallel_validation_fix.py -q"
+      ]
+    },
+    {
+      "task_id": "IE-B7",
+      "title": "Review and trace surfaces",
+      "source_doc": "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P1",
+      "target_files": [
+        "intake_status.py",
+        "applications/review_api.py",
+        "applications/document_api.py",
+        "templates/claim_support_review.html",
+        "templates/document.html",
+        "templates/optimization_trace.html"
+      ],
+      "acceptance_criteria": [
+        "Operators can explain blockers without raw graph or ledger rows.",
+        "Traces replay intake-to-evidence progression."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_review_api.py -q",
+        "python -m pytest tests/test_claim_support_review_playwright_smoke.py -q"
+      ]
+    },
+    {
+      "task_id": "IE-B8",
+      "title": "Validation harness and metrics",
+      "source_doc": "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "adversarial_harness/harness.py",
+        "adversarial_harness/critic.py"
+      ],
+      "acceptance_criteria": [
+        "Adversarial batches show proof-readiness and question-precision changes.",
+        "Regressions in proof readiness or question precision are detectable."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_adversarial_harness.py -q",
+        "python -m pytest tests/test_document_pipeline.py -q --run-llm"
+      ]
+    },
+    {
+      "task_id": "IPFS-M0",
+      "title": "Adapter and capability hardening",
+      "source_doc": "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "integrations/ipfs_datasets/capabilities.py",
+        "integrations/ipfs_datasets/loader.py",
+        "integrations/ipfs_datasets/legal.py",
+        "integrations/ipfs_datasets/search.py",
+        "integrations/ipfs_datasets/graphs.py",
+        "integrations/ipfs_datasets/logic.py",
+        "mediator/mediator.py"
+      ],
+      "acceptance_criteria": [
+        "Startup succeeds with or without optional ipfs_datasets_py extras.",
+        "Missing features produce explicit capability payloads.",
+        "Production code does not import ipfs_datasets_py internals directly."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_ipfs_adapter_layer.py -q",
+        "python -m pytest tests/test_ipfs_adapter_types.py -q"
+      ]
+    },
+    {
+      "task_id": "IPFS-M1",
+      "title": "Shared parse and corpus contract",
+      "source_doc": "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md",
+      "status": "complete",
+      "priority": "P0",
+      "depends_on": [
+        "IPFS-M0"
+      ],
+      "target_files": [
+        "integrations/ipfs_datasets/documents.py",
+        "integrations/ipfs_datasets/types.py",
+        "integrations/ipfs_datasets/provenance.py",
+        "mediator/evidence_hooks.py",
+        "mediator/web_evidence_hooks.py",
+        "mediator/legal_authority_hooks.py",
+        "docs/PAYLOAD_CONTRACTS.md"
+      ],
+      "acceptance_criteria": [
+        "Evidence, web evidence, and authority text produce one parse contract family.",
+        "Document-format handling does not leak into mediator code."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_evidence_hooks.py -q",
+        "python -m pytest tests/test_web_evidence_hooks.py -q",
+        "python -m pytest tests/test_legal_authority_hooks.py -q"
+      ]
+    },
+    {
+      "task_id": "IPFS-M2",
+      "title": "Persistent support and graph query plane",
+      "source_doc": "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md",
+      "status": "complete",
+      "priority": "P0",
+      "depends_on": [
+        "IPFS-M1"
+      ],
+      "target_files": [
+        "integrations/ipfs_datasets/graphs.py",
+        "mediator/claim_support_hooks.py",
+        "mediator/evidence_hooks.py",
+        "mediator/web_evidence_hooks.py",
+        "mediator/legal_authority_hooks.py",
+        "mediator/mediator.py",
+        "complaint_phases/knowledge_graph.py",
+        "complaint_phases/dependency_graph.py"
+      ],
+      "acceptance_criteria": [
+        "Mediator review flows explain coverage using provenance-backed support traces."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py -q",
+        "python -m pytest tests/test_review_api.py -q",
+        "python -m pytest tests/test_evidence_hooks.py tests/test_claim_support_hooks.py tests/test_legal_authority_hooks.py -q"
+      ]
+    },
+    {
+      "task_id": "IPFS-M3",
+      "title": "Support-quality and validation layer",
+      "source_doc": "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md",
+      "status": "complete",
+      "priority": "P1",
+      "depends_on": [
+        "IPFS-M2"
+      ],
+      "target_files": [
+        "integrations/ipfs_datasets/graphrag.py",
+        "integrations/ipfs_datasets/logic.py",
+        "complaint_phases/legal_graph.py",
+        "complaint_phases/neurosymbolic_matcher.py",
+        "complaint_phases/phase_manager.py",
+        "mediator/claim_support_hooks.py",
+        "mediator/mediator.py"
+      ],
+      "acceptance_criteria": [
+        "Support strength, missing premises, and contradictions surface before drafting for at least one complaint workflow."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_m3_graphrag_quality_scoring.py -q",
+        "python -m pytest tests/test_ipfs_logic_adapter.py -q",
+        "python -m pytest tests/test_m5_legal_proof_contradiction_engine.py -q"
+      ],
+      "completed_at": "2026-10-20T20:38:04.648970+00:00",
+      "completion_evidence": {
+        "kind": "pytest_module_superset",
+        "report": ".complaint_workspace/supervisor/ipfs_backlog_validation.xml",
+        "report_sha256": "4b59c65e30b6c62de81f1772a6bf2935b0a2c3dd1c04346be324a52c3b549755",
+        "manifest": ".complaint_workspace/supervisor/ipfs_backlog_validation_manifest.json",
+        "passed": 406,
+        "optional_live_provider_tests_deselected": 2,
+        "operator_surface_regressions": {
+          "package_surface_validation": {
+            "report": ".complaint_workspace/supervisor/package_surface_validation.xml",
+            "sha256": "cdf62f7d7c83748a10756ff5182becd4a7055254252f07ff178aa9122bd37987",
+            "tests": 16,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "operator_surface_validation": {
+            "report": ".complaint_workspace/supervisor/operator_surface_validation.xml",
+            "sha256": "c9390f4c896ab51ff67f092aa79a0b94f4ded6cd3d5e191c3f260b6b710ef474",
+            "tests": 18,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          }
+        }
+      }
+    },
+    {
+      "task_id": "IPFS-M4",
+      "title": "Operator productization",
+      "source_doc": "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md",
+      "status": "complete",
+      "priority": "P1",
+      "depends_on": [
+        "IPFS-M3"
+      ],
+      "target_files": [
+        "applications/review_api.py",
+        "mediator/mediator.py",
+        "mediator/web_evidence_hooks.py",
+        "docs/APPLICATIONS.md",
+        "docs/PAYLOAD_CONTRACTS.md"
+      ],
+      "acceptance_criteria": [
+        "Operators can inspect coverage, contradictions, provenance, and queued enrichment work without raw tables."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_review_api.py -q",
+        "python -m pytest tests/test_web_evidence_hooks.py tests/test_claim_support_hooks.py tests/test_review_api.py -q"
+      ],
+      "completed_at": "2026-10-20T20:23:28.524039+00:00",
+      "completion_evidence": {
+        "kind": "pytest_module_superset",
+        "report": ".complaint_workspace/supervisor/ipfs_backlog_validation.xml",
+        "report_sha256": "4b59c65e30b6c62de81f1772a6bf2935b0a2c3dd1c04346be324a52c3b549755",
+        "manifest": ".complaint_workspace/supervisor/ipfs_backlog_validation_manifest.json",
+        "passed": 406,
+        "optional_live_provider_tests_deselected": 2
+      }
+    },
+    {
+      "task_id": "IPFS-M5",
+      "title": "Drafting and filing readiness",
+      "source_doc": "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md",
+      "status": "complete",
+      "priority": "P0",
+      "depends_on": [
+        "IPFS-M4"
+      ],
+      "target_files": [
+        "document_pipeline.py",
+        "applications/document_api.py",
+        "templates/document.html",
+        "mediator/mediator.py",
+        "mediator/claim_support_hooks.py",
+        "claim_support_review.py",
+        "docs/APPLICATIONS.md",
+        "docs/PAYLOAD_CONTRACTS.md"
+      ],
+      "acceptance_criteria": [
+        "At least one complaint workflow emits a filing draft with explicit readiness and warning metadata.",
+        "Operators can move from support review into drafting without losing provenance."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_document_pipeline.py -q",
+        "python -m pytest tests/test_claim_support_review_template.py -q",
+        "python -m pytest tests/test_review_api.py -q"
+      ],
+      "completed_at": "2026-10-20T20:38:04.648996+00:00",
+      "completion_evidence": {
+        "kind": "pytest_module_superset",
+        "report": ".complaint_workspace/supervisor/ipfs_backlog_validation.xml",
+        "report_sha256": "4b59c65e30b6c62de81f1772a6bf2935b0a2c3dd1c04346be324a52c3b549755",
+        "manifest": ".complaint_workspace/supervisor/ipfs_backlog_validation_manifest.json",
+        "passed": 406,
+        "optional_live_provider_tests_deselected": 2,
+        "operator_surface_regressions": {
+          "package_surface_validation": {
+            "report": ".complaint_workspace/supervisor/package_surface_validation.xml",
+            "sha256": "cdf62f7d7c83748a10756ff5182becd4a7055254252f07ff178aa9122bd37987",
+            "tests": 16,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "operator_surface_validation": {
+            "report": ".complaint_workspace/supervisor/operator_surface_validation.xml",
+            "sha256": "c9390f4c896ab51ff67f092aa79a0b94f4ded6cd3d5e191c3f260b6b710ef474",
+            "tests": 18,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          }
+        }
+      }
+    },
+    {
+      "task_id": "TEMP-T0",
+      "title": "Canonical temporal registry",
+      "source_doc": "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "complaint_phases/intake_case_file.py",
+        "mediator/claim_support_hooks.py",
+        "docs/PAYLOAD_CONTRACTS.md"
+      ],
+      "acceptance_criteria": [
+        "Timeline-capable facts can be represented in a shared registry.",
+        "Relations and issues are claim-aware and element-aware.",
+        "Legacy timeline summaries derive from canonical registries."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_intake_status.py -q",
+        "python -m pytest tests/test_claim_support_hooks.py -q",
+        "python -m pytest tests/test_review_api.py -q"
+      ]
+    },
+    {
+      "task_id": "TEMP-T1",
+      "title": "Claim-scoped temporal graph assembly",
+      "source_doc": "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "depends_on": [
+        "TEMP-T0"
+      ],
+      "target_files": [
+        "complaint_phases/intake_case_file.py",
+        "mediator/claim_support_hooks.py",
+        "mediator/mediator.py"
+      ],
+      "acceptance_criteria": [
+        "Claim-level temporal summaries are reproducible from one graph assembly path.",
+        "Temporal readiness traces to fact and relation IDs.",
+        "Temporal warnings align with graph issues."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_t1_t3_temporal_next_steps.py -q",
+        "python -m pytest tests/test_claim_support_hooks.py tests/test_mediator_three_phase.py -q",
+        "python -m pytest tests/test_review_api.py -q"
+      ],
+      "completed_at": "2026-10-20T20:23:28.524039+00:00",
+      "completion_evidence": {
+        "kind": "pytest_module_superset",
+        "report": ".complaint_workspace/supervisor/ipfs_backlog_validation.xml",
+        "report_sha256": "4b59c65e30b6c62de81f1772a6bf2935b0a2c3dd1c04346be324a52c3b549755",
+        "manifest": ".complaint_workspace/supervisor/ipfs_backlog_validation_manifest.json",
+        "passed": 406,
+        "optional_live_provider_tests_deselected": 2
+      }
+    },
+    {
+      "task_id": "TEMP-T2",
+      "title": "Legal temporal rule profiles",
+      "source_doc": "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "depends_on": [
+        "TEMP-T1"
+      ],
+      "target_files": [
+        "complaint_analysis/decision_trees.py",
+        "complaint_analysis/legal_patterns.py",
+        "complaint_analysis/temporal_rule_profiles.py"
+      ],
+      "acceptance_criteria": [
+        "At least one claim type evaluates chronology against an explicit rule profile.",
+        "Proof failures identify missing events, ordering relations, or legal-window violations.",
+        "Rule-profile evaluation is independent of HTML rendering."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py -q",
+        "python -m pytest tests/test_review_api.py -q"
+      ],
+      "completed_at": "2026-10-20T20:23:28.524039+00:00",
+      "completion_evidence": {
+        "kind": "pytest_module_superset",
+        "report": ".complaint_workspace/supervisor/ipfs_backlog_validation.xml",
+        "report_sha256": "4b59c65e30b6c62de81f1772a6bf2935b0a2c3dd1c04346be324a52c3b549755",
+        "manifest": ".complaint_workspace/supervisor/ipfs_backlog_validation_manifest.json",
+        "passed": 406,
+        "optional_live_provider_tests_deselected": 2
+      }
+    },
+    {
+      "task_id": "TEMP-T3",
+      "title": "Theorem export and proof bundles",
+      "source_doc": "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "depends_on": [
+        "TEMP-T2"
+      ],
+      "target_files": [
+        "mediator/claim_support_hooks.py",
+        "claim_support_review.py",
+        "integrations/ipfs_datasets/logic.py"
+      ],
+      "acceptance_criteria": [
+        "Theorem exports are reproducible from persisted proof bundles.",
+        "Operator formula previews come from the same bundle used for proof execution.",
+        "Proof failures identify concrete missing facts or relations."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py tests/test_review_api.py -q",
+        "python -m pytest tests/test_claim_support_review_dashboard_flow.py -q"
+      ],
+      "completed_at": "2026-10-20T20:23:28.524039+00:00",
+      "completion_evidence": {
+        "kind": "pytest_module_superset",
+        "report": ".complaint_workspace/supervisor/ipfs_backlog_validation.xml",
+        "report_sha256": "4b59c65e30b6c62de81f1772a6bf2935b0a2c3dd1c04346be324a52c3b549755",
+        "manifest": ".complaint_workspace/supervisor/ipfs_backlog_validation_manifest.json",
+        "passed": 406,
+        "optional_live_provider_tests_deselected": 2
+      }
+    },
+    {
+      "task_id": "TEMP-T4",
+      "title": "Temporal contradiction and follow-up planner",
+      "source_doc": "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P1",
+      "depends_on": [
+        "TEMP-T3"
+      ],
+      "target_files": [
+        "mediator/claim_support_hooks.py",
+        "complaint_phases/denoiser.py",
+        "mediator/mediator.py",
+        "intake_status.py"
+      ],
+      "acceptance_criteria": [
+        "Each blocking temporal issue yields explicit next action.",
+        "Operators can see the affected rule or fact.",
+        "Follow-up planning distinguishes temporal gaps from non-temporal missingness."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_mediator_three_phase.py tests/test_intake_status.py -q",
+        "python -m pytest tests/test_claim_support_review_dashboard_flow.py -q"
+      ],
+      "completed_at": "2026-10-20T20:23:28.524039+00:00",
+      "completion_evidence": {
+        "kind": "pytest_module_superset",
+        "report": ".complaint_workspace/supervisor/ipfs_backlog_validation.xml",
+        "report_sha256": "4b59c65e30b6c62de81f1772a6bf2935b0a2c3dd1c04346be324a52c3b549755",
+        "manifest": ".complaint_workspace/supervisor/ipfs_backlog_validation_manifest.json",
+        "passed": 406,
+        "optional_live_provider_tests_deselected": 2
+      }
+    },
+    {
+      "task_id": "TEMP-T5",
+      "title": "Review, drafting, and optimization integration",
+      "source_doc": "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P1",
+      "depends_on": [
+        "TEMP-T4"
+      ],
+      "target_files": [
+        "templates/claim_support_review.html",
+        "templates/document.html",
+        "templates/optimization_trace.html",
+        "applications/review_api.py",
+        "applications/document_api.py"
+      ],
+      "acceptance_criteria": [
+        "Operators can move from summary metrics to concrete chronology blockers.",
+        "Drafting surfaces do not overstate readiness when timing rules are unproved.",
+        "Review and document flows consume the same temporal proof payloads."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_review_dashboard_flow.py tests/test_claim_support_review_playwright_smoke.py -q",
+        "python -m pytest tests/test_claim_support_review_template.py -q"
+      ],
+      "completed_at": "2026-10-20T20:44:30.027484+00:00",
+      "completion_evidence": {
+        "kind": "pytest_module_superset",
+        "report": ".complaint_workspace/supervisor/ipfs_regression_validation.xml",
+        "report_sha256": "83f57b9dce5e416fb1e5fc4cde4851f52d6c6a4635910eb1732eb9b998d3942c",
+        "required_module_skips": 0,
+        "total_passed": 357,
+        "additional_gated_package_tests_skipped": 16,
+        "gated_package_tests_verified_separately": ".complaint_workspace/supervisor/package_surface_validation.xml"
+      }
+    },
+    {
+      "task_id": "TEMP-T6",
+      "title": "Regression and gold-case enforcement",
+      "source_doc": "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "depends_on": [
+        "TEMP-T5"
+      ],
+      "target_files": [
+        "tests/test_t1_t3_temporal_next_steps.py",
+        "tests/test_temporal_rule_profiles.py",
+        "tests/test_claim_support_hooks.py",
+        "tests/test_review_api.py",
+        "tests/test_mediator_three_phase.py",
+        "tests/test_claim_support_review_dashboard_flow.py",
+        "tests/test_claim_support_review_playwright_smoke.py",
+        "tests/test_intake_status.py"
+      ],
+      "acceptance_criteria": [
+        "Chronology regressions fail on payload drift and UI drift.",
+        "At least one gold case proves sufficient ordering and one fails for an explainable temporal reason."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py tests/test_review_api.py tests/test_claim_support_review_dashboard_flow.py tests/test_claim_support_review_playwright_smoke.py tests/test_mediator_three_phase.py tests/test_intake_status.py -q",
+        "python scripts/run_claim_support_review_regression.py --browser on"
+      ],
+      "completed_at": "2026-10-20T20:48:22.173239+00:00",
+      "completion_evidence": {
+        "kind": "complete_regression_driver",
+        "receipt": ".complaint_workspace/supervisor/ipfs_regression_driver_receipt.json",
+        "receipt_sha256": "2d17246e043858e1dd490945812451b4a34130ef9d264712398af770700573e8",
+        "exit_code": 0,
+        "python_report": ".complaint_workspace/supervisor/ipfs_regression_validation.xml",
+        "python_report_sha256": "83f57b9dce5e416fb1e5fc4cde4851f52d6c6a4635910eb1732eb9b998d3942c",
+        "python_passed": 357,
+        "python_skipped": 16,
+        "skipped_package_tests_verified_separately": ".complaint_workspace/supervisor/package_surface_validation.xml",
+        "node_passed": 34,
+        "driver_log": ".complaint_workspace/supervisor/ipfs_regression_validation.log",
+        "driver_log_sha256": "6b45d2e8b07507455e4bbb6f73845621bcf6945dd64da1570d9c29933d4f704e"
+      }
+    },
+    {
+      "task_id": "CONTRACT-PAYLOADS",
+      "title": "Payload contract validation and fixture hygiene",
+      "source_doc": "docs/PAYLOAD_CONTRACTS.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "docs/PAYLOAD_CONTRACTS.md",
+        "scripts/validate_task_boards.py",
+        "tests/test_task_board_contracts.py"
+      ],
+      "acceptance_criteria": [
+        "Every json fence in PAYLOAD_CONTRACTS.md parses as JSON.",
+        "Task-board validation catches malformed payload examples before supervisor execution.",
+        "Contract changes remain compatible with markdown and machine-readable consumers."
+      ],
+      "validation_commands": [
+        "python scripts/validate_task_boards.py",
+        "python -m pytest tests/test_task_board_contracts.py -q"
+      ]
+    }
+  ]
+}

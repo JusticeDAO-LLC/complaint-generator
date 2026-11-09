@@ -1,0 +1,84 @@
+{
+  "schema_version": "complaint-generator.alignment_completion.v1",
+  "reviewed_grok_session": "01a155f0-95f6-76d2-bdc8-0e7af752ac22",
+  "completed_at": "2026-10-20T20:49:39.285165+00:00",
+  "formal_plan": "docs/task_boards/complaint_alignment_formal_work_plan.json",
+  "seed_board": "docs/task_boards/complaint_alignment_execution_board.json",
+  "runtime_state": ".complaint_workspace/supervisor/alignment_execution_state.json",
+  "plan_id": "baguqeeraal5dqwy6oovwusjyem3ut6kl72inutanmavzaa76ceyq22etxl3a",
+  "source_fingerprint": "efc5fd6224aa3a84298a0211b83d85e131f75750396f6c7db6274b6d4c363896",
+  "task_counts": {
+    "completed": 19
+  },
+  "task_statuses": {
+    "task.embedding_router_facade": "completed",
+    "task.graph_client_persist": "completed",
+    "task.kit_gate_default_off": "completed",
+    "task.legal_symbol_loader": "completed",
+    "task.llm_router_facade": "completed",
+    "task.logic_adapter_paths": "completed",
+    "task.mike_compatibility_stamp": "completed",
+    "task.mike_connector_tools": "completed",
+    "task.mike_http_route_gate": "completed",
+    "task.mike_protocol_versions": "completed",
+    "task.mike_registration_text": "completed",
+    "task.multimedia_attachment_adapter": "completed",
+    "task.multimodal_router_facade": "completed",
+    "task.operator_scripts_use_adapter": "completed",
+    "task.storage_fallback_order": "completed",
+    "task.supervisor_cli_has_three_operations": "completed",
+    "task.supervisor_jobs_off_request_path": "completed",
+    "task.watchdog_cli_off_control_plane": "completed",
+    "task.watchdog_repairs_board": "completed"
+  },
+  "evidence_kind": "local_source_checks_with_independent_behavioral_regression",
+  "behavioral_validation": {
+    "path": ".complaint_workspace/supervisor/alignment_validation.xml",
+    "sha256": "da589a797444e947749ba279cc68da9854b90f15657d9442fe9d10fcef9050c2",
+    "tests": 252,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "passed": 252,
+    "command": "/home/barberb/ipfs_datasets_py/.venv/bin/python scripts/validate_alignment.py",
+    "live_network": "socket_connections_blocked",
+    "model_hubs": "offline"
+  },
+  "upstream_watchdog_fix": {
+    "path": "external/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/rescue/supervisor_watchdog.py",
+    "sha256": "6259343e7a0d76f8e0f5c25875421fd721ff3fbd0b282f8037fb674b68ce1be0",
+    "problem": "Restart backoff incremented the attempt count on every skipped cycle and never expired.",
+    "behavior": "A separate cooldown counts down, then retries through the existing fenced lifecycle callback; explicit holds remain respected.",
+    "test_command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=. /home/barberb/lift_coding/external/ipfs_datasets/.venv/bin/python -m pytest --import-mode=importlib -q test/api/test_agent_supervisor_supervisor_watchdog.py",
+    "test_cwd": "external/ipfs_accelerate_py",
+    "passed": 25,
+    "skipped": 1,
+    "skip_reason": "existing repository AST test seal"
+  },
+  "review_findings": [
+    "Referenced session created a local formal alignment plan and seed board, without launching a native Grok-provider supervisor.",
+    "The local watchdog now keeps polling in watch mode, reloads held state, retries failed checks, bounds execution, and serializes ownership.",
+    "Plan/source changes invalidate old verification receipts while preserving manual holds and cancellations.",
+    "Lazy adapter facades remove heavy optional backend initialization from watchdog startup.",
+    "Graph Client targets now accept normal adapter IDs and content-based idempotency keys allow equal-sized graph updates."
+  ],
+  "scope_limits": [
+    "This alignment-specific receipt covers 19 local verification tasks. The combined report also covers the completed 30-task IPFS backlog.",
+    "Local and hermetic validation does not attest to a deployed live Grok inference campaign or public connector deployment.",
+    "Unrelated lift_coding supervisor processes were not changed or restarted.",
+    "Source changes remain local and uncommitted."
+  ],
+  "superseded_by": "docs/task_boards/complaint_supervisor_completion.json",
+  "historical_receipt": {
+    "completed_at": "2026-10-20T08:29:30.642330+00:00",
+    "task_scope": "19 alignment tasks only",
+    "report_sha256_before_refresh": "a588278a3f5d01aae6fa113528a7a64f28b0e5c71e6a7b09898f8aca78c87c05",
+    "backlog_coverage": "Older 30-task IPFS backlog was excluded by that historical report."
+  },
+  "publication_context": {
+    "source_snapshot_commit": "cc2c2ea3",
+    "snapshot_note": "Completion-time counts, file hashes and local/uncommitted statements describe the source before integration with origin/main. They are historical evidence, not hashes of the later merged tree.",
+    "merged_tree_validation": "docs/task_boards/complaint_supervisor_publication.json",
+    "local_evidence_note": "Referenced .complaint_workspace reports are local artifacts and are not included in a GitHub clone."
+  }
+}

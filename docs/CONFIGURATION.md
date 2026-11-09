@@ -672,3 +672,52 @@ For configuration issues:
 - Verify JSON syntax with a JSON validator
 - Review example configurations above
 - Open an issue: https://github.com/endomorphosis/complaint-generator/issues
+
+## Case-authorized GUI inference
+
+A trusted operator can select the first-party observed Grok route in the
+application configuration:
+
+```json
+{
+  "APPLICATION": {
+    "type": ["server"],
+    "gui_inference_route": "native_observed_grok47"
+  }
+}
+```
+
+The same finite `gui_inference_route="native_observed_grok47"` keyword is
+supported by `SERVER`, `create_review_api_app`, `create_review_surface_app`,
+and `create_review_dashboard_app`. The default `None` disables inference.
+Unknown route names and simultaneous route/callback configuration are errors;
+configuration cannot name an arbitrary Python import or executable. Explicit
+`gui_inference_transport` callbacks are synthetic adapters and do not qualify
+a live model.
+
+The route setting does not create a browser identity, case handler, encryption
+key or consent. Operators must also bind the existing `browser_sessions`,
+`authorizer`, `case_handlers` and persisted `case_consent` owners when composing
+the application. The generic JSON launcher does not invent these owners:
+without them the case APIs stay unavailable. Neither backend configuration,
+environment variables nor development-supervisor Grok authorization grants a
+case permission to send complaint data.
+
+An authenticated owner must authorize the specific case and purpose through
+`/api/cases/{case_id}/processing-consent`. The bounded HTTP operations are
+`POST /api/complaint-workspace/inference/dispatch` (`purpose`, minimal `inputs`,
+optional `timeout_seconds` between 0 and 60) and
+`POST /api/complaint-workspace/inference/admit` (`invocation_id`). The matching
+MCP tools are `complaint.dispatch_bounded_gui_inference` and
+`complaint.admit_bounded_gui_inference`. Existing cookie, CSRF and canonical
+case/revision headers apply; a request cannot choose its provider route or
+supply grants, source hashes or revision authority.
+
+The first-party adapter uses `ipfs_accelerate_py.llm_router`, `grok_cli`,
+`grok-4.7`, no fallback and no model tools. Missing Native observed-generation
+capability is an explicit unavailable result. Tests with API stand-ins or
+synthetic callbacks do not prove a live Grok model identity. Provider execution
+runs outside the HTTP event loop so logout and consent revocation can proceed;
+current authorization, consent, keys and source revisions are checked before
+output admission. Revocation does not erase data already sent or plaintext
+already received, and provider output never proves legal support.

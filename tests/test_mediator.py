@@ -81,6 +81,18 @@ class TestMediatorBasics:
         except ImportError as e:
             pytest.skip(f"Mediator module has dependency issues: {e}")
 
+    def test_workflow_service_imports_preserve_compatibility(self):
+        """Both the original and concise workflow service names stay importable."""
+        from mediator import Mediator, WorkflowActionService, WorkflowService
+        from mediator.mediator import Mediator as ModuleMediator
+        from mediator.workflow_service import (
+            WorkflowActionService as ModuleWorkflowActionService,
+        )
+
+        assert Mediator is ModuleMediator
+        assert WorkflowActionService is ModuleWorkflowActionService
+        assert WorkflowService is WorkflowActionService
+
 
 class TestMediatorWithMocks:
     """Test cases for Mediator with mocked dependencies"""
@@ -105,6 +117,32 @@ class TestMediatorWithMocks:
             assert mediator.state is not None
         except ImportError as e:
             pytest.skip(f"Mediator class has dependency issues: {e}")
+
+    def test_mediator_workflow_methods_delegate_through_public_service_api(self):
+        """Legacy Mediator helpers remain stable compatibility shims."""
+        from mediator import Mediator, WorkflowActionService
+
+        mock_backend = Mock()
+        mock_backend.id = 'test-backend'
+        mediator = Mediator(backends=[mock_backend])
+
+        assert isinstance(mediator.workflow_actions, WorkflowActionService)
+        mediator.workflow_actions.build_intake_action_queue = Mock(
+            return_value=[{'rank': 1, 'phase_name': 'intake_questioning'}]
+        )
+
+        result = mediator._build_intake_workflow_action_queue(
+            {'intake_sections': {}},
+            {'due_process': {'missing_count': 1}},
+            {},
+        )
+
+        assert result == [{'rank': 1, 'phase_name': 'intake_questioning'}]
+        mediator.workflow_actions.build_intake_action_queue.assert_called_once_with(
+            {'intake_sections': {}},
+            {'due_process': {'missing_count': 1}},
+            {},
+        )
 
     def test_mediator_logs_canonical_ipfs_adapter_startup_payload(self):
         """Mediator startup should log the canonical adapter capability payload without rebuilding it inline."""
@@ -310,9 +348,97 @@ class TestMediatorWithMocks:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_claim_support_gaps_include_graph_gap_query_summary(self):
+        """Unresolved gap queries should expose compact GraphRAG context at element and claim levels."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_claim_support_gaps = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'claim_type': 'employment',
+                        'unresolved_count': 2,
+                        'unresolved_elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'missing_support_kinds': ['evidence', 'authority'],
+                            },
+                            {
+                                'element_id': 'employment:2',
+                                'element_text': 'Adverse action',
+                                'missing_support_kinds': 'authority',
+                            },
+                        ],
+                    },
+                },
+            })
+            mediator.query_claim_graph_support = Mock(side_effect=[
+                _make_graph_support_payload(
+                    total_fact_count=4,
+                    unique_fact_count=2,
+                    duplicate_fact_count=2,
+                    semantic_cluster_count=2,
+                    semantic_duplicate_count=2,
+                    max_score=2.2,
+                    results=[_make_graph_support_result(fact_id='fact:1', score=2.2)],
+                ),
+                _make_graph_support_payload(),
+            ])
+
+            result = mediator.get_claim_support_gaps(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['evidence', 'authority'],
+            )
+
+            claim = result['claims']['employment']
+            first_element, second_element = claim['unresolved_elements']
+            summary = claim['graph_gap_query_summary']
+
+            mediator.claim_support.get_claim_support_gaps.assert_called_once_with(
+                'testuser',
+                claim_type='employment',
+                required_support_kinds=['evidence', 'authority'],
+            )
+            assert mediator.query_claim_graph_support.call_count == 2
+            assert first_element['graph_support_strength'] == 'strong'
+            assert first_element['graph_gap_context']['recommended_action'] == 'review_existing_support'
+            assert first_element['graph_gap_context']['priority_adjustment'] == -1
+            assert first_element['graph_gap_query']['claim_element_id'] == 'employment:1'
+            assert first_element['graph_gap_query']['has_graph_support'] is True
+            assert first_element['graph_gap_query']['total_fact_count'] == 4
+            assert second_element['graph_support_strength'] == 'none'
+            assert second_element['graph_gap_context']['recommended_action'] == 'retrieve_more_support'
+            assert second_element['graph_gap_query']['priority_adjustment'] == 1
+            assert summary['graph_gap_query_count'] == 2
+            assert summary['graph_gap_has_support_count'] == 1
+            assert summary['graph_gap_empty_count'] == 1
+            assert summary['graph_gap_total_fact_count'] == 4
+            assert summary['graph_gap_unique_fact_count'] == 2
+            assert summary['graph_gap_duplicate_fact_count'] == 2
+            assert summary['graph_gap_semantic_cluster_count'] == 2
+            assert summary['graph_gap_semantic_duplicate_count'] == 2
+            assert summary['graph_gap_strength_counts'] == {'strong': 1, 'none': 1}
+            assert summary['graph_gap_recommended_action_counts'] == {
+                'review_existing_support': 1,
+                'retrieve_more_support': 1,
+            }
+            assert summary['graph_gap_priority_adjustment_counts'] == {'-1': 1, '1': 1}
+            assert summary['graph_gap_missing_support_kind_counts'] == {'evidence': 1, 'authority': 2}
+            assert summary['graph_gap_fact_registry_summary']['fact_count'] == 4
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
     def test_follow_up_plan_uses_manual_review_for_reasoning_gaps(self):
         """Reasoning-only validation gaps should create manual-review tasks instead of suppressed retrieval."""
         try:
+            from claim_support_review import _summarize_follow_up_plan_claim
             from mediator import Mediator
 
             mock_backend = Mock()
@@ -397,6 +523,7 @@ class TestMediatorWithMocks:
                 required_support_kinds=['evidence'],
             )
             task = plan['claims']['employment']['tasks'][0]
+            plan_summary = _summarize_follow_up_plan_claim(plan['claims']['employment'])
 
             assert plan['intake_summary_handoff'] == {
                 'current_phase': 'intake',
@@ -421,6 +548,7 @@ class TestMediatorWithMocks:
                 },
             }
             assert task['execution_mode'] == 'manual_review'
+            assert task['requires_manual_review'] is True
             assert task['follow_up_focus'] == 'reasoning_gap_closure'
             assert task['query_strategy'] == 'reasoning_gap_targeted'
             assert task['priority'] == 'high'
@@ -429,6 +557,269 @@ class TestMediatorWithMocks:
             assert task['missing_support_kinds'] == []
             assert task['proof_decision_source'] == 'logic_unprovable'
             assert task['ontology_validation_signal'] == 'invalid'
+            assert task['graph_gap_context']['strength'] == 'strong'
+            assert task['graph_gap_context']['recommended_action'] == 'review_existing_support'
+            assert task['graph_gap_context']['priority_adjustment'] == -1
+            assert task['graph_gap_context']['total_fact_count'] == 6
+            assert task['graph_gap_context']['semantic_cluster_count'] == 2
+            assert task['graph_gap_context']['semantic_duplicate_count'] == 4
+            assert task['graph_gap_context']['source_family_counts'] == {}
+            assert task['graph_gap_context']['fact_registry_summary']['fact_count'] == 6
+            assert task['graph_gap_context']['fact_registry_summary']['registry_version'] == 'claim_fact_registry_summary.v1'
+            assert task['graph_gap_query']['claim_type'] == 'employment'
+            assert task['graph_gap_query']['claim_element_id'] == 'employment:1'
+            assert task['graph_gap_query']['strength'] == 'strong'
+            assert task['graph_gap_query']['recommended_action'] == 'review_existing_support'
+            assert task['graph_gap_query']['has_graph_support'] is True
+            assert task['graph_gap_query']['total_fact_count'] == 6
+            assert plan_summary['graph_gap_context_task_count'] == 1
+            assert plan_summary['graph_gap_has_support_task_count'] == 1
+            assert plan_summary['graph_gap_empty_task_count'] == 0
+            assert plan_summary['graph_gap_total_fact_count'] == 6
+            assert plan_summary['graph_gap_unique_fact_count'] == 2
+            assert plan_summary['graph_gap_duplicate_fact_count'] == 4
+            assert plan_summary['graph_gap_semantic_cluster_count'] == 2
+            assert plan_summary['graph_gap_semantic_duplicate_count'] == 4
+            assert plan_summary['graph_gap_strength_counts'] == {'strong': 1}
+            assert plan_summary['graph_gap_recommended_action_counts'] == {'review_existing_support': 1}
+            assert plan_summary['graph_gap_priority_adjustment_counts'] == {'-1': 1}
+            assert plan_summary['graph_gap_fact_registry_summary']['fact_count'] == 6
+            assert plan_summary['graph_gap_query_task_count'] == 1
+            assert plan_summary['graph_gap_query_has_support_task_count'] == 1
+            assert plan_summary['graph_gap_query_empty_task_count'] == 0
+            assert plan_summary['graph_gap_query_result_count'] == 1
+            assert plan_summary['graph_gap_query_recommended_action_counts'] == {'review_existing_support': 1}
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_follow_up_plan_routes_supported_ontology_quality_gaps(self):
+        """Supported elements with advisory GraphRAG quality gaps should still create structural follow-up tasks."""
+        try:
+            from claim_support_review import _summarize_follow_up_plan_claim
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for ontology review',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {},
+                    'confirmed_summary_snapshot': {},
+                },
+            })
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:ontology',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'covered',
+                                'validation_status': 'supported',
+                                'recommended_action': '',
+                                'support_by_kind': {'evidence': 1, 'authority': 1},
+                                'proof_gap_count': 0,
+                                'proof_gaps': [],
+                                'proof_decision_trace': {
+                                    'decision_source': 'logic_proof_supported',
+                                    'logic_provable_count': 1,
+                                    'logic_unprovable_count': 0,
+                                    'ontology_validation_signal': 'valid',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 2,
+                                    'graphrag_quality': {
+                                        'valid': False,
+                                        'overall_quality_score': 0.39,
+                                        'grade': 'D',
+                                        'has_gaps': True,
+                                        'has_blocking_gaps': True,
+                                        'gaps': [
+                                            {
+                                                'gap_type': 'missing_relation',
+                                                'follow_up_action': 'improve_ontology_quality',
+                                            },
+                                        ],
+                                    },
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload(
+                total_fact_count=1,
+                unique_fact_count=1,
+                semantic_cluster_count=1,
+                max_score=1.0,
+                results=[_make_graph_support_result(fact_id='fact:graph-authority-gap')],
+            ))
+
+            plan = mediator.get_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                required_support_kinds=['evidence', 'authority'],
+            )
+            task = plan['claims']['employment']['tasks'][0]
+            summary = _summarize_follow_up_plan_claim(plan['claims']['employment'])
+
+            assert task['execution_mode'] == 'retrieve_support'
+            assert task['requires_manual_review'] is False
+            assert task['follow_up_focus'] == 'ontology_quality_gap_closure'
+            assert task['query_strategy'] == 'ontology_quality_gap_targeted'
+            assert task['recommended_action'] == 'improve_ontology_quality'
+            assert task['priority'] == 'high'
+            assert task['should_suppress_retrieval'] is False
+            assert task['ontology_quality']['grade'] == 'D'
+            assert task['ontology_gap_types'] == ['missing_relation']
+            assert task['quality_signal_counts'] == {'ontology_quality_gap': 1}
+            assert task['primary_quality_signal'] == {
+                'signal_type': 'ontology_quality_gap',
+                'question_lane': 'ontology_quality_gap',
+                'follow_up_action': 'improve_ontology_quality',
+                'count': 1,
+            }
+            assert task['quality_follow_up_action'] == 'improve_ontology_quality'
+            assert task['queries']['evidence'][0] == (
+                '"employment" "Protected activity" knowledge graph missing entity relationship source detail'
+            )
+            assert summary['ontology_quality_gap_task_count'] == 1
+            assert summary['ontology_quality_gap_targeted_task_count'] == 1
+            assert summary['quality_signal_counts'] == {'ontology_quality_gap': 1}
+            assert summary['primary_quality_signal_counts'] == {'ontology_quality_gap': 1}
+            assert summary['quality_follow_up_action_counts'] == {'improve_ontology_quality': 1}
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_execute_follow_up_plan_runs_supported_ontology_quality_evidence_lane(self):
+        """Ontology-quality gaps should execute targeted evidence retrieval even when support counts are already present."""
+        try:
+            from mediator import Mediator
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.get_three_phase_status = Mock(return_value={
+                'current_phase': 'intake',
+                'intake_readiness': {
+                    'ready_to_advance': True,
+                },
+                'complainant_summary_confirmation': {
+                    'status': 'confirmed',
+                    'confirmed': True,
+                    'confirmed_at': '2026-03-17T21:00:00+00:00',
+                    'confirmation_note': 'ready for ontology retrieval',
+                    'confirmation_source': 'dashboard',
+                    'summary_snapshot_index': 0,
+                    'current_summary_snapshot': {},
+                    'confirmed_summary_snapshot': {},
+                },
+            })
+            mediator.claim_support = Mock()
+            mediator.claim_support.get_recent_follow_up_execution = Mock(return_value={
+                'claims': {'employment': []}
+            })
+            mediator.claim_support.get_follow_up_execution_status = Mock(return_value={
+                'in_cooldown': False,
+            })
+            mediator.claim_support.was_follow_up_executed = Mock(return_value=False)
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'employment': {
+                        'required_support_kinds': ['evidence', 'authority'],
+                        'elements': [
+                            {
+                                'element_id': 'employment:ontology',
+                                'element_text': 'Protected activity',
+                                'coverage_status': 'covered',
+                                'validation_status': 'supported',
+                                'recommended_action': '',
+                                'support_by_kind': {'evidence': 1, 'authority': 1},
+                                'proof_gap_count': 0,
+                                'proof_gaps': [],
+                                'proof_decision_trace': {
+                                    'decision_source': 'logic_proof_supported',
+                                    'logic_provable_count': 1,
+                                    'logic_unprovable_count': 0,
+                                    'ontology_validation_signal': 'valid',
+                                },
+                                'reasoning_diagnostics': {
+                                    'backend_available_count': 2,
+                                    'graphrag_quality': {
+                                        'valid': False,
+                                        'overall_quality_score': 0.39,
+                                        'grade': 'D',
+                                        'has_gaps': True,
+                                        'has_blocking_gaps': True,
+                                        'gaps': [
+                                            {
+                                                'gap_type': 'missing_relation',
+                                                'follow_up_action': 'improve_ontology_quality',
+                                            },
+                                        ],
+                                    },
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.query_claim_graph_support = Mock(return_value=_make_graph_support_payload())
+            mediator.discover_web_evidence = Mock(return_value={
+                'discovered': 2,
+                'stored': 1,
+                'total_records': 1,
+            })
+            mediator.get_claim_overview = Mock(return_value={'claims': {'employment': {}}})
+
+            result = mediator.execute_claim_follow_up_plan(
+                claim_type='employment',
+                user_id='testuser',
+                support_kind='evidence',
+                max_tasks_per_claim=1,
+            )
+
+            executed_task = result['claims']['employment']['tasks'][0]
+            query_text = '"employment" "Protected activity" knowledge graph missing entity relationship source detail'
+            assert executed_task['follow_up_focus'] == 'ontology_quality_gap_closure'
+            assert executed_task['query_strategy'] == 'ontology_quality_gap_targeted'
+            assert executed_task['executed']['evidence']['query'] == query_text
+            mediator.discover_web_evidence.assert_called_once()
+            mediator.claim_support.was_follow_up_executed.assert_called_once_with(
+                'testuser',
+                'employment',
+                'evidence',
+                query_text,
+                cooldown_seconds=3600,
+            )
+            recorded_call = mediator.claim_support.record_follow_up_execution.call_args
+            assert recorded_call.kwargs['support_kind'] == 'evidence'
+            assert recorded_call.kwargs['query_text'] == query_text
+            assert recorded_call.kwargs['metadata']['quality_signal_counts'] == {'ontology_quality_gap': 1}
+            assert recorded_call.kwargs['metadata']['quality_follow_up_action'] == 'improve_ontology_quality'
+            assert recorded_call.kwargs['metadata']['ontology_quality']['grade'] == 'D'
+            assert recorded_call.kwargs['metadata']['ontology_gap_types'] == ['missing_relation']
+            assert recorded_call.kwargs['metadata']['ontology_has_blocking_gaps'] is True
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
@@ -531,17 +922,20 @@ class TestMediatorWithMocks:
             assert task['priority'] == 'high'
             assert task['missing_support_kinds'] == ['authority']
             assert task['queries']['authority'][0] == '"employment" "Protected activity" formal proof case law logic unprovable'
-            assert task['authority_search_program_summary'] == {
-                'program_count': 1,
-                'program_type_counts': {'fact_pattern_search': 1},
-                'authority_intent_counts': {'support': 1},
-                'primary_program_id': 'legal_search_program:reasoning-1',
-                'primary_program_type': 'fact_pattern_search',
-                'primary_program_bias': '',
-                'primary_program_rule_bias': '',
-            }
+            assert task['authority_search_program_summary']['program_count'] == 1
+            assert task['authority_search_program_summary']['program_type_counts'] == {'fact_pattern_search': 1}
+            assert task['authority_search_program_summary']['authority_intent_counts'] == {'support': 1}
+            assert task['authority_search_program_summary']['primary_program_id'] == 'legal_search_program:reasoning-1'
+            assert task['authority_search_program_summary']['primary_program_type'] == 'fact_pattern_search'
+            assert task['authority_search_program_summary']['primary_program_bias'] == ''
+            assert task['authority_search_program_summary']['primary_program_rule_bias'] == ''
             assert task['authority_search_programs'][0]['metadata']['follow_up_focus'] == 'reasoning_gap_closure'
             assert task['authority_search_programs'][0]['metadata']['query_strategy'] == 'reasoning_gap_targeted'
+            mediator.legal_authority_search.build_search_programs.assert_called_once()
+            build_call = mediator.legal_authority_search.build_search_programs.call_args
+            assert build_call.kwargs['time_window'] == {}
+            assert build_call.kwargs['defense_themes'] == ['formal_proof_gap']
+            assert build_call.kwargs['authority_families'] == ['statute', 'regulation', 'case_law']
             assert task['recommended_action'] == 'retrieve_more_support'
             assert task['proof_decision_source'] == 'logic_proof_partial'
             assert task['logic_provable_count'] == 1
@@ -626,6 +1020,13 @@ class TestMediatorWithMocks:
             assert task['resolution_status'] == 'awaiting_testimony'
             assert task['temporal_rule_profile_id'] == 'retaliation_temporal_profile_v1'
             assert task['temporal_rule_status'] == 'partial'
+            assert task['time_window']['profile_id'] == 'retaliation_temporal_profile_v1'
+            assert task['time_window']['status'] == 'partial'
+            assert task['time_window']['query_terms'] == ['temporal', 'ordering', 'before']
+            assert task['source_preferences']['preferred_support_kind'] == 'testimony'
+            assert task['source_preferences']['source_types'][:2] == ['testimony', 'evidence']
+            assert task['source_preferences']['archive_first'] is True
+            assert task['authority_intent'] == 'procedural'
             assert task['queries']['evidence'][0] == '"retaliation" "Causal connection" timeline chronology dated record Retaliation causation lacks a clear temporal ordering from protected activity to adverse action'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
@@ -826,6 +1227,19 @@ class TestMediatorWithMocks:
                                                     'claim_element_id': 'employment:1',
                                                     'claim_element_text': 'Protected activity',
                                                     'extraction_confidence': 0.78,
+                                                    'source_passage': {
+                                                        'chunk_id': 'chunk-0',
+                                                        'chunk_index': 0,
+                                                        'start': 12,
+                                                        'end': 68,
+                                                        'text': 'Protected activity must precede the employer response.',
+                                                    },
+                                                    'parse_lineage': {
+                                                        'source': 'legal_authority',
+                                                        'record_scope': 'legal_authority',
+                                                        'source_ref': 'authority:17',
+                                                        'input_format': 'html',
+                                                    },
                                                 },
                                                 {
                                                     'rule_id': 'rule:2',
@@ -862,6 +1276,20 @@ class TestMediatorWithMocks:
             assert task['queries']['evidence'][1] == '"Protected activity" "Except where the employer lacked notice liability may not attach" fact pattern records witness timeline employment'
             assert task['rule_candidate_context']['top_rule_types'] == ['element', 'exception']
             assert task['rule_candidate_context']['top_rule_texts'][0] == 'Protected activity must precede the employer response'
+            assert task['rule_candidate_context']['top_rule_passages'][0] == {
+                'chunk_id': 'chunk-0',
+                'chunk_index': 0,
+                'start': 12,
+                'end': 68,
+                'text': 'Protected activity must precede the employer response.',
+            }
+            assert task['rule_candidate_context']['rule_candidates'][0]['parse_lineage'] == {
+                'source': 'legal_authority',
+                'record_scope': 'legal_authority',
+                'source_ref': 'authority:17',
+                'input_format': 'html',
+            }
+            assert task['rule_candidate_context']['parse_lineages'][0]['source_ref'] == 'authority:17'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
@@ -1128,6 +1556,8 @@ class TestMediatorWithMocks:
             assert task['should_suppress_retrieval'] is False
             assert task['recommended_action'] == 'review_adverse_authority'
             assert task['authority_treatment_summary']['adverse_authority_link_count'] == 1
+            assert task['authority_intent'] == 'oppose'
+            assert task['source_preferences']['authority_families'] == ['case_law', 'statute', 'regulation']
 
             mediator.execute_claim_follow_up_plan(
                 claim_type='employment',
@@ -1139,6 +1569,8 @@ class TestMediatorWithMocks:
             assert recorded_call.kwargs['metadata']['skip_reason'] == 'adverse_authority_requires_review'
             assert recorded_call.kwargs['metadata']['authority_treatment_summary']['adverse_authority_link_count'] == 1
             assert recorded_call.kwargs['metadata']['rule_candidate_focus']['top_rule_types'] == ['element']
+            assert recorded_call.kwargs['metadata']['authority_intent'] == 'oppose'
+            assert recorded_call.kwargs['metadata']['source_preferences']['authority_families'] == ['case_law', 'statute', 'regulation']
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
@@ -2021,6 +2453,7 @@ class TestMediatorWithMocks:
     def test_execute_follow_up_plan_persists_authority_search_program_metadata(self):
         """Authority follow-up execution should persist and forward the claim-aware search-program bundle."""
         try:
+            from claim_support_review import _summarize_follow_up_execution_claim
             from mediator import Mediator
 
             mock_backend = Mock()
@@ -2143,6 +2576,7 @@ class TestMediatorWithMocks:
                 },
             }
             executed_task = result['claims']['employment']['tasks'][0]
+            execution_summary = _summarize_follow_up_execution_claim(result['claims']['employment'])
             mediator.search_legal_authorities.assert_called_once_with(
                 query='employment Protected activity element definition statute regulation rule',
                 claim_type='employment',
@@ -2156,15 +2590,42 @@ class TestMediatorWithMocks:
             assert executed_task['executed']['authority']['selected_search_program_type'] == 'element_definition_search'
             assert executed_task['executed']['authority']['selected_search_program_bias'] == ''
             assert executed_task['executed']['authority']['selected_search_program_rule_bias'] == 'element'
+            assert executed_task['executed']['authority']['selected_search_program_graph_gap_bias'] == 'graph_backed_authority_gap'
             assert executed_task['executed']['authority']['selected_search_program_families'] == ['statute', 'regulation']
-            assert executed_task['executed']['authority']['search_program_summary'] == {
-                'program_count': 1,
-                'program_type_counts': {'element_definition_search': 1},
-                'authority_intent_counts': {'support': 1},
-                'primary_program_id': 'legal_search_program:authority-1',
-                'primary_program_type': 'element_definition_search',
-                'primary_program_bias': '',
-                'primary_program_rule_bias': 'element',
+            assert executed_task['executed']['authority']['search_program_summary']['program_count'] == 1
+            assert executed_task['executed']['authority']['search_program_summary']['program_type_counts'] == {
+                'element_definition_search': 1
+            }
+            assert executed_task['executed']['authority']['search_program_summary']['authority_intent_counts'] == {'support': 1}
+            assert executed_task['executed']['authority']['search_program_summary']['primary_program_id'] == 'legal_search_program:authority-1'
+            assert executed_task['executed']['authority']['search_program_summary']['primary_program_type'] == 'element_definition_search'
+            assert executed_task['executed']['authority']['search_program_summary']['primary_program_bias'] == ''
+            assert executed_task['executed']['authority']['search_program_summary']['primary_program_rule_bias'] == 'element'
+            assert executed_task['executed']['authority']['search_program_summary']['primary_graph_gap_authority_bias'] == 'graph_backed_authority_gap'
+            assert executed_task['graph_gap_context']['strength'] == 'moderate'
+            assert executed_task['graph_gap_context']['recommended_action'] == 'target_missing_support_kind'
+            assert executed_task['graph_gap_context']['priority_adjustment'] == 0
+            assert executed_task['graph_gap_context']['has_graph_support'] is True
+            assert executed_task['graph_gap_context']['fact_registry_summary']['fact_count'] == 1
+            assert executed_task['graph_gap_query']['claim_type'] == 'employment'
+            assert executed_task['graph_gap_query']['claim_element_id'] == 'employment:1'
+            assert executed_task['graph_gap_query']['strength'] == 'moderate'
+            assert executed_task['graph_gap_query']['recommended_action'] == 'target_missing_support_kind'
+            assert executed_task['graph_gap_query']['has_graph_support'] is True
+            assert execution_summary['graph_gap_context_task_count'] == 1
+            assert execution_summary['graph_gap_has_support_task_count'] == 1
+            assert execution_summary['graph_gap_empty_task_count'] == 0
+            assert execution_summary['graph_gap_strength_counts'] == {'moderate': 1}
+            assert execution_summary['graph_gap_recommended_action_counts'] == {'target_missing_support_kind': 1}
+            assert execution_summary['graph_gap_priority_adjustment_counts'] == {'0': 1}
+            assert execution_summary['graph_gap_fact_registry_summary']['fact_count'] == 1
+            assert execution_summary['graph_gap_query_task_count'] == 1
+            assert execution_summary['graph_gap_query_has_support_task_count'] == 1
+            assert execution_summary['graph_gap_query_empty_task_count'] == 0
+            assert execution_summary['graph_gap_query_result_count'] == 1
+            assert execution_summary['graph_gap_query_missing_support_kind_counts'] == {'authority': 1}
+            assert execution_summary['selected_authority_graph_gap_bias_counts'] == {
+                'graph_backed_authority_gap': 1,
             }
             assert executed_task['executed']['authority']['search_programs'][0]['program_id'] == 'legal_search_program:authority-1'
             store_call = mediator.store_legal_authorities.call_args
@@ -2177,9 +2638,17 @@ class TestMediatorWithMocks:
             assert recorded_call.kwargs['metadata']['selected_search_program_type'] == 'element_definition_search'
             assert recorded_call.kwargs['metadata']['selected_search_program_bias'] == ''
             assert recorded_call.kwargs['metadata']['selected_search_program_rule_bias'] == 'element'
+            assert recorded_call.kwargs['metadata']['selected_search_program_graph_gap_bias'] == 'graph_backed_authority_gap'
             assert recorded_call.kwargs['metadata']['selected_search_program_families'] == ['statute', 'regulation']
             assert recorded_call.kwargs['metadata']['search_program_ids'] == ['legal_search_program:authority-1']
             assert recorded_call.kwargs['metadata']['search_program_count'] == 1
+            assert recorded_call.kwargs['metadata']['graph_gap_context']['strength'] == 'moderate'
+            assert recorded_call.kwargs['metadata']['graph_gap_context']['recommended_action'] == 'target_missing_support_kind'
+            assert recorded_call.kwargs['metadata']['graph_gap_context']['has_graph_support'] is True
+            assert recorded_call.kwargs['metadata']['graph_gap_context']['fact_registry_summary']['fact_count'] == 1
+            assert recorded_call.kwargs['metadata']['graph_gap_query']['claim_element_id'] == 'employment:1'
+            assert recorded_call.kwargs['metadata']['graph_gap_query']['recommended_action'] == 'target_missing_support_kind'
+            assert recorded_call.kwargs['metadata']['graph_gap_query']['has_graph_support'] is True
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
@@ -2575,6 +3044,118 @@ class TestMediatorWithMocks:
             assert result['alignment_task_updates'][0]['resolution_status'] == 'resolved_supported'
             assert result['alignment_task_updates'][0]['status'] == 'resolved'
             assert mediator.phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'alignment_task_updates')[0]['resolution_status'] == 'resolved_supported'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_claim_support_packets_include_review_drilldowns(self):
+        """Support packets should expose manifests and drilldowns for operator review."""
+        try:
+            from mediator import Mediator
+            from complaint_phases import ComplaintPhase
+
+            mock_backend = Mock()
+            mock_backend.id = 'test-backend'
+            mediator = Mediator(backends=[mock_backend])
+            mediator.state.username = 'testuser'
+            mediator.phase_manager.update_phase_data(
+                ComplaintPhase.INTAKE,
+                'intake_case_file',
+                {
+                    'candidate_claims': [{'claim_type': 'retaliation'}],
+                    'claim_elements': {
+                        'retaliation': [
+                            {
+                                'element_id': 'causation',
+                                'element_text': 'Causal connection',
+                                'evidence_classes': ['timeline'],
+                            }
+                        ]
+                    },
+                },
+            )
+            mediator.get_claim_support_validation = Mock(return_value={
+                'claims': {
+                    'retaliation': {
+                        'validation_status': 'incomplete',
+                        'elements': [
+                            {
+                                'element_id': 'causation',
+                                'element_text': 'Causal connection',
+                                'validation_status': 'incomplete',
+                                'missing_support_kinds': ['authority'],
+                                'recommended_action': 'collect_fact_support',
+                                'contradiction_candidate_count': 1,
+                                'contradiction_candidates': [{'fact_ids': ['fact:a', 'fact:b']}],
+                                'authority_rule_candidate_summary': {'record_count': 1},
+                                'authority_treatment_summary': {'record_count': 0},
+                                'gap_context': {
+                                    'support_facts': [
+                                        {
+                                            'fact_id': 'fact:timeline',
+                                            'text': 'Protected activity happened before termination.',
+                                            'fact_type': 'timeline',
+                                        }
+                                    ],
+                                    'support_traces': [
+                                        {
+                                            'support_kind': 'evidence',
+                                            'source_family': 'evidence',
+                                            'support_ref': 'artifact:email',
+                                            'support_label': 'Email archive',
+                                            'source_ref': 'https://example.test/email',
+                                            'archive_url': 'https://web.archive.org/example',
+                                            'record_summary': {
+                                                'title': 'Email archive',
+                                                'source_url': 'https://example.test/email',
+                                                'archive_url': 'https://web.archive.org/example',
+                                                'content_hash': 'sha256:abc',
+                                            },
+                                        },
+                                        {
+                                            'support_kind': 'authority',
+                                            'source_family': 'authority',
+                                            'support_ref': 'authority:1',
+                                            'support_label': 'Smith v. Example',
+                                            'graph_summary': {
+                                                'rule_candidates': [
+                                                    {'rule_id': 'rule:1', 'rule_type': 'element'},
+                                                ],
+                                            },
+                                        },
+                                    ],
+                                },
+                                'reasoning_diagnostics': {
+                                    'temporal_summary': {'fact_count': 1, 'partial_order_ready': True},
+                                    'temporal_rule_profile': {
+                                        'profile_id': 'retaliation_temporal_profile_v1',
+                                        'status': 'partial',
+                                    },
+                                },
+                            }
+                        ],
+                    }
+                }
+            })
+            mediator.get_claim_support_gaps = Mock(return_value={'claims': {}})
+
+            packets = mediator._build_claim_support_packets(user_id='testuser', required_support_kinds=['evidence', 'authority'])
+            element = packets['retaliation']['elements'][0]
+
+            assert element['bundle_manifest']['entry_count'] == 3
+            assert element['bundle_manifest']['family_counts']['evidence'] == 1
+            assert element['bundle_manifest']['family_counts']['authority'] == 1
+            assert element['archive_history']['capture_count'] == 1
+            assert element['archive_history']['captures'][0]['archive_url'] == 'https://web.archive.org/example'
+            assert element['graph_trace_drilldown']['rule_candidate_count'] == 1
+            assert element['timeline_drilldown']['temporal_rule_profile']['profile_id'] == 'retaliation_temporal_profile_v1'
+            assert element['contradiction_report']['contradiction_count'] == 1
+            assert element['missing_support_report']['missing_support_kinds'] == ['authority']
+            assert packets['retaliation']['support_packet_reports'] == {
+                'missing_support_counts': {'authority': 1},
+                'archive_capture_count': 1,
+                'graph_rule_candidate_count': 1,
+                'contradiction_count': 1,
+            }
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 

@@ -1,0 +1,210 @@
+# Objective Bundle: refactor/g8
+
+Source todo: data/refactor_supervisor/refactor_todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## REF-031 Close objective gap: Prepare incremental implementation slices
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Depends on: 
+- Outputs: data/refactor_supervisor/discovery, data/refactor_supervisor/refactor_objective_heap.md
+- Validation: test -f data/refactor_supervisor/discovery/2026-07-21-ref-031-objective-validation-repair.md
+- Bundle: refactor/g8
+- Bundle shard: data/refactor_supervisor/objective_bundles/refactor-g8.todo.md
+- Bundle strategy: explicit
+- Graph parents: none
+- Graph depth: 0
+- Parallel lane: refactor/g8
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Goal id: G8
+- Missing evidence: objective validation repair
+- Embedding query: Prepare incremental implementation slices
+- AST query: docs/ARCHITECTURE.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, data/refactor_supervisor/refactor_goals.json, scripts/refactor_agent_supervisor.py, tests/test_refactor_agent_supervisor.py
+- Surplus group: objective/G8
+- Merge key: 73c2c19911fd953e
+- Merge family: objective/G8
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: validation_gate
+- Todo vector key: bf05e040a4792343
+- Repair evidence: data/refactor_supervisor/discovery/2026-07-21-ref-031-objective-validation-repair.md; objective validation repair
+- Acceptance: Objective scan filed this gap for G8. Use evidence in /home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-21-ref-031-objective-gap-8237ed56b27c.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## REF-047 Close objective gap: Prepare incremental implementation slices
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Depends on: 
+- Outputs: data/refactor_supervisor/discovery, data/refactor_supervisor/refactor_objective_heap.md
+- Validation: test -f data/refactor_supervisor/discovery/2026-07-21-ref-031-objective-validation-repair.md
+- Bundle: refactor/g8
+- Bundle shard: data/refactor_supervisor/objective_bundles/refactor-g8.todo.md
+- Bundle strategy: explicit
+- Graph parents: none
+- Graph depth: 0
+- Parallel lane: refactor/g8
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Goal id: G8
+- Canonical task key: task/v1/86f2184f96844164f721836c9a87d1f35ecb0e622c026c8007e7fa19254518e1
+- Canonical task CID: baguqeeraq3zbqt4wqrawj5zbqnwjvb6r6npmwdtcfqbgzaah475bsjkfddqq
+- Missing evidence: objective validation repair
+- Embedding query: Prepare incremental implementation slices
+- AST query: docs/ARCHITECTURE.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, data/refactor_supervisor/refactor_goals.json, scripts/refactor_agent_supervisor.py, tests/test_refactor_agent_supervisor.py
+- Surplus group: objective/G8
+- Merge key: 73c2c19911fd953e
+- Merge family: objective/G8
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: validation_gate
+- Todo vector key: bf05e040a4792343
+- Acceptance: Objective scan filed this gap for G8. Use evidence in /home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-21-ref-047-objective-gap-8237ed56b27c.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## REF-060 Close objective gap: Prepare incremental implementation slices
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Depends on: 
+- Outputs: data/refactor_supervisor/discovery, data/refactor_supervisor/refactor_objective_heap.md
+- Validation: python -m pytest --collect-only -q
+- Bundle: refactor/g8
+- Bundle shard: data/refactor_supervisor/objective_bundles/refactor-g8.todo.md
+- Bundle strategy: explicit
+- Graph parents: none
+- Graph depth: 0
+- Parallel lane: refactor/g8
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: 
+- Changed paths: 
+- AST symbols: docs/ARCHITECTURE.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, data/refactor_supervisor/refactor_goals.json, scripts/refactor_agent_supervisor.py, tests/test_refactor_agent_supervisor.py
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: G8
+- Canonical task key: task/v1/86f2184f96844164f721836c9a87d1f35ecb0e622c026c8007e7fa19254518e1
+- Canonical task CID: baguqeeraq3zbqt4wqrawj5zbqnwjvb6r6npmwdtcfqbgzaah475bsjkfddqq
+- Missing evidence: objective validation repair
+- Embedding query: Prepare incremental implementation slices
+- AST query: docs/ARCHITECTURE.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, data/refactor_supervisor/refactor_goals.json, scripts/refactor_agent_supervisor.py, tests/test_refactor_agent_supervisor.py
+- Surplus group: objective/G8
+- Merge key: 73c2c19911fd953e
+- Merge family: objective/G8
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: validation_gate
+- Todo vector key: bf05e040a4792343
+- Acceptance: Objective scan filed this gap for G8. Use evidence in /home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-22-ref-060-objective-gap-8237ed56b27c.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## REF-067 Close objective gap: Prepare incremental implementation slices
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Depends on: 
+- Outputs: data/refactor_supervisor/discovery, data/refactor_supervisor/refactor_objective_heap.md
+- Validation: python -m pytest --collect-only -q
+- Bundle: refactor/g8
+- Bundle shard: data/refactor_supervisor/objective_bundles/refactor-g8.todo.md
+- Bundle strategy: explicit
+- Graph parents: none
+- Graph depth: 0
+- Parallel lane: refactor/g8
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: 
+- Changed paths: 
+- AST symbols: docs/ARCHITECTURE.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, data/refactor_supervisor/refactor_goals.json, scripts/refactor_agent_supervisor.py, tests/test_refactor_agent_supervisor.py
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: G8
+- Canonical task key: task/v1/86f2184f96844164f721836c9a87d1f35ecb0e622c026c8007e7fa19254518e1
+- Canonical task CID: baguqeeraq3zbqt4wqrawj5zbqnwjvb6r6npmwdtcfqbgzaah475bsjkfddqq
+- Missing evidence: objective validation repair
+- Embedding query: Prepare incremental implementation slices
+- AST query: docs/ARCHITECTURE.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, data/refactor_supervisor/refactor_goals.json, scripts/refactor_agent_supervisor.py, tests/test_refactor_agent_supervisor.py
+- Surplus group: objective/G8
+- Merge key: 73c2c19911fd953e
+- Merge family: objective/G8
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: validation_gate
+- Todo vector key: bf05e040a4792343
+- Acceptance: Objective scan filed this gap for G8. Use evidence in /home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-22-ref-067-objective-gap-8237ed56b27c.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## REF-321 Close objective gap: Prepare incremental implementation slices
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Depends on: 
+- Outputs: data/refactor_supervisor/discovery, data/refactor_supervisor/refactor_objective_heap.md
+- Validation: python -m pytest --collect-only -q
+- Bundle: refactor/g8
+- Bundle shard: data/refactor_supervisor/objective_bundles/refactor-g8.todo.md
+- Bundle strategy: explicit
+- Graph parents: none
+- Graph depth: 0
+- Parallel lane: refactor/g8
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: 
+- Changed paths: 
+- AST symbols: docs/ARCHITECTURE.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, data/refactor_supervisor/refactor_goals.json, scripts/refactor_agent_supervisor.py, tests/test_refactor_agent_supervisor.py
+- Interfaces: 
+- Submodules: 
+- Generated artifacts: 
+- Allow concurrent with: 
+- Goal id: G8
+- Canonical task key: task/v1/86f2184f96844164f721836c9a87d1f35ecb0e622c026c8007e7fa19254518e1
+- Canonical task CID: baguqeeraq3zbqt4wqrawj5zbqnwjvb6r6npmwdtcfqbgzaah475bsjkfddqq
+- Missing evidence: objective validation repair
+- Embedding query: Prepare incremental implementation slices
+- AST query: docs/ARCHITECTURE.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md, docs/REFACTOR_SUPERVISOR_TASKBOARD.md, data/refactor_supervisor/refactor_goals.json, scripts/refactor_agent_supervisor.py, tests/test_refactor_agent_supervisor.py
+- Surplus group: objective/G8
+- Merge key: 73c2c19911fd953e
+- Merge family: objective/G8
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet: 
+- Goal packet role: 
+- Goal packet goals: 
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Candidate kind: validation_gate
+- Todo vector key: bf05e040a4792343
+- Acceptance: Objective scan filed this gap for G8. Use evidence in /home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-23-ref-321-objective-gap-8237ed56b27c.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

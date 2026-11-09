@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from applications import complaint_cli
 from applications.complaint_workspace import ComplaintWorkspaceService
 import ipfs_datasets_py.processors.legal_data as legal_data
+from ipfs_datasets_py.processors.legal_data import workspace_dataset as workspace_dataset_module
 
 
 def _sample_dataset() -> dict:
@@ -91,6 +94,215 @@ def test_workspace_dispatches_docket_search_tool(monkeypatch) -> None:
     )
 
     assert result == expected
+
+
+def test_workspace_pdf_ingest_records_source_sha256(tmp_path: Path, monkeypatch) -> None:
+    pdf_path = tmp_path / "source.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\nsource document bytes\n")
+
+    monkeypatch.setattr(
+        workspace_dataset_module,
+        "_extract_pdf_text",
+        lambda *args, **kwargs: {
+            "text": "HACC must review accommodation requests.",
+            "backend": "unit-test",
+            "page_count": 1,
+            "errors": [],
+        },
+    )
+
+    dataset = workspace_dataset_module.WorkspaceDatasetBuilder().build_from_pdf_paths(
+        [pdf_path],
+        workspace_id="hash-workspace",
+        include_knowledge_graph=False,
+        include_bm25=False,
+        include_vector_index=False,
+        include_formal_logic=False,
+    )
+
+    metadata = dataset.documents[0].metadata
+    assert metadata["sha256"]
+    assert metadata["content_sha256"] == metadata["sha256"]
+    assert metadata["source_digest"] == {
+        "algorithm": "sha256",
+        "value": metadata["sha256"],
+        "file_size_bytes": pdf_path.stat().st_size,
+    }
+
+
+def test_workspace_dataset_graph_explorer_projects_entities_and_logic(monkeypatch) -> None:
+    service = ComplaintWorkspaceService()
+    dataset = {
+        "dataset_id": "workspace-dataset-1",
+        "workspace_id": "workspace-1",
+        "workspace_name": "Workspace One",
+        "source_type": "workspace",
+        "documents": [
+            {
+                "document_id": "doc-accommodation",
+                "title": "Accommodation Notice",
+                "text": "HACC must provide reasonable accommodation.",
+                "metadata": {"document_type": "pdf"},
+            }
+        ],
+        "collections": [],
+        "knowledge_graph": {
+            "entities": [
+                {"id": "doc-accommodation", "type": "document", "label": "Accommodation Notice"},
+                {"id": "entity-hacc", "type": "agency", "label": "HACC"},
+            ],
+            "relationships": [
+                {
+                    "id": "rel-contains",
+                    "type": "CONTAINS_DOCUMENT",
+                    "source": "entity-hacc",
+                    "target": "doc-accommodation",
+                }
+            ],
+        },
+        "metadata": {
+            "artifact_status": {"knowledge_graph": True, "formal_logic": True},
+            "artifact_provenance": {"knowledge_graph": {"backend": "test"}},
+            "formal_logic_summary": {
+                "deontic_statement_count": 1,
+                "proof_count": 1,
+                "deontic_conflict_count": 1,
+            },
+            "formal_logic": {
+                "document_analyses": {
+                    "doc-accommodation": {
+                        "deontic_statements": [
+                            {
+                                "id": "stmt-1",
+                                "entity": "HACC",
+                                "modality": "obligation",
+                                "action": "provide reasonable accommodation",
+                                "conditions": ["tenant has a disability-related need"],
+                                "exceptions": ["request is only a preference"],
+                                "source_document": "doc-accommodation",
+                                "source_text": "HACC must provide reasonable accommodation.",
+                            },
+                            {
+                                "id": "stmt-2",
+                                "entity": "HACC",
+                                "modality": "prohibition",
+                                "action": "deny reasonable accommodation without review",
+                                "conditions": ["request is complete"],
+                                "exceptions": [],
+                                "source_document": "doc-accommodation",
+                                "source_text": "HACC cannot deny reasonable accommodation without review.",
+                            }
+                        ],
+                        "events": [
+                            {
+                                "id": "stmt-1:event",
+                                "agent": "HACC",
+                                "label": "provide reasonable accommodation",
+                                "time": "",
+                            },
+                            {
+                                "id": "stmt-2:event",
+                                "agent": "HACC",
+                                "label": "deny reasonable accommodation without review",
+                                "time": "",
+                            },
+                        ],
+                        "frames": [
+                            {
+                                "frame_id": "frame-1",
+                                "object_id": "stmt-1",
+                                "slots": {"document_id": "doc-accommodation"},
+                            }
+                        ],
+                    }
+                },
+                "deontic_conflicts": [
+                    {
+                        "id": "conflict-1",
+                        "severity": "high",
+                        "explanation": "HACC accommodation conflict",
+                    }
+                ],
+                "temporal_fol": {"backend": "tdfol_constructor", "formulas": ["Eventually(accommodation_reviewed)"]},
+                "first_order_logic": {"backend": "fol_constructor", "formulas": ["Allowed(HACC, provide)"]},
+                "deontic_cognitive_event_calculus": {"backend": "eng_dcec_wrapper", "formulas": ["Obligation(HACC, provide)"]},
+                "frame_logic": {"frame-1": {"frame_id": "frame-1", "isa": "DeonticStatement"}},
+                "proof_store": {
+                    "proofs": {
+                        "proof-1": {
+                            "proof_id": "proof-1",
+                            "status": "proved",
+                            "query": "provide reasonable accommodation",
+                            "root_conclusion": "HACC provides reasonable accommodation",
+                            "proof_hash": "abc123",
+                            "certificates": ["cert-1"],
+                        }
+                    },
+                    "certificates": [
+                        {
+                            "certificate_id": "cert-1",
+                            "backend": "groth16",
+                            "format": "groth16_zksnark",
+                            "theorem": "provide reasonable accommodation",
+                            "assumptions": ["tenant has a disability-related need"],
+                        }
+                    ],
+                    "summary": {"proof_count": 1},
+                    "metadata": {
+                        "backend": "formal_logic_proof_store",
+                        "zkp_status": {
+                            "available": True,
+                            "backend": "groth16",
+                            "backend_info": {"binary_available": True, "curve_id": "bn254"},
+                        },
+                    },
+                },
+            },
+        },
+    }
+
+    monkeypatch.setattr(service, "_load_workspace_dataset_payload", lambda *args, **kwargs: dataset)
+
+    graph = service.get_workspace_dataset_graph(
+        "/tmp/workspace.parquet",
+        input_type="single",
+        entity_query="HACC",
+        relationship_type="CONTAINS",
+        limit=10,
+    )
+
+    assert graph["source"] == "complaint_workspace_dataset_graph"
+    assert graph["knowledge_graph"]["matched_entity_count"] == 1
+    assert graph["knowledge_graph"]["matched_relationship_count"] == 1
+    assert graph["logical_flow"]["returned_statement_count"] == 2
+    assert graph["logical_flow"]["statements"][0]["proof_certificate_count"] == 1
+    assert graph["logical_flow"]["statements"][0]["conditions"] == ["tenant has a disability-related need"]
+    assert graph["logical_flow"]["returned_event_count"] == 2
+    assert graph["logical_flow"]["returned_event_flow_edge_count"] >= 4
+    assert graph["logical_flow"]["deontic_status_counts"]["required"] == 1
+    assert graph["logical_flow"]["deontic_status_counts"]["prohibited"] == 1
+    assert graph["logical_flow"]["deontic_analysis"][1]["status"] == "prohibited"
+    assert graph["logical_flow"]["returned_conflict_count"] == 1
+    assert graph["logical_flow"]["formulas"]["temporal_fol"] == ["Eventually(accommodation_reviewed)"]
+    assert graph["logical_flow"]["logic_systems"]["deontic_temporal_first_order_logic"]["backend"] == "tdfol_constructor"
+    assert graph["logical_flow"]["logic_systems"]["first_order_logic"]["sample"] == ["Allowed(HACC, provide)"]
+    assert graph["logical_flow"]["logic_systems"]["deontic_cognitive_event_calculus"]["backend"] == "eng_dcec_wrapper"
+    assert graph["logical_flow"]["proof_system"]["zero_knowledge_proofs"]["available"] is True
+    assert graph["logical_flow"]["proof_system"]["zero_knowledge_proofs"]["backend"] == "groth16"
+    assert graph["logical_flow"]["proof_system"]["certificate_backend_counts"]["groth16"] == 1
+    assert graph["logical_flow"]["statements"][0]["proof_status"] == "proved"
+    assert graph["logical_flow"]["statements"][0]["proof_backends"] == ["groth16"]
+    assert graph["logical_flow"]["statements"][0]["zkp_certificate_ids"] == ["cert-1"]
+
+    prohibited = service.get_workspace_dataset_graph(
+        "/tmp/workspace.parquet",
+        input_type="single",
+        entity_query="HACC",
+        modality="prohibited",
+        limit=10,
+    )
+    assert prohibited["logical_flow"]["returned_statement_count"] == 1
+    assert prohibited["logical_flow"]["deontic_analysis"][0]["event"] == "deny reasonable accommodation without review"
 
 
 def test_cli_docket_graph_command_uses_workspace_service(monkeypatch, capsys) -> None:

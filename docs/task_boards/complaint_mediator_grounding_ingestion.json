@@ -1,0 +1,26 @@
+{
+  "consistency_claimed": false,
+  "execution_started": false,
+  "goals": 9,
+  "initial_ready": [
+    "CIMP-MGND-01"
+  ],
+  "manual_holds": [],
+  "native_contract_ingested": true,
+  "native_open_plan_check": {
+    "finding_codes": [
+      "terminal_outcome_missing"
+    ],
+    "interpretation": "No terminal events or task execution evidence is asserted by ingestion.",
+    "outcome": "countermodel",
+    "status": "violated"
+  },
+  "native_roundtrip": true,
+  "old_intake_board_and_state_modified": false,
+  "plan_id": "baguqeerawyd66w4rgas5cocjkxv74mbt4jujxekjtfuad2babtl3xnmpsrkq",
+  "schema": "complaint-mediator-grounding-native-ingestion@1",
+  "spec_sha256": "bc23bbfe166b0a6647a02a91d9c5120c73cbb8db597cb65358e836fb17c63851",
+  "subgoals": 23,
+  "tasks": 44,
+  "tasks_completed_by_ingestion": 0
+}

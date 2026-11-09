@@ -9,8 +9,6 @@ from typing import Any, Dict
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 def _load_config(path: str) -> Dict[str, Any]:
@@ -214,7 +212,7 @@ def main() -> int:
     from adversarial_harness import AdversarialHarness, HACC_QUERY_PRESETS, Optimizer
     from backends import LLMRouterBackend
     from integrations.ipfs_datasets import ensure_ipfs_backend, get_router_status_report
-    from mediator.mediator import Mediator
+    from mediator.interface import Mediator
 
     if args.preset not in HACC_QUERY_PRESETS:
         raise ValueError(

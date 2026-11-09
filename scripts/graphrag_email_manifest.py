@@ -3,12 +3,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
-import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ipfs_datasets_py.processors.legal_data.email_corpus import (
+from complaint_generator.email_graphrag import (
     build_email_graphrag_artifacts,
     search_email_graphrag_duckdb,
 )

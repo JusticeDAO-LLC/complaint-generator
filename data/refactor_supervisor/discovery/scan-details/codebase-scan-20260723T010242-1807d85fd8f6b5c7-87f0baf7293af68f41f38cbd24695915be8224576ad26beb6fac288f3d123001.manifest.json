@@ -1,0 +1,179 @@
+{
+  "artifact_id": "sha256:87f0baf7293af68f41f38cbd24695915be8224576ad26beb6fac288f3d123001",
+  "byte_count": 506384,
+  "created_at": "2026-07-23T01:04:53.995190+00:00",
+  "detail_count": 2388,
+  "jsonl_path": "/home/barberb/complaint-generator/data/refactor_supervisor/discovery/scan-details/codebase-scan-20260723T010242-1807d85fd8f6b5c7-87f0baf7293af68f41f38cbd24695915be8224576ad26beb6fac288f3d123001.jsonl",
+  "manifest_path": "/home/barberb/complaint-generator/data/refactor_supervisor/discovery/scan-details/codebase-scan-20260723T010242-1807d85fd8f6b5c7-87f0baf7293af68f41f38cbd24695915be8224576ad26beb6fac288f3d123001.manifest.json",
+  "metadata": {
+    "analyzer_version": "codebase-annotation-analyzer/v1",
+    "candidate_accounting": {
+      "appended_tasks": 6,
+      "deduplicated_candidates": 0,
+      "raw_candidates": 5941,
+      "rejected_candidates": 5935,
+      "seen_candidates": 0
+    },
+    "coverage": {
+      "cache_hits": 0,
+      "eligible_files": 21921,
+      "excluded_files": 2388,
+      "git_roots": 15,
+      "parsed_files": 21921,
+      "parser_failures": 0,
+      "tracked_files": 24309
+    },
+    "coverage_complete": true,
+    "expected_git_root_count": 15,
+    "expected_git_roots": [
+      ".",
+      "data/refactor_supervisor/worktrees/workspace-6184df35644c-32bb9cee549d",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-complaint_phases-neurosymbolic_matcher/workspace-052bae7c6432-d2942bdc37d8",
+      "data/refactor_supervisor/bundle_lanes/worktrees/refactor-g10-g10-s3/workspace-5fcbf91c7446-7fb73dd79a90",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-adversarial_harness-session/workspace-31de0ab05c30-75ec9433eb36",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-complaint_phases-knowledge_graph/workspace-f04b0de02ae6-7b89fa68ece0",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-examples-observability_benchmarks/workspace-9e99624268cd-2222f2962482",
+      "data/refactor_supervisor/bundle_lanes/worktrees/refactor-g4-g4-s1/ref-013-d4fc48536ac0-attempt-1-1784693051",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-scripts-refactor_agent_supervisor/workspace-7229c497c6b3-13eaa3e0201d",
+      "data/refactor_supervisor/bundle_lanes/worktrees/refactor-g1-g1-s1/ref-002-attempt-1-1784663183",
+      "data/refactor_supervisor/bundle_lanes/worktrees/refactor-g3-g3-s2/ref-014-d917acc7ede5-attempt-2-1784707651",
+      "data/refactor_supervisor/bundle_lanes/worktrees/refactor-g2-g2-s1/ref-006-attempt-1-1784663578",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-examples-session_sgd_report/workspace-d62d0b67bd4e-9b1ba2ab5560",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-integrations-ipfs_datasets-storage/workspace-32258f1c44df-473b8c23223f",
+      "ipfs_datasets_py"
+    ],
+    "git_roots": [
+      ".",
+      "data/refactor_supervisor/worktrees/workspace-6184df35644c-32bb9cee549d",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-complaint_phases-neurosymbolic_matcher/workspace-052bae7c6432-d2942bdc37d8",
+      "data/refactor_supervisor/bundle_lanes/worktrees/refactor-g10-g10-s3/workspace-5fcbf91c7446-7fb73dd79a90",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-adversarial_harness-session/workspace-31de0ab05c30-75ec9433eb36",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-complaint_phases-knowledge_graph/workspace-f04b0de02ae6-7b89fa68ece0",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-examples-observability_benchmarks/workspace-9e99624268cd-2222f2962482",
+      "data/refactor_supervisor/bundle_lanes/worktrees/refactor-g4-g4-s1/ref-013-d4fc48536ac0-attempt-1-1784693051",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-scripts-refactor_agent_supervisor/workspace-7229c497c6b3-13eaa3e0201d",
+      "data/refactor_supervisor/bundle_lanes/worktrees/refactor-g1-g1-s1/ref-002-attempt-1-1784663183",
+      "data/refactor_supervisor/bundle_lanes/worktrees/refactor-g3-g3-s2/ref-014-d917acc7ede5-attempt-2-1784707651",
+      "data/refactor_supervisor/bundle_lanes/worktrees/refactor-g2-g2-s1/ref-006-attempt-1-1784663578",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-examples-session_sgd_report/workspace-d62d0b67bd4e-9b1ba2ab5560",
+      "data/refactor_supervisor/bundle_lanes/worktrees/codebase-runtime-integrations-ipfs_datasets-storage/workspace-32258f1c44df-473b8c23223f",
+      "ipfs_datasets_py"
+    ],
+    "reason_summaries": {
+      "exclusions": [
+        {
+          "count": 14,
+          "reason_code": "excluded_prefix",
+          "representative_paths": [
+            "data/agent_supervisor/discovery/2026-07-22-ref-080-swallowed-exception-review.md",
+            "data/agent_supervisor/discovery/2026-07-22-ref-081-swallowed-exception-review.md",
+            "data/agent_supervisor/discovery/2026-07-22-ref-082-swallowed-exception-review.md",
+            "data/agent_supervisor/discovery/2026-07-22-ref-083-swallowed-exception-review.md",
+            "data/agent_supervisor/discovery/2026-07-22-ref-084-placeholder-runtime-review.md",
+            "data/agent_supervisor/discovery/2026-07-22-ref-085-swallowed-exception-review.md",
+            "data/agent_supervisor/discovery/2026-07-22-ref-086-swallowed-exception-review.md",
+            "data/agent_supervisor/discovery/2026-07-22-ref-087-llm-knowledge-graph-extraction.md",
+            "data/agent_supervisor/discovery/2026-07-22-ref-094-llm-neurosymbolic-matching.md",
+            "data/agent_supervisor/discovery/2026-07-22-ref-095-swallowed-exception-review.md"
+          ]
+        },
+        {
+          "count": 325,
+          "reason_code": "file_too_large",
+          "representative_paths": [
+            "adversarial_harness/optimizer.py",
+            "applications/complaint_workspace.py",
+            "applications/dashboard_ui.py",
+            "complaint_phases/denoiser.py",
+            "data/refactor_supervisor/bundle_lanes/bundle_lanes.json",
+            "data/refactor_supervisor/objective_bundles/index.json",
+            "data/refactor_supervisor/objective_bundles/todo_vector_index.json",
+            "data/refactor_supervisor/objective_graph.json",
+            "data/refactor_supervisor/refactor_todo.md",
+            "document_pipeline.py"
+          ]
+        },
+        {
+          "count": 161,
+          "reason_code": "generated_artifact",
+          "representative_paths": [
+            "data/refactor_supervisor/bundle_lanes/refactor-g1-g1-s2/discovery/2026-07-21-ref-007-ref-003-merge-retry-budget.md",
+            "data/refactor_supervisor/bundle_lanes/refactor-g1-g1-s2/discovery/2026-07-21-ref-008-ref-004-merge-retry-budget.md",
+            "data/refactor_supervisor/bundle_lanes/refactor-g2-g2-s1/discovery/2026-07-21-ref-009-ref-005-merge-retry-budget.md",
+            "data/refactor_supervisor/bundle_lanes/refactor-g2-g2-s1/discovery/2026-07-21-ref-010-ref-006-merge-retry-budget.md",
+            "data/refactor_supervisor/bundle_lanes/refactor-g3-g3-s2/discovery/2026-07-22-ref-014-ref-012-retry-budget.md",
+            "data/refactor_supervisor/discovery/2026-07-21-ref-035-ref-031-retry-budget.md",
+            "data/refactor_supervisor/discovery/2026-07-21-ref-046-ref-001-merge-retry-budget.md",
+            "data/refactor_supervisor/discovery/2026-07-22-ref-051-codebase-scan-3ab0109997e2.md",
+            "data/refactor_supervisor/discovery/2026-07-22-ref-052-codebase-scan-888d7f27e0a0.md",
+            "data/refactor_supervisor/discovery/2026-07-22-ref-053-codebase-scan-6060fa7dd810.md"
+          ]
+        },
+        {
+          "count": 2,
+          "reason_code": "missing_file",
+          "representative_paths": [
+            "data/refactor_supervisor/discovery/2026-07-22-ref-057-objective-gap-08d9b0956fd6.md",
+            "data/refactor_supervisor/discovery/2026-07-22-ref-061-objective-validation-repair.md"
+          ]
+        },
+        {
+          "count": 2,
+          "reason_code": "not_regular_file",
+          "representative_paths": [
+            "ipfs_datasets_py/docker/docker-compose.yml",
+            "ipfs_datasets_py/scripts/docker-entrypoint.sh"
+          ]
+        },
+        {
+          "count": 442,
+          "reason_code": "todo_board",
+          "representative_paths": [
+            "data/refactor_supervisor/objective_bundles/codebase-quality-test_pipeline_error_recovery.todo.md",
+            "data/refactor_supervisor/objective_bundles/codebase-quality-tests-conftest.todo.md",
+            "data/refactor_supervisor/objective_bundles/codebase-runtime-adversarial_harness-session.todo.md",
+            "data/refactor_supervisor/objective_bundles/codebase-runtime-complaint_phases-knowledge_graph.todo.md",
+            "data/refactor_supervisor/objective_bundles/codebase-runtime-complaint_phases-neurosymbolic_matcher.todo.md",
+            "data/refactor_supervisor/objective_bundles/codebase-runtime-document_optimization.todo.md",
+            "data/refactor_supervisor/objective_bundles/codebase-runtime-examples-codex_autopatch_from_run.todo.md",
+            "data/refactor_supervisor/objective_bundles/codebase-runtime-examples-codex_multi_run_autopatch.todo.md",
+            "data/refactor_supervisor/objective_bundles/codebase-runtime-examples-codex_multi_run_autopatch_loop.todo.md",
+            "data/refactor_supervisor/objective_bundles/codebase-runtime-examples-observability_benchmarks.todo.md"
+          ]
+        },
+        {
+          "count": 1442,
+          "reason_code": "unsupported_suffix",
+          "representative_paths": [
+            ".coveragerc",
+            ".gitignore",
+            ".gitmodules",
+            "MANIFEST.in",
+            "Makefile",
+            "artifacts/demo-output/jordan-example-v.-acme-corporation-complaint.pdf",
+            "artifacts/homepage/homepage-after.png",
+            "artifacts/homepage/homepage-before-overhaul.png",
+            "artifacts/homepage/homepage-final.png",
+            "artifacts/homepage/homepage-guided-flow-refined.png"
+          ]
+        }
+      ],
+      "parser_failures": []
+    },
+    "repo_root": "/home/barberb/complaint-generator",
+    "started_at": "2026-07-23T01:02:42.563871+00:00"
+  },
+  "reason_counts": {
+    "excluded_prefix": 14,
+    "file_too_large": 325,
+    "generated_artifact": 161,
+    "missing_file": 2,
+    "not_regular_file": 2,
+    "todo_board": 442,
+    "unsupported_suffix": 1442
+  },
+  "row_count": 2388,
+  "scan_id": "codebase-scan-20260723T010242-1807d85fd8f6b5c7",
+  "schema_version": 1,
+  "sha256": "87f0baf7293af68f41f38cbd24695915be8224576ad26beb6fac288f3d123001"
+}

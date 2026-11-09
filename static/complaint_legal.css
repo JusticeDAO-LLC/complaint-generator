@@ -1,0 +1,151 @@
+.legal-provenance,
+#legal-provenance {
+    margin: 0 0 18px;
+    padding: 16px;
+    border: 1px solid #d6d3d1;
+    border-radius: 16px;
+    background: #fff;
+    color: #1c1917;
+    min-width: 0;
+}
+
+#legal-provenance h2,
+#legal-provenance h3 {
+    margin: 0 0 8px;
+}
+
+.legal-provenance-actions,
+.legal-provenance-fields,
+.legal-provenance-labels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 12px 0;
+}
+
+.legal-provenance-fields label {
+    display: grid;
+    gap: 4px;
+    flex: 1 1 16rem;
+    min-width: 0;
+}
+
+#legal-provenance button,
+#legal-provenance input,
+#legal-provenance textarea {
+    min-height: 44px;
+    font: inherit;
+}
+
+#legal-provenance textarea {
+    min-height: 5rem;
+}
+
+.legal-provenance-graphs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.legal-provenance-graph {
+    min-width: 0;
+    padding: 12px;
+    border-radius: 12px;
+}
+
+#legal-dependency-graph,
+.legal-provenance-graph[data-graph-kind="legal-dependency"] {
+    background: #f4f7fb;
+    border: 1px solid #1d4e89;
+    border-left: 8px solid #1d4e89;
+}
+
+#factual-provenance-graph,
+.legal-provenance-graph[data-graph-kind="factual"] {
+    background: #f3faf6;
+    border: 1px solid #1f4b3a;
+    border-left: 8px solid #1f4b3a;
+}
+
+#legal-provenance ol,
+#legal-provenance ul {
+    display: grid;
+    gap: 8px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.legal-provenance-requirement,
+.legal-provenance-assertion,
+.legal-provenance-evidence,
+.legal-provenance-note,
+#legal-provenance-trail {
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid #d6d3d1;
+    border-radius: 12px;
+    background: #fff;
+    text-align: left;
+}
+
+.legal-provenance-requirement[aria-pressed="true"],
+.legal-provenance-assertion[aria-pressed="true"],
+.legal-provenance-evidence[aria-pressed="true"],
+#legal-provenance-trail button[aria-current="step"] {
+    border-color: #1c1917;
+    outline: 2px solid #1c1917;
+}
+
+#legal-provenance-trail ol {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+#legal-provenance-trail button {
+    width: 100%;
+}
+
+.legal-provenance-note[data-role="contradiction"] {
+    border-color: #9a3412;
+    background: #fff7ed;
+}
+
+.legal-provenance-note[data-role="missing-input"] {
+    border-color: #854d0e;
+    background: #fefce8;
+}
+
+#legal-provenance [data-label="source-admission"],
+#legal-provenance [data-label="ai-suggestion"],
+#legal-provenance [data-label="legal-sufficiency"] {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px dashed #44403c;
+}
+
+#legal-provenance [data-label="ai-suggestion"] {
+    background: #f5f3ff;
+}
+
+#legal-provenance [data-label="legal-sufficiency"] {
+    background: #fafaf9;
+}
+
+#legal-provenance [data-label="source-admission"] {
+    background: #eff6ff;
+}
+
+@media (max-width: 720px) {
+    .legal-provenance-graphs,
+    #legal-provenance-trail ol {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #legal-provenance * {
+        scroll-behavior: auto;
+        transition: none;
+    }
+}

@@ -1,16 +1,14 @@
 import argparse
 import json
 import re
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
+from lib.runtime_ownership import require_module_ownership
 from adversarial_harness.hacc_evidence import _extract_source_window as _extract_grounded_source_window
 from complaint_phases.intake_case_file import refresh_intake_case_file
 
@@ -59,6 +57,10 @@ INTAKE_OBJECTIVE_PRIORITY = {
     "harm_remedy": 0.75,
     "intake_follow_up": 0.6,
 }
+
+
+MODULE_OWNERSHIP = require_module_ownership("scripts.synthesize_hacc_complaint")
+RUNTIME_ENTRYPOINT_ROLE = MODULE_OWNERSHIP.role
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:

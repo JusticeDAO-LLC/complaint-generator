@@ -1,0 +1,228 @@
+{
+  "schema_version": "complaint-generator.supervisor_publication.v1",
+  "validated_at": "2026-10-21T00:27:42.750232+00:00",
+  "target": {
+    "repository": "https://github.com/endomorphosis/complaint-generator",
+    "branch": "main",
+    "remote": "origin",
+    "main_base": "8d655d85a7503694c6a3d4f0d1077b5a77703a37",
+    "local_source_commit": "cc2c2ea36b758d176fc72b650f587d5c4e1fcbba",
+    "strategy": "Normal merge preserving origin/main history; no force push."
+  },
+  "dependency_publication": {
+    "repository": "https://github.com/endomorphosis/ipfs_accelerate_py",
+    "commit": "03f5ba5b60ef75c0be5b2f3b677bc3b93437afb2",
+    "published_branch": "codex/supervisor-recovery-20261021",
+    "parent_gitlink": "external/ipfs_accelerate_py",
+    "native_source_unchanged_since_16_case_validation": true
+  },
+  "completion": {
+    "total_tasks": 49,
+    "completed_tasks": 49,
+    "pending_tasks": 0,
+    "blocked_tasks": 0,
+    "in_progress_tasks": 0
+  },
+  "boards": {
+    "ipfs": {
+      "path": "docs/task_boards/ipfs_supervisor_task_board.json",
+      "sha256": "eab039a60c69816b2b4e49ec419fc79971824923a18361ff90d0cf1bc3d39b41",
+      "tasks": 30
+    },
+    "ipfs_markdown": {
+      "path": "docs/task_boards/ipfs_supervisor_task_board.md",
+      "sha256": "f3746a64303cd35fc55d0497169ff5bbd253802a52e9276b18dffcc86a6a4666"
+    },
+    "alignment": {
+      "path": "docs/task_boards/complaint_alignment_execution_board.json",
+      "sha256": "57e559dd5ee89ca5a096e16d9b11839c34ffadba6fdf1fade29342819b2c79c4",
+      "tasks": 19,
+      "source_fingerprint": "6f79df8e40c0c8a150f2cce129a9cb4192759ba3ff8a54f5fea484b1ed1c8d72",
+      "runtime_matches_published_board": true
+    }
+  },
+  "validation": {
+    "suites": {
+      "alignment_and_recovery": {
+        "path": ".complaint_workspace/supervisor/alignment_validation.xml",
+        "sha256": "ae0261b6fde1802ee770a7e3d7c3a3368a501f843b323596ab5f6f5adaf94bd7",
+        "tests": 261,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 261
+      },
+      "required_python_workflow": {
+        "path": ".complaint_workspace/supervisor/ipfs_regression_validation.xml",
+        "sha256": "47d01f2bd6f64ffdec25d5a087a55f0af682f0192d82ae83d306833db6530914",
+        "tests": 381,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 16,
+        "passed": 365
+      },
+      "package_surface": {
+        "path": ".complaint_workspace/supervisor/package_surface_validation.xml",
+        "sha256": "2c1b3f69bd4e7f516c455f98ef7e807e53a1b761a885bdad6c8c5c50cca983ba",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 16
+      },
+      "application_interfaces": {
+        "path": ".complaint_workspace/supervisor/merge_application_validation.xml",
+        "sha256": "586747c304e30d45003c2c2c222ec3b64aedf412e315adaa2f57da3c8198e311",
+        "tests": 33,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 33
+      },
+      "adapter_integration": {
+        "path": ".complaint_workspace/supervisor/merge_adapter_validation.xml",
+        "sha256": "94bf4a521cf8c6fbc7ad515e83675f80d84d59f883d529800ace8b4ce33ea9af",
+        "tests": 135,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 135
+      },
+      "operator_script_boundaries": {
+        "path": ".complaint_workspace/supervisor/merge_operator_scripts_validation.xml",
+        "sha256": "e9df41d67e1d1c538f5e77b49fdedb06db94845a08591a6673e6a187134e86e7",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 9
+      },
+      "format_adapter_fallback": {
+        "path": ".complaint_workspace/supervisor/merge_formats_validation.xml",
+        "sha256": "d4aaf0ba781314483573587f61f7571e5de8e959d511dedb02d8845a5478ada6",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 3
+      },
+      "native_grok_unchanged_dependency": {
+        "path": ".complaint_workspace/supervisor/native_grok_reachability_validation.xml",
+        "sha256": "43466183938a4cbb0cfe5228b5daf14a04d7553d29f7b94c306cde310574e8ff",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 16
+      }
+    },
+    "counting_note": "Per-run counts overlap and must not be summed as unique tests.",
+    "workflow_driver": {
+      "command": "HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python scripts/run_claim_support_review_regression.py --browser on --network off --junitxml=.complaint_workspace/supervisor/ipfs_regression_validation.xml",
+      "observed_exit_code": 0,
+      "terminal_exec_session": 43815,
+      "python_passed": 365,
+      "python_skipped": 16,
+      "skipped_package_cases_verified_separately": 16,
+      "skipped_and_separate_case_names_match": true,
+      "node_passed": 34,
+      "node_success_rows": 34,
+      "node_summary": "34 passed (2.2m)",
+      "log": {
+        "path": ".complaint_workspace/supervisor/ipfs_regression_validation.log",
+        "sha256": "610dfa2fdbf7c1da21493ac8ab7f80f8dee13b374269ad2397e612f3b38fadf0"
+      }
+    },
+    "backlog": {
+      "selected_cases": 413,
+      "unique_cases_with_passing_evidence": 413,
+      "optional_live_huggingface_cases_deselected": 2,
+      "initial_run": {
+        "path": ".complaint_workspace/supervisor/ipfs_backlog_validation.xml",
+        "sha256": "8cb1f810252c89ec9165857fd1cb4e1927420a11823346125dd8d3ce79b55ed8",
+        "tests": 413,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 412
+      },
+      "corrected_web_module": {
+        "path": ".complaint_workspace/supervisor/ipfs_backlog_web_validation.xml",
+        "sha256": "9c6d216ef402d9e78c0ca66ff9b4a615117650d082e73151bc12237e9a72e6f3",
+        "tests": 32,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 32
+      },
+      "explanation": "The initial guarded run accidentally set RUN_NETWORK_TESTS=1, enabling additional archived-source results in one mock test. It passed412 cases and failed1. The complete32-case web module then passed with that environment variable unset and the requested pytest gate flags retained. Every selected case has passing evidence; this is not a claim of a single413-pass run.",
+      "source_or_assertion_changes_for_failure": false,
+      "sockets_and_direct_live_provider_spawns_blocked": true
+    },
+    "additional_main_fallbacks": {
+      "initial_run": {
+        "path": ".complaint_workspace/supervisor/merge_adapter_mainrefs_validation.xml",
+        "sha256": "7c1ec9ed2e6c055ad102de4521bc7097f5bec90dafdf42c05cc58948b04aeaf1",
+        "tests": 21,
+        "failures": 3,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 18
+      },
+      "main_refs_217_through_226_passed": 18,
+      "stale_format_fixture_cases": 3,
+      "corrected_format_fixture_report": {
+        "path": ".complaint_workspace/supervisor/merge_formats_validation.xml",
+        "sha256": "d4aaf0ba781314483573587f61f7571e5de8e959d511dedb02d8845a5478ada6",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 3
+      },
+      "explanation": "Updated the optional-format absence fixture to mock the new adapter boundary. Product code and expected fallback assertions were preserved; all3 corrected cases passed."
+    },
+    "board_contract": {
+      "command": "python scripts/validate_task_boards.py",
+      "exit_code": 0,
+      "tasks": 30
+    },
+    "alignment_command": "python scripts/validate_alignment.py",
+    "local_checker_result": {
+      "path": ".complaint_workspace/supervisor/alignment_completion_summary.json",
+      "sha256": "0f94fbccc8cb7ef7185c19bdb13867e23ba01aca6436c33ad34d0c44a5a1ac7a"
+    },
+    "package_cleanup": {
+      "prior_editable_target_restored": "file:///home/barberb/complaint-generator",
+      "offline_restore_exit_code": 0,
+      "metadata_and_console_test_session_snapshots_restored_exactly": true,
+      "log": {
+        "path": ".complaint_workspace/supervisor/package_surface_restore.log",
+        "sha256": "49a59ae436f62c23aa8a963bdf2c08c03181018fba1d856d5b50ec4fc39e6ebd"
+      }
+    }
+  },
+  "source_binding": {
+    "alignment_source_fingerprint": "6f79df8e40c0c8a150f2cce129a9cb4192759ba3ff8a54f5fea484b1ed1c8d72",
+    "staged_material_source_files": 89,
+    "staged_material_source_digest_sha256": "d543b5f82577950a3512d6cc168de97dc53fec82eaf7ecef3e33991d692fa3af",
+    "digest_algorithm": "Sorted changed .py/.js/.mjs/.html paths: update SHA256 with path UTF8 + NUL + raw SHA256(file bytes). Each source file was checked against the staged blob."
+  },
+  "merge_resolution": [
+    "Retained current main runtime ownership, typed import failures, graph port interfaces, dashboard fixtures, and refactored workflows.",
+    "Combined lazy adapter facades, explicit upstream ownership, Graph Client persistence and update keys, proof interfaces and MCP/Mike compatibility.",
+    "Retained main root datasets/Mike gitlinks and added external dependency gitlinks for the Grok-session adapters.",
+    "Routed operator legal loads through the legal adapter; retained lazy daemon pipeline access and normal optional argument defaults."
+  ],
+  "historical_completion": {
+    "source_snapshot_commit": "cc2c2ea36b758d176fc72b650f587d5c4e1fcbba",
+    "report": "docs/task_boards/complaint_supervisor_completion.json",
+    "note": "The earlier report binds the completed pre-merge source snapshot. This publication receipt records verification after reconciliation with origin/main."
+  },
+  "scope_notes": [
+    "The named Grok session had created local alignment verification checks; no live Grok campaign or production connector deployment is attested.",
+    "Reports under .complaint_workspace and temporary test receipts are local evidence, not GitHub-hosted artifacts.",
+    "Source changes were committed and dependency changes published before parent main publication. Unrelated session JSONs, package.json and dirty datasets state in the original checkout were excluded.",
+    "The original checkout and its prior editable installation were preserved; the main merge was prepared in an isolated worktree."
+  ]
+}

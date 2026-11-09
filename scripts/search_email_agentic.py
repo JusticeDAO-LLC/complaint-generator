@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-from ipfs_datasets_py.processors.legal_data.email_agentic_search import search_email_corpus_agentic
+from complaint_generator.email_agentic_search import search_email_corpus_agentic
 
 
 def build_parser() -> argparse.ArgumentParser:

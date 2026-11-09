@@ -2,6 +2,8 @@
 
 Complete index of all documentation in the complaint-generator repository.
 
+Session reports live in [docs/archive/sessions](docs/archive/sessions/INDEX.md). Plans and profiles live in [docs/archive/reports](docs/archive/reports/INDEX.md). The document pipeline, document optimization, intake status, and workflow guidance bodies live in `complaint_phases` with root shims. Claim-support review lives in `mediator/claim_support_review.py`. Public modules use `INTERFACE_SCHEMA` `complaint-generator/module-interface@1` and `INTERFACE_VERSION` `1.0.0`. The Git remote is `endomorphosis/complaint-generator`. The sibling map is [docs/architecture/consolidation_modules.md](docs/architecture/consolidation_modules.md).
+
 ## Quick Start
 
 - [README.md](README.md) - Main project overview and getting started guide
@@ -15,7 +17,7 @@ Complete index of all documentation in the complaint-generator repository.
 
 ## MCP++ Integration
 
-- [plan-mcpPlusPlusIntegration.prompt.md](plan-mcpPlusPlusIntegration.prompt.md) - High-level integration plan and specifications for MCP++ integration
+- [docs/archive/reports/plan-mcpPlusPlusIntegration.prompt.md](docs/archive/reports/plan-mcpPlusPlusIntegration.prompt.md) - Archived MCP++ integration plan
 
 ## Core Module Documentation
 
@@ -31,13 +33,16 @@ Complete index of all documentation in the complaint-generator repository.
 ### Mediator & Orchestration
 - [mediator/readme.md](mediator/readme.md) - Core orchestration layer and hooks
 
-### IPFS Datasets (Logic / ZKP)
-- [ipfs_datasets_py/ipfs_datasets_py/logic/DOCUMENTATION_INDEX.md](ipfs_datasets_py/ipfs_datasets_py/logic/DOCUMENTATION_INDEX.md) - Logic module docs index
-- [ipfs_datasets_py/ipfs_datasets_py/logic/zkp/README.md](ipfs_datasets_py/ipfs_datasets_py/logic/zkp/README.md) - ZKP simulation module overview
-- [ipfs_datasets_py/ipfs_datasets_py/logic/zkp/TODO_MASTER.md](ipfs_datasets_py/ipfs_datasets_py/logic/zkp/TODO_MASTER.md) - Living “infinite” ZKP improvement backlog
+### IPFS Datasets (Logic)
+The root `ipfs_datasets_py/` tree in this checkout is an empty compatibility directory. The logic documentation index that used to live at `ipfs_datasets_py/ipfs_datasets_py/logic/DOCUMENTATION_INDEX.md` is replaced by the in-tree datasets logic facade. The submodule ZKP README and TODO are not present here, so this index does not link them.
+- [integrations/ipfs_datasets/logic.py](integrations/ipfs_datasets/logic.py) - In-tree replacement for the missing root `ipfs_datasets_py` logic documentation index
+- [integrations/ipfs_datasets/legal_data.py](integrations/ipfs_datasets/legal_data.py) - In-tree legal-data facade replacing the missing `ipfs_datasets_py/scripts/ops/legal_data/README.md`
+- [integrations/README.md](integrations/README.md) - Integrations overview replacing the missing root `ipfs_datasets_py/README.md`
+- [docs/architecture/repository_module_map.json](docs/architecture/repository_module_map.json) - Repository module map, including the empty root `ipfs_datasets_py` compatibility directory and the datasets logic facade
+- [docs/architecture/module_interface_schema.json](docs/architecture/module_interface_schema.json) - Versioned module-interface schema (`complaint-generator/module-interface-schema@1`) for `INTERFACE_SCHEMA` `complaint-generator/module-interface@1`
 
 ### Testing
-- [tests/README.md](tests/README.md) - Test suite documentation (19 files, 60+ test classes)
+- [tests/README.md](tests/README.md) - Illustrative test-suite overview. It is a representative snapshot and does not fix the suite at a historical file count.
 - [.github/workflows/standard-regression.yml](.github/workflows/standard-regression.yml) - CI enforcement for the default review, template, document, and Playwright regression gate
 - [.github/workflows/claim-support-regression.yml](.github/workflows/claim-support-regression.yml) - CI enforcement for the focused `/claim-support-review` regression slice
 
@@ -90,8 +95,8 @@ Complete index of all documentation in the complaint-generator repository.
 ### IPFS Integration
 - [docs/IPFS_DATASETS_INTEGRATION.md](docs/IPFS_DATASETS_INTEGRATION.md) - IPFS integration guide
 - [docs/IPFS_DATASETS_PY_INTEGRATION.md](docs/IPFS_DATASETS_PY_INTEGRATION.md) - Current-state `ipfs_datasets_py` integration guide for adapters, mediator hooks, search, parsing, graphs, and reasoning workflows
-- [ipfs_datasets_py/README.md](ipfs_datasets_py/README.md) - IPFS Datasets Python CLI and API overview (including docket/workspace bundle tooling)
-- [ipfs_datasets_py/scripts/ops/legal_data/README.md](ipfs_datasets_py/scripts/ops/legal_data/README.md) - Legal data ops scripts for docket and workspace bundles
+- [integrations/README.md](integrations/README.md) - In-tree integrations overview. The root `ipfs_datasets_py/README.md` path recorded by the drift report is absent from this checkout.
+- [integrations/ipfs_datasets/legal_data.py](integrations/ipfs_datasets/legal_data.py) - In-tree legal-data owner. The drift report's `ipfs_datasets_py/scripts/ops/legal_data/README.md` target is absent from this checkout.
 - [docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md](docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md) - Comprehensive integration roadmap for legal scrapers, search, graph reasoning, theorem validation, and archival tooling
 - [docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md) - Implementation backlog with work packages, dependencies, acceptance criteria, and sprint sequencing
 - [docs/IPFS_DATASETS_PY_NEXT_BATCH_PLAN.md](docs/IPFS_DATASETS_PY_NEXT_BATCH_PLAN.md) - Concrete next implementation batches with file targets, validation commands, and stop or go criteria
@@ -195,6 +200,8 @@ See [docs/EXAMPLES.md](docs/EXAMPLES.md) for detailed documentation of all 23 ex
 
 ### Architecture & Design
 - docs/ARCHITECTURE.md - System architecture
+- [docs/architecture/repository_module_map.json](docs/architecture/repository_module_map.json) - Current package and module map
+- [docs/architecture/module_interface_schema.json](docs/architecture/module_interface_schema.json) - Versioned public interface schema
 - docs/THREE_PHASE_SYSTEM.md - Three-phase design
 - docs/ADVERSARIAL_HARNESS.md - Testing framework design
 
@@ -279,5 +286,5 @@ Found an issue with documentation? Please:
 
 ---
 
-**Last Updated**: 2026-03-16
+**Last Updated**: 2026-11-07
 **Total Documentation**: 79+ markdown files, 250+ pages

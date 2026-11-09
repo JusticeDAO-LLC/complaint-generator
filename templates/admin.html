@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Operational administration</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background: #f4f1ea; color: #1c2430; }
+        main { max-width: 64rem; margin: 0 auto; padding: 1rem; }
+        form, section { background: #fff; border: 1px solid #d5d0c6; padding: 1rem; margin-bottom: 1rem; }
+        label, button, input, select { font: inherit; }
+        .filters { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; }
+        .filters label { display: flex; flex-direction: column; gap: 0.25rem; min-width: 8rem; }
+        .table-scroll { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; border-bottom: 1px solid #d5d0c6; padding: 0.35rem; vertical-align: top; }
+        .notice { font-size: 0.95rem; }
+        .summary { display: flex; flex-wrap: wrap; gap: 1rem; }
+        .summary dl { margin: 0; }
+        [hidden] { display: none !important; }
+        @media (max-width: 640px) {
+            main { padding: 0.75rem; }
+            .filters label, .filters button { width: 100%; }
+        }
+    </style>
+</head>
+<body data-admin-transport="http" data-websocket="unsupported" data-sse="unsupported" data-case-content="withheld">
+<main>
+    <h1>Operational administration</h1>
+    <p id="transport-notice" class="notice">Account changes use ordinary HTTP requests. WebSocket and server-sent events are not used. This screen lists least-privilege account fields and operational assignment counts only. Audit history is a separate right from account administration. Case content review requires a separate explicit case grant. This workspace does not decrypt narratives, evidence, private messages, exports, or keys. Signing in again is required after a reload because the CSRF token is kept in memory only.</p>
+    <form id="admin-login">
+        <label for="admin-credential">Credential</label>
+        <input id="admin-credential" type="password" autocomplete="current-password" required>
+        <button type="submit">Sign in</button>
+        <span id="admin-auth-status" role="status">Sign in required</span>
+    </form>
+    <section id="directory" hidden data-state="locked">
+        <h2>Accounts</h2>
+        <p id="workspace-state" role="status">Sign in to load the operational directory.</p>
+        <form id="workspace-filters" class="filters">
+            <label>Principal id<input id="principal-query" name="principal_id" autocomplete="off"></label>
+            <label>Account kind
+                <select id="filter-account-kind" name="account_kind">
+                    <option value="">any</option>
+                    <option value="complainant">complainant</option>
+                    <option value="lawyer">lawyer</option>
+                    <option value="operational_admin">operational_admin</option>
+                </select>
+            </label>
+            <label>Status
+                <select id="filter-status" name="status">
+                    <option value="">any</option>
+                    <option value="active">active</option>
+                    <option value="disabled">disabled</option>
+                </select>
+            </label>
+            <label>Assignment
+                <select id="filter-assignment" name="assignment">
+                    <option value="any">any</option>
+                    <option value="assigned">assigned</option>
+                    <option value="unassigned">unassigned</option>
+                </select>
+            </label>
+            <label>Assignment status
+                <select id="filter-assignment-status" name="assignment_status">
+                    <option value="">any</option>
+                    <option value="pending">pending</option>
+                    <option value="accepted">accepted</option>
+                    <option value="declined">declined</option>
+                    <option value="expired">expired</option>
+                    <option value="removed">removed</option>
+                </select>
+            </label>
+            <label>Minimum assigned cases<input id="filter-min-cases" name="min_assigned_cases" inputmode="numeric" autocomplete="off"></label>
+            <label>Audit right
+                <select id="filter-audit" name="audit_right">
+                    <option value="any">any</option>
+                    <option value="granted">granted</option>
+                    <option value="absent">absent</option>
+                </select>
+            </label>
+            <label>Case id<input id="filter-case-id" name="case_id" autocomplete="off"></label>
+            <button type="submit">Apply filters</button>
+        </form>
+        <div id="analysis-summary" class="summary"></div>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Principal</th>
+                        <th>Roles</th>
+                        <th>Status</th>
+                        <th>Assigned cases</th>
+                        <th>Revision</th>
+                        <th>Audit right</th>
+                        <th>Server role</th>
+                    </tr>
+                </thead>
+                <tbody id="account-rows"></tbody>
+            </table>
+        </div>
+        <p id="empty-accounts" class="notice" hidden>No accounts match these filters.</p>
+        <form id="provision-account">
+            <label for="account-kind">New account kind</label>
+            <select id="account-kind">
+                <option value="complainant">complainant</option>
+                <option value="lawyer">lawyer</option>
+                <option value="operational_admin">operational_admin</option>
+            </select>
+            <button type="submit">Provision account</button>
+        </form>
+    </section>
+    <section id="operations-panel" hidden>
+        <h2>Operations</h2>
+        <button id="load-operations" type="button">Load operations</button>
+        <dl id="operations-counts"></dl>
+        <p id="operations-diagnostics" class="notice"></p>
+        <form id="operations-incident">
+            <label for="incident-scope">Incident scope</label>
+            <select id="incident-scope">
+                <option value="assignment">assignment</option>
+                <option value="storage">storage</option>
+                <option value="worker">worker</option>
+                <option value="support">support</option>
+            </select>
+            <label for="incident-code">Diagnostic code</label>
+            <select id="incident-code">
+                <option value="assignment_backlog">assignment_backlog</option>
+                <option value="storage_unresolved">storage_unresolved</option>
+                <option value="worker_stalled">worker_stalled</option>
+                <option value="support_unobserved">support_unobserved</option>
+                <option value="readback_mismatch">readback_mismatch</option>
+                <option value="backend_unavailable">backend_unavailable</option>
+            </select>
+            <button type="submit">Record incident</button>
+        </form>
+        <p id="incident-result" role="status"></p>
+    </section>
+    <section id="audit-panel" hidden>
+        <h2>Audit</h2>
+        <button id="load-audit" type="button">Load audit</button>
+        <ol id="audit-events"></ol>
+    </section>
+    <p id="admin-limitations" class="notice"></p>
+    <p id="admin-status" role="status"></p>
+    <p id="admin-error" role="alert"></p>
+</main>
+<script src="/static/complaint_admin.js"></script>
+</body>
+</html>

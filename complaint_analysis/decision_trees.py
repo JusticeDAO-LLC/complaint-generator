@@ -12,8 +12,66 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from .keywords import get_type_specific_keywords
 from .complaint_types import get_registered_types
+from .temporal_rule_profiles import get_temporal_rule_profile_for_claim_type
 
 logger = logging.getLogger(__name__)
+
+
+def get_temporal_rule_question_hints(complaint_type: str) -> List[Dict[str, Any]]:
+    """
+    Build data-only chronology question hints for a claim type's temporal profile.
+
+    These hints intentionally do not mutate generated decision trees.  They give
+    intake and review code a stable way to discover the events and windows that a
+    legal temporal rule profile will later evaluate.
+    """
+    profile = get_temporal_rule_profile_for_claim_type(complaint_type) or {}
+    if not profile:
+        return []
+
+    hints: List[Dict[str, Any]] = []
+    profile_id = str(profile.get("profile_id") or "")
+    rule_frame_id = str(profile.get("rule_frame_id") or "")
+    for event in profile.get("required_events", []) or []:
+        role = str(event.get("role") or "").strip()
+        label = str(event.get("label") or role.replace("_", " ")).strip()
+        if not role:
+            continue
+        hints.append({
+            "hint_id": f"{profile_id}:{role}:event_anchor",
+            "profile_id": profile_id,
+            "rule_frame_id": rule_frame_id,
+            "question_type": "timeline",
+            "field_name": f"temporal_{role}_date",
+            "event_role": role,
+            "required": bool(event.get("required", True)),
+            "question": f"When did the {label.lower()} occur?",
+            "proof_objective": "anchor_required_event",
+        })
+
+    for window in profile.get("legal_windows", []) or []:
+        window_id = str(window.get("window_id") or "").strip()
+        source_role = str(window.get("source_event_role") or "").strip()
+        target_role = str(window.get("target_event_role") or "").strip()
+        if not window_id or not source_role or not target_role:
+            continue
+        hints.append({
+            "hint_id": f"{profile_id}:{window_id}",
+            "profile_id": profile_id,
+            "rule_frame_id": rule_frame_id,
+            "question_type": "timeline",
+            "field_name": f"temporal_window_{source_role}_to_{target_role}",
+            "event_role": "ordering_relation",
+            "required": True,
+            "question": (
+                f"What shows the timing relationship between "
+                f"{source_role.replace('_', ' ')} and {target_role.replace('_', ' ')}?"
+            ),
+            "proof_objective": "establish_legal_temporal_window",
+            "window_id": window_id,
+        })
+
+    return hints
 
 
 @dataclass

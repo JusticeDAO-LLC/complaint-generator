@@ -1,0 +1,126 @@
+/* Mediator conversation. Four message types stay visually distinct.
+   Colour comes from the shared experience tokens. */
+
+.mediator-conversation {
+    margin: var(--cx-space-5) 0;
+    padding: var(--cx-space-4);
+    background: var(--cx-color-panel);
+    border: 1px solid var(--cx-color-line);
+    border-radius: var(--cx-radius-panel);
+    color: var(--cx-color-ink);
+}
+
+.mediator-conversation h3 {
+    margin: 0 0 var(--cx-space-2);
+    font-size: var(--cx-font-title);
+    line-height: var(--cx-leading-tight);
+}
+
+.mediator-conversation__context,
+.mediator-conversation__status {
+    margin: 0 0 var(--cx-space-3);
+    color: var(--cx-color-muted);
+    font-size: var(--cx-font-small);
+}
+
+.mediator-conversation__log {
+    list-style: none;
+    margin: 0 0 var(--cx-space-4);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cx-space-3);
+}
+
+.mediator-conversation__message {
+    margin: 0;
+    padding: var(--cx-space-3) var(--cx-space-4);
+    border: 1px solid var(--cx-color-line);
+    border-left-width: 6px;
+    border-radius: var(--cx-radius-control);
+    background: var(--cx-color-canvas-deep);
+}
+
+.mediator-conversation__message[data-message-type="user-statement"] {
+    border-left-color: var(--cx-color-accent);
+    background: var(--cx-color-accent-soft);
+}
+
+.mediator-conversation__message[data-message-type="ai-question"] {
+    border-left-color: var(--cx-color-focus);
+    background: var(--cx-color-panel-strong);
+}
+
+.mediator-conversation__message[data-message-type="model-suggestion"] {
+    border-left-color: var(--cx-color-warn);
+    background: var(--cx-color-locked-bg);
+}
+
+.mediator-conversation__message[data-message-type="system-outcome"] {
+    border-left-color: var(--cx-color-good);
+    background: var(--cx-color-good-bg);
+}
+
+.mediator-conversation__kind {
+    margin: 0 0 var(--cx-space-1);
+    font-size: var(--cx-font-small);
+    font-weight: var(--cx-weight-strong);
+}
+
+.mediator-conversation__body,
+.mediator-conversation__why {
+    margin: 0;
+}
+
+.mediator-conversation__why {
+    margin-top: var(--cx-space-2);
+    color: var(--cx-color-muted);
+    font-size: var(--cx-font-small);
+}
+
+.mediator-conversation__controls,
+.mediator-conversation__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cx-space-2);
+}
+
+.mediator-conversation button {
+    font: inherit;
+    color: var(--cx-color-ink);
+    background: var(--cx-color-panel);
+    border: 1px solid var(--cx-color-line);
+    border-radius: var(--cx-radius-control);
+    padding: var(--cx-space-2) var(--cx-space-3);
+}
+
+.mediator-conversation button:focus-visible {
+    outline: var(--cx-focus-width) solid var(--cx-color-focus);
+    outline-offset: var(--cx-focus-offset);
+}
+
+.mediator-conversation button:disabled {
+    color: var(--cx-color-muted);
+}
+
+.mediator-conversation[data-lifecycle="pending"] {
+    outline: 2px solid var(--cx-color-focus);
+}
+
+@media (max-width: 390px) {
+    .mediator-conversation {
+        padding: var(--cx-space-3);
+    }
+    .mediator-conversation__controls,
+    .mediator-conversation__actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mediator-conversation,
+    .mediator-conversation__message {
+        transition: none;
+    }
+}

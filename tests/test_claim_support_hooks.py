@@ -9,7 +9,13 @@ import pytest
 
 duckdb = pytest.importorskip("duckdb")
 
-from complaint_analysis.temporal_rule_profiles import evaluate_temporal_rule_profile
+from complaint_analysis.decision_trees import get_temporal_rule_question_hints
+from complaint_analysis.legal_patterns import get_temporal_legal_patterns
+from complaint_analysis.temporal_rule_profiles import (
+    evaluate_temporal_rule_profile,
+    get_temporal_rule_profile_for_claim_type,
+    list_temporal_rule_profiles,
+)
 
 
 pytestmark = pytest.mark.no_auto_network
@@ -40,6 +46,151 @@ def _confirmed_intake_status(*, note: str) -> dict:
             },
         },
     }
+
+
+class TestClaimSupportReasoningPayloads:
+    def test_reasoning_signal_helpers_distinguish_invalid_results_from_adapter_errors(self):
+        from mediator._claim_support_reasoning import extract_ontology_validation_signal
+
+        assert extract_ontology_validation_signal({
+            'ontology_validation': {
+                'status': 'success',
+                'result': {'valid': False},
+            },
+        }) == 'invalid'
+        assert extract_ontology_validation_signal({
+            'ontology_validation': {
+                'status': 'error',
+                'result': None,
+                'error': 'backend initialization failed',
+                'metadata': {'implementation_status': 'error'},
+            },
+        }) == 'unknown'
+
+    def test_reasoning_helpers_preserve_adapter_and_claim_summary_contracts(self):
+        from mediator._claim_support_reasoning import (
+            summarize_adapter_result,
+            summarize_claim_reasoning_diagnostics,
+        )
+
+        adapter_summary = summarize_adapter_result(
+            {
+                'status': 'degraded',
+                'provable_elements': ['protected_activity'],
+                'unprovable_elements': ['causation', 'damages'],
+                'metadata': {
+                    'operation': 'prove_claim_elements',
+                    'implementation_status': 'fallback',
+                    'backend_available': False,
+                    'degraded_reason': 'backend_unavailable',
+                },
+            },
+            count_fields=['provable_elements', 'unprovable_elements'],
+        )
+        assert adapter_summary == {
+            'status': 'degraded',
+            'operation': 'prove_claim_elements',
+            'implementation_status': 'fallback',
+            'backend_available': False,
+            'degraded_reason': 'backend_unavailable',
+            'provable_elements_count': 1,
+            'unprovable_elements_count': 2,
+        }
+
+        claim_summary = summarize_claim_reasoning_diagnostics(
+            [
+                {
+                    'reasoning_diagnostics': {
+                        'predicate_count': 4,
+                        'ontology_entity_count': 3,
+                        'ontology_relationship_count': 2,
+                        'backend_available_count': 1,
+                        'used_fallback_ontology': True,
+                        'adapter_statuses': {
+                            'logic_proof': adapter_summary,
+                            'custom_adapter': {'status': 'ready'},
+                        },
+                        'hybrid_reasoning': {
+                            'result': {
+                                'compiler_bridge_available': True,
+                                'tdfol_formulas': ['Before(a,b)'],
+                                'dcec_formulas': ['Happens(a,t)'],
+                            },
+                        },
+                        'temporal_summary': {
+                            'fact_count': 2,
+                            'relation_count': 1,
+                            'issue_count': 1,
+                            'warning_count': 1,
+                            'partial_order_ready': True,
+                        },
+                        'temporal_rule_profile': {
+                            'available': True,
+                            'status': 'partial',
+                        },
+                        'temporal_proof_bundle': {'bundle_id': 'proof:1'},
+                    },
+                },
+                None,
+            ]
+        )
+
+        assert claim_summary['adapter_status_counts']['logic_proof'] == {'fallback': 1}
+        assert claim_summary['adapter_status_counts']['custom_adapter'] == {'ready': 1}
+        assert claim_summary['predicate_count'] == 4
+        assert claim_summary['ontology_entity_count'] == 3
+        assert claim_summary['ontology_relationship_count'] == 2
+        assert claim_summary['backend_available_count'] == 1
+        assert claim_summary['fallback_ontology_count'] == 1
+        assert claim_summary['hybrid_bridge_available_count'] == 1
+        assert claim_summary['hybrid_tdfol_formula_count'] == 1
+        assert claim_summary['hybrid_dcec_formula_count'] == 1
+        assert claim_summary['temporal_fact_count'] == 2
+        assert claim_summary['temporal_relation_count'] == 1
+        assert claim_summary['temporal_issue_count'] == 1
+        assert claim_summary['temporal_warning_count'] == 1
+        assert claim_summary['temporal_partial_order_ready_count'] == 1
+        assert claim_summary['temporal_rule_profile_available_count'] == 1
+        assert claim_summary['temporal_rule_profile_partial_count'] == 1
+        assert claim_summary['temporal_proof_bundle_count'] == 1
+
+    def test_reasoning_helpers_preserve_validation_decision_contract(self):
+        from mediator._claim_support_reasoning import summarize_claim_validation_decisions
+
+        summary = summarize_claim_validation_decisions(
+            [
+                {
+                    'proof_decision_trace': {
+                        'decision_source': 'logic_proof_supported',
+                        'logic_contradiction_count': 0,
+                        'used_fallback_ontology': False,
+                        'ontology_validation_signal': 'valid',
+                    },
+                },
+                {
+                    'proof_decision_trace': {
+                        'decision_source': 'logic_unprovable',
+                        'logic_contradiction_count': 1,
+                        'used_fallback_ontology': True,
+                        'ontology_validation_signal': 'invalid',
+                        'temporal_rule_status': 'failed',
+                    },
+                },
+            ]
+        )
+
+        assert summary == {
+            'decision_source_counts': {
+                'logic_proof_supported': 1,
+                'logic_unprovable': 1,
+            },
+            'adapter_contradicted_element_count': 1,
+            'fallback_ontology_element_count': 1,
+            'proof_supported_element_count': 1,
+            'logic_unprovable_element_count': 1,
+            'ontology_invalid_element_count': 1,
+            'temporal_rule_gap_element_count': 1,
+        }
 
 
 class TestClaimSupportHook:
@@ -77,6 +228,22 @@ class TestClaimSupportHook:
                     'result_count': 0,
                     'stored_result_count': 0,
                     'zero_result': True,
+                    'graph_gap_context': {
+                        'strength': 'none',
+                        'recommended_action': 'retrieve_more_support',
+                        'priority_adjustment': 1,
+                    },
+                    'graph_gap_query': {
+                        'claim_type': 'employment',
+                        'claim_element_id': 'employment:1',
+                        'claim_element_text': 'Protected activity',
+                        'missing_support_kinds': ['authority'],
+                        'strength': 'none',
+                        'recommended_action': 'retrieve_more_support',
+                        'priority_adjustment': 1,
+                        'has_graph_support': False,
+                        'result_count': 0,
+                    },
                 },
             )
 
@@ -92,6 +259,14 @@ class TestClaimSupportHook:
             assert entry['result_count'] == 0
             assert entry['stored_result_count'] == 0
             assert entry['zero_result'] is True
+            assert entry['graph_gap_context'] == {
+                'strength': 'none',
+                'recommended_action': 'retrieve_more_support',
+                'priority_adjustment': 1,
+            }
+            assert entry['graph_gap_query']['claim_element_id'] == 'employment:1'
+            assert entry['graph_gap_query']['missing_support_kinds'] == ['authority']
+            assert entry['graph_gap_query']['has_graph_support'] is False
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
@@ -130,6 +305,7 @@ class TestClaimSupportHook:
                     'selected_search_program_type': 'element_definition_search',
                     'selected_search_program_bias': 'uncertain',
                     'selected_search_program_rule_bias': 'procedural_prerequisite',
+                    'selected_search_program_graph_gap_bias': 'graph_backed_authority_gap',
                     'selected_search_program_families': ['statute', 'regulation'],
                 },
             )
@@ -165,6 +341,7 @@ class TestClaimSupportHook:
             assert entry['selected_search_program_type'] == 'element_definition_search'
             assert entry['selected_search_program_bias'] == 'uncertain'
             assert entry['selected_search_program_rule_bias'] == 'procedural_prerequisite'
+            assert entry['selected_search_program_graph_gap_bias'] == 'graph_backed_authority_gap'
             assert entry['selected_search_program_families'] == ['statute', 'regulation']
             assert entry['metadata']['intake_summary_handoff'] == {
                 'current_phase': 'intake',
@@ -188,6 +365,90 @@ class TestClaimSupportHook:
                     },
                 },
             }
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_recent_follow_up_execution_exposes_follow_up_quality_metadata(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            record_id = hook.record_follow_up_execution(
+                user_id='testuser',
+                claim_type='retaliation',
+                claim_element_id='causation',
+                claim_element_text='Causal connection',
+                support_kind='testimony',
+                query_text='manual_follow_up::retaliation::causation::awaiting_testimony',
+                status='skipped_resolution_handoff',
+                metadata={
+                    'execution_mode': 'manual_review',
+                    'validation_status': 'incomplete',
+                    'follow_up_focus': 'temporal_gap_closure',
+                    'query_strategy': 'temporal_gap_targeted',
+                    'source_preferences': {
+                        'preferred_support_kind': 'testimony',
+                        'source_types': ['testimony', 'evidence'],
+                        'archive_first': True,
+                    },
+                    'time_window': {
+                        'time_window_type': 'temporal_rule_window',
+                        'profile_id': 'retaliation_temporal_profile_v1',
+                        'status': 'partial',
+                        'query_terms': ['before', 'timeline'],
+                    },
+                    'authority_intent': 'procedural',
+                    'support_quality_summary': {
+                        'quality_signal_counts': {'ontology_quality_gap': 2},
+                    },
+                    'quality_signal_counts': {'ontology_quality_gap': 2},
+                    'primary_quality_signal': {
+                        'signal_type': 'ontology_quality_gap',
+                        'question_lane': 'ontology_quality_gap',
+                        'follow_up_action': 'improve_ontology_quality',
+                        'count': 2,
+                    },
+                    'quality_follow_up_action': 'improve_ontology_quality',
+                    'ontology_quality': {
+                        'valid': False,
+                        'overall_quality_score': 0.31,
+                        'grade': 'D',
+                        'has_gaps': True,
+                        'has_blocking_gaps': True,
+                    },
+                    'ontology_gap_types': ['missing_relation', 'missing_entity'],
+                    'ontology_quality_gap_count': 2,
+                    'ontology_has_blocking_gaps': True,
+                },
+            )
+
+            history = hook.get_recent_follow_up_execution('testuser', 'retaliation', limit=5)
+            entry = history['claims']['retaliation'][0]
+
+            assert record_id > 0
+            assert entry['source_preferences']['preferred_support_kind'] == 'testimony'
+            assert entry['source_preferences']['source_types'] == ['testimony', 'evidence']
+            assert entry['time_window']['profile_id'] == 'retaliation_temporal_profile_v1'
+            assert entry['time_window']['query_terms'] == ['before', 'timeline']
+            assert entry['authority_intent'] == 'procedural'
+            assert entry['support_quality_summary']['quality_signal_counts'] == {'ontology_quality_gap': 2}
+            assert entry['quality_signal_counts'] == {'ontology_quality_gap': 2}
+            assert entry['primary_quality_signal']['signal_type'] == 'ontology_quality_gap'
+            assert entry['quality_follow_up_action'] == 'improve_ontology_quality'
+            assert entry['ontology_quality']['grade'] == 'D'
+            assert entry['ontology_gap_types'] == ['missing_relation', 'missing_entity']
+            assert entry['ontology_quality_gap_count'] == 2
+            assert entry['ontology_has_blocking_gaps'] is True
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
@@ -634,7 +895,29 @@ class TestClaimSupportHook:
                     },
                 },
             },
-            {'fact_id': 'fact:2', 'text': 'Complaint was sent to HR.'},
+            {
+                'fact_id': 'fact:2',
+                'text': 'Complaint was sent to HR.',
+                'source_family': 'evidence',
+                'source_record_id': 12,
+                'source_ref': 'QmEvidenceFacts',
+                'record_scope': 'evidence',
+                'artifact_family': 'archived_web_page',
+                'corpus_family': 'web_page',
+                'content_origin': 'historical_archive_capture',
+                'parse_source': 'web_document',
+                'input_format': 'html',
+                'quality_tier': 'high',
+                'quality_score': 98.0,
+                'chunk_id': 'chunk-1',
+                'chunk_index': 1,
+                'source_passage': {
+                    'chunk_id': 'chunk-1',
+                    'chunk_index': 1,
+                    'start': 24,
+                    'end': 49,
+                },
+            },
         ])
         mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
             'status': 'ready',
@@ -731,7 +1014,29 @@ class TestClaimSupportHook:
                     },
                 },
             },
-            {'fact_id': 'fact:2', 'text': 'Complaint was sent to HR.'},
+            {
+                'fact_id': 'fact:2',
+                'text': 'Complaint was sent to HR.',
+                'source_family': 'evidence',
+                'source_record_id': 12,
+                'source_ref': 'QmEvidenceFacts',
+                'record_scope': 'evidence',
+                'artifact_family': 'archived_web_page',
+                'corpus_family': 'web_page',
+                'content_origin': 'historical_archive_capture',
+                'parse_source': 'web_document',
+                'input_format': 'html',
+                'quality_tier': 'high',
+                'quality_score': 98.0,
+                'chunk_id': 'chunk-1',
+                'chunk_index': 1,
+                'source_passage': {
+                    'chunk_id': 'chunk-1',
+                    'chunk_index': 1,
+                    'start': 24,
+                    'end': 49,
+                },
+            },
         ])
         mock_mediator.evidence_state.get_evidence_graph = Mock(return_value={
             'status': 'ready',
@@ -782,6 +1087,28 @@ class TestClaimSupportHook:
             assert facts[0]['graph_summary']['entity_count'] == 1
             assert facts[0]['graph_trace']['snapshot']['graph_id'] == 'graph:evidence-12'
             assert facts[0]['graph_trace']['lineage']['text_length'] == 64
+            assert facts[1]['artifact_family'] == 'archived_web_page'
+            assert facts[1]['corpus_family'] == 'web_page'
+            assert facts[1]['content_origin'] == 'historical_archive_capture'
+            assert facts[1]['chunk_id'] == 'chunk-1'
+            assert facts[1]['source_passage']['chunk_id'] == 'chunk-1'
+
+            registry_summary = hook.get_claim_fact_registry_summary(
+                'testuser',
+                'employment',
+                claim_element_text='Protected activity',
+            )
+            assert registry_summary['fact_count'] == 2
+            assert registry_summary['unique_fact_count'] == 2
+            assert registry_summary['unique_source_record_count'] == 1
+            assert registry_summary['passage_anchored_count'] == 1
+            assert registry_summary['source_family_counts'] == {'evidence': 2}
+            assert registry_summary['artifact_family_counts'] == {'archived_web_page': 2}
+            assert registry_summary['corpus_family_counts'] == {'web_page': 2}
+            assert registry_summary['content_origin_counts'] == {'historical_archive_capture': 2}
+            assert registry_summary['parse_source_counts'] == {'web_document': 2}
+            assert registry_summary['input_format_counts'] == {'html': 2}
+            assert registry_summary['quality_tier_counts'] == {'high': 2}
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
@@ -1346,6 +1673,11 @@ class TestClaimSupportHook:
             assert claim['authority_rule_candidate_summary']['authority_links_with_rule_candidates'] == 1
             assert claim['authority_rule_candidate_summary']['total_rule_candidate_count'] == 2
             assert claim['authority_rule_candidate_summary']['matched_claim_element_rule_count'] == 2
+            assert claim['authority_rule_candidate_summary']['fact_unsatisfied_rule_count'] == 2
+            assert claim['authority_rule_candidate_summary']['fact_satisfied_rule_count'] == 0
+            assert claim['authority_rule_candidate_summary']['fact_satisfaction_status_counts'] == {
+                'fact_missing': 2,
+            }
             assert claim['authority_rule_candidate_summary']['rule_type_counts'] == {
                 'element': 1,
                 'exception': 1,
@@ -1517,6 +1849,240 @@ class TestClaimSupportHook:
             assert snapshots['claims']['employment']['snapshots']['gaps']['stored_support_state_token'] != (
                 snapshots['claims']['employment']['snapshots']['gaps']['current_support_state_token']
             )
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_persist_claim_coverage_matrix_snapshot_stores_latest_matrix(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.get_three_phase_status = Mock(return_value=_confirmed_intake_status(
+            note='ready for coverage matrix persistence',
+        ))
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceCoverage',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            persisted = hook.persist_claim_coverage_matrix_snapshot(
+                'testuser',
+                'employment',
+                required_support_kinds=['authority', 'evidence'],
+                metadata={'source': 'unit_test'},
+            )
+            snapshots = hook.get_claim_coverage_matrix_snapshots(
+                'testuser',
+                'employment',
+                required_support_kinds=['evidence', 'authority'],
+            )
+
+            assert persisted['claims']['employment']['snapshot']['snapshot_id'] > 0
+            assert persisted['claims']['employment']['snapshot']['is_stale'] is False
+            assert snapshots['claims']['employment']['coverage_matrix']['claim_type'] == 'employment'
+            assert snapshots['claims']['employment']['coverage_matrix']['status_counts']['partially_supported'] == 1
+            assert snapshots['claims']['employment']['snapshot']['metadata']['source'] == 'unit_test'
+            assert snapshots['claims']['employment']['snapshot']['metadata']['snapshot_source'] == 'claim_coverage_matrix'
+            assert snapshots['claims']['employment']['snapshot']['required_support_kinds'] == [
+                'authority',
+                'evidence',
+            ]
+            assert snapshots['claims']['employment']['snapshot']['is_stale'] is False
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_claim_coverage_matrix_snapshot_metadata_summarizes_graph_and_paths(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.get_three_phase_status = Mock(return_value=_confirmed_intake_status(
+            note='ready for coverage matrix summary persistence',
+        ))
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            coverage_matrix = {
+                'available': True,
+                'required_support_kinds': ['authority', 'evidence'],
+                'claims': {
+                    'employment': {
+                        'claim_type': 'employment',
+                        'required_support_kinds': ['authority', 'evidence'],
+                        'total_elements': 1,
+                        'status_counts': {'covered': 1, 'partially_supported': 0, 'missing': 0},
+                        'total_links': 2,
+                        'total_facts': 3,
+                        'support_by_kind': {'authority': 1, 'evidence': 1},
+                        'support_quality_summary': {
+                            'scored_path_count': 2,
+                            'best_quality_score': 0.91,
+                        },
+                        'elements': [
+                            {
+                                'element_id': 'employment:1',
+                                'element_text': 'Protected activity',
+                                'graph_snapshot_refs': [
+                                    {'snapshot_id': 10, 'graph_id': 'graph:evidence'},
+                                    {'snapshot_id': 11, 'graph_id': 'graph:authority'},
+                                ],
+                                'support_path_summary': {
+                                    'path_count': 2,
+                                    'paths': [
+                                        {
+                                            'proof_path_id': 'path:current',
+                                            'source': 'current_traces',
+                                            'path_kind': 'support',
+                                            'support_refs': ['artifact:termination'],
+                                            'graph_ids': ['graph:evidence'],
+                                            'graph_id_count': 1,
+                                        },
+                                        {
+                                            'proof_path_id': 'path:persisted',
+                                            'source': 'persisted',
+                                            'persisted': True,
+                                            'path_kind': 'contradiction',
+                                            'support_refs': ['authority:adverse'],
+                                        },
+                                    ],
+                                },
+                            }
+                        ],
+                    }
+                },
+            }
+
+            persisted = hook.persist_claim_coverage_matrix_snapshot(
+                'testuser',
+                'employment',
+                required_support_kinds=['authority', 'evidence'],
+                coverage_matrix=coverage_matrix,
+                metadata={'source': 'unit_test'},
+            )
+            snapshots = hook.get_claim_coverage_matrix_snapshots(
+                'testuser',
+                'employment',
+                required_support_kinds=['authority', 'evidence'],
+            )
+
+            persisted_summary = (
+                persisted['claims']['employment']['snapshot']['metadata']['coverage_matrix_summary']
+            )
+            snapshot_summary = (
+                snapshots['claims']['employment']['snapshot']['metadata']['coverage_matrix_summary']
+            )
+            assert persisted_summary == snapshot_summary
+            assert snapshot_summary['claim_type'] == 'employment'
+            assert snapshot_summary['status_counts']['covered'] == 1
+            assert snapshot_summary['support_by_kind'] == {'authority': 1, 'evidence': 1}
+            assert snapshot_summary['graph_snapshot_ref_count'] == 2
+            assert snapshot_summary['support_path_count'] == 2
+            assert snapshot_summary['current_trace_path_count'] == 1
+            assert snapshot_summary['persisted_path_count'] == 1
+            assert snapshot_summary['graph_linked_path_count'] == 1
+            assert snapshot_summary['support_ref_count'] == 2
+            assert snapshot_summary['unique_support_ref_count'] == 2
+            assert snapshot_summary['path_kind_counts'] == {'support': 1, 'contradiction': 1}
+            assert snapshot_summary['support_quality_summary']['scored_path_count'] == 2
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_claim_coverage_matrix_snapshot_marks_stale_and_prunes_history(self):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+
+        try:
+            hook = ClaimSupportHook(mock_mediator, db_path=db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='QmEvidenceCoverage',
+                support_label='HR complaint email',
+                source_table='evidence',
+            )
+
+            for run_number in range(3):
+                hook.persist_claim_coverage_matrix_snapshot(
+                    'testuser',
+                    'employment',
+                    required_support_kinds=['evidence', 'authority'],
+                    metadata={'run_number': run_number},
+                    retention_limit=2,
+                )
+
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_text='Protected activity',
+                support_kind='authority',
+                support_ref='42 U.S.C. § 1983',
+                support_label='Civil Rights Act',
+                source_table='legal_authorities',
+            )
+            snapshots = hook.get_claim_coverage_matrix_snapshots(
+                'testuser',
+                'employment',
+                required_support_kinds=['authority', 'evidence'],
+            )
+
+            conn = duckdb.connect(db_path)
+            row = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM claim_support_snapshot
+                WHERE user_id = ? AND claim_type = ? AND snapshot_kind = ?
+                """,
+                ['testuser', 'employment', 'coverage_matrix'],
+            ).fetchone()
+            conn.close()
+
+            assert row[0] == 2
+            assert snapshots['claims']['employment']['snapshot']['is_stale'] is True
+            assert snapshots['claims']['employment']['snapshot']['stored_support_state_token'] != (
+                snapshots['claims']['employment']['snapshot']['current_support_state_token']
+            )
+            assert snapshots['claims']['employment']['snapshot']['metadata']['run_number'] == 2
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
@@ -1791,16 +2357,65 @@ class TestClaimSupportHook:
                 element for element in claim_validation['elements']
                 if element['element_text'] == 'Protected activity'
             )
+            assert protected_activity['support_quality_summary']['recommended_quality_action']
+            assert protected_activity['primary_quality_signal']['follow_up_action']
             assert protected_activity['reasoning_diagnostics']['adapter_statuses']['logic_proof']['operation'] == 'prove_claim_elements'
             assert protected_activity['reasoning_diagnostics']['adapter_statuses']['logic_contradictions']['operation'] == 'check_contradictions'
             assert protected_activity['reasoning_diagnostics']['adapter_statuses']['hybrid_reasoning']['operation'] == 'run_hybrid_reasoning'
             assert protected_activity['reasoning_diagnostics']['adapter_statuses']['ontology_build']['operation'] == 'build_ontology'
             assert protected_activity['reasoning_diagnostics']['adapter_statuses']['ontology_validation']['operation'] == 'validate_ontology'
+            assert protected_activity['reasoning_diagnostics']['adapter_statuses']['ontology_workflow']['operation'] == 'build_validate_score_ontology'
+            assert protected_activity['reasoning_diagnostics']['ontology_workflow']['metadata']['operation'] == 'build_validate_score_ontology'
+            assert protected_activity['reasoning_diagnostics']['graphrag_quality']['valid'] is True
+            assert 'overall_quality_score' in protected_activity['reasoning_diagnostics']['graphrag_quality']
             assert protected_activity['proof_decision_trace']['decision_source'] == 'heuristic_contradictions'
             assert claim_validation['proof_diagnostics']['decision']['decision_source_counts']['heuristic_contradictions'] == 1
             assert element_statuses['Protected activity'] == 'contradicted'
             assert element_statuses['Adverse action'] == 'incomplete'
             assert element_statuses['Causal connection'] == 'missing'
+
+            formal_report = hook.get_formal_validation_report('testuser', 'employment')
+            formal_claim = formal_report['claims']['employment']
+            assert formal_report['overall_status'] == 'blocked'
+            assert formal_claim['formal_status'] == 'blocked'
+            assert formal_claim['predicate_count'] >= 3
+            assert formal_claim['proof_gap_count'] == claim_validation['proof_gap_count']
+            assert formal_claim['support_quality_summary'] == claim_validation['support_quality_summary']
+            formal_protected = next(
+                element for element in formal_claim['elements']
+                if element['element_text'] == 'Protected activity'
+            )
+            assert formal_protected['formal_status'] == 'contradicted'
+            assert formal_protected['support_quality_summary'] == protected_activity['support_quality_summary']
+            assert formal_protected['primary_quality_signal'] == protected_activity['primary_quality_signal']
+            assert formal_protected['quality_follow_up_action'] == protected_activity['primary_quality_signal']['follow_up_action']
+            expected_quality_signal_counts = {}
+            expected_primary_signal_counts = {}
+            expected_follow_up_action_counts = {}
+            for element_report in formal_claim['elements']:
+                for signal_type, signal_count in (
+                    element_report['support_quality_summary'].get('quality_signal_counts', {}) or {}
+                ).items():
+                    expected_quality_signal_counts[signal_type] = (
+                        expected_quality_signal_counts.get(signal_type, 0) + int(signal_count or 0)
+                    )
+                primary_signal_type = element_report.get('primary_quality_signal', {}).get('signal_type')
+                if primary_signal_type:
+                    expected_primary_signal_counts[primary_signal_type] = (
+                        expected_primary_signal_counts.get(primary_signal_type, 0) + 1
+                    )
+                follow_up_action = element_report.get('quality_follow_up_action')
+                if follow_up_action:
+                    expected_follow_up_action_counts[follow_up_action] = (
+                        expected_follow_up_action_counts.get(follow_up_action, 0) + 1
+                    )
+            assert formal_claim['support_quality_signal_counts'] == dict(sorted(expected_quality_signal_counts.items()))
+            assert formal_claim['primary_quality_signal_counts'] == dict(sorted(expected_primary_signal_counts.items()))
+            assert formal_claim['quality_follow_up_action_counts'] == dict(sorted(expected_follow_up_action_counts.items()))
+            assert formal_report['support_quality_signal_counts'] == formal_claim['support_quality_signal_counts']
+            assert formal_report['primary_quality_signal_counts'] == formal_claim['primary_quality_signal_counts']
+            assert formal_report['quality_follow_up_action_counts'] == formal_claim['quality_follow_up_action_counts']
+            assert formal_protected['logic_contradiction_summary']['operation'] == 'check_contradictions'
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)
@@ -2371,6 +2986,8 @@ class TestClaimSupportHook:
             assert captured['hybrid_payload']['predicates'] == captured['predicates']
             assert captured['proof_payload']['claim_support_temporal_handoff'] == captured['hybrid_payload']['claim_support_temporal_handoff']
             assert captured['contradiction_payload']['claim_support_temporal_handoff'] == captured['hybrid_payload']['claim_support_temporal_handoff']
+            assert captured['proof_payload']['temporal_proof_bundle']['proof_bundle_id'] == 'retaliation:retaliation_1:retaliation_temporal_profile_v1'
+            assert captured['hybrid_payload']['proof_bundles']['retaliation:retaliation_1:retaliation_temporal_profile_v1']['proof_bundle_id'] == 'retaliation:retaliation_1:retaliation_temporal_profile_v1'
             assert {'claim_element', 'support_trace', 'temporal_fact', 'temporal_proof_lead', 'temporal_relation', 'temporal_consistency', 'temporal_issue'} <= predicate_types
             assert 'Timeline fact: Employee complained to HR.' in captured['seed_text']
             assert 'Timeline relation: fact_1 before fact_2' in captured['seed_text']
@@ -2403,65 +3020,144 @@ class TestClaimSupportHook:
                 'blocking_reasons': [],
                 'warnings': [],
                 'recommended_follow_ups': [],
+                'has_contradictory_dates': False,
+                'has_limitations_risk': False,
             }
-            assert diagnostics['temporal_proof_bundle'] == {
-                'proof_bundle_id': 'retaliation:retaliation_1:retaliation_temporal_profile_v1',
+            temporal_proof_bundle = diagnostics['temporal_proof_bundle']
+            assert temporal_proof_bundle['contract_version'] == 'claim_support_temporal_proof_bundle_v1'
+            assert temporal_proof_bundle['proof_bundle_id'] == 'retaliation:retaliation_1:retaliation_temporal_profile_v1'
+            assert temporal_proof_bundle['persistence_key'] == temporal_proof_bundle['proof_bundle_id']
+            assert len(temporal_proof_bundle['bundle_digest']) == 64
+            assert temporal_proof_bundle['proof_input_digest'] == temporal_proof_bundle['bundle_digest']
+            assert temporal_proof_bundle['claim_type'] == 'retaliation'
+            assert temporal_proof_bundle['claim_element_id'] == 'retaliation:1'
+            assert temporal_proof_bundle['claim_element_text'] == 'Protected activity'
+            assert temporal_proof_bundle['profile_id'] == 'retaliation_temporal_profile_v1'
+            assert temporal_proof_bundle['rule_frame_id'] == 'retaliation_temporal_frame'
+            assert temporal_proof_bundle['element_role'] == 'protected_activity'
+            assert temporal_proof_bundle['status'] == 'satisfied'
+            assert temporal_proof_bundle['available'] is True
+            assert temporal_proof_bundle['matched_fact_ids'] == ['fact_1']
+            assert temporal_proof_bundle['matched_relation_ids'] == []
+            assert temporal_proof_bundle['temporal_fact_ids'] == ['fact_1', 'fact_2']
+            assert temporal_proof_bundle['temporal_relation_ids'] == ['timeline_relation_001']
+            assert temporal_proof_bundle['timeline_anchor_ids'] == ['anchor_hr_complaint', 'anchor_termination_notice']
+            assert temporal_proof_bundle['temporal_issue_ids'] == ['temporal_reverse_before_001']
+            assert temporal_proof_bundle['missing_temporal_predicates'] == ['Before(fact_1,fact_2)']
+            assert temporal_proof_bundle['required_provenance_kinds'] == ['document_artifact']
+            assert temporal_proof_bundle['missing_relations'] == [
+                {
+                    'predicate': 'Before(fact_1,fact_2)',
+                    'relation_type': 'before',
+                    'source_fact_id': 'fact_1',
+                    'target_fact_id': 'fact_2',
+                }
+            ]
+            assert temporal_proof_bundle['blocking_explanations'][0]['missing_relations'] == temporal_proof_bundle['missing_relations']
+            assert temporal_proof_bundle['theorem_exports']['tdfol_formulas'] == [
+                'ProtectedActivity(fact_1)',
+                'AdverseAction(fact_2)',
+                'Before(fact_1,fact_2)',
+            ]
+            assert temporal_proof_bundle['theorem_exports']['dcec_formulas'] == [
+                'Happens(fact_1,t_2025_03_01)',
+                'Happens(fact_2,t_2025_04_15)',
+            ]
+            assert temporal_proof_bundle['theorem_exports']['tdfol_preview'] == [
+                'ProtectedActivity(fact_1)',
+                'AdverseAction(fact_2)',
+                'Before(fact_1,fact_2)',
+            ]
+            assert temporal_proof_bundle['theorem_exports']['proof_execution_source'] == 'temporal_proof_bundle'
+            assert temporal_proof_bundle['theorem_exports']['proof_bundle_digest'] == temporal_proof_bundle['bundle_digest']
+            assert temporal_proof_bundle['theorem_exports']['theorem_export_metadata'] == {
+                'contract_version': 'claim_support_temporal_handoff_v1',
                 'claim_type': 'retaliation',
                 'claim_element_id': 'retaliation:1',
-                'claim_element_text': 'Protected activity',
-                'profile_id': 'retaliation_temporal_profile_v1',
+                'proof_bundle_id': 'retaliation:retaliation_1:retaliation_temporal_profile_v1',
                 'rule_frame_id': 'retaliation_temporal_frame',
-                'element_role': 'protected_activity',
-                'status': 'satisfied',
-                'available': True,
-                'matched_fact_ids': ['fact_1'],
-                'matched_relation_ids': [],
+                'chronology_blocked': True,
+                'chronology_task_count': 1,
+                'unresolved_temporal_issue_ids': ['temporal_reverse_before_001'],
+                'event_ids': ['fact_1', 'fact_2'],
                 'temporal_fact_ids': ['fact_1', 'fact_2'],
                 'temporal_relation_ids': ['timeline_relation_001'],
                 'timeline_anchor_ids': ['anchor_hr_complaint', 'anchor_termination_notice'],
+                'timeline_issue_ids': ['temporal_reverse_before_001'],
                 'temporal_issue_ids': ['temporal_reverse_before_001'],
-                'source_artifact_ids': [],
-                'testimony_record_ids': [],
                 'missing_temporal_predicates': ['Before(fact_1,fact_2)'],
                 'required_provenance_kinds': ['document_artifact'],
-                'blocking_reasons': [],
-                'warnings': [],
-                'recommended_follow_ups': [],
-                'theorem_exports': {
-                    'tdfol_formulas': ['ProtectedActivity(fact_1)', 'AdverseAction(fact_2)', 'Before(fact_1,fact_2)'],
-                    'dcec_formulas': ['Happens(fact_1,t_2025_03_01)', 'Happens(fact_2,t_2025_04_15)'],
-                    'theorem_export_metadata': {
-                        'contract_version': 'claim_support_temporal_handoff_v1',
-                        'claim_type': 'retaliation',
-                        'claim_element_id': 'retaliation:1',
-                        'proof_bundle_id': 'retaliation:retaliation_1:retaliation_temporal_profile_v1',
-                        'rule_frame_id': 'retaliation_temporal_frame',
-                        'chronology_blocked': True,
-                        'chronology_task_count': 1,
-                        'unresolved_temporal_issue_ids': ['temporal_reverse_before_001'],
-                        'event_ids': ['fact_1', 'fact_2'],
-                        'temporal_fact_ids': ['fact_1', 'fact_2'],
-                        'temporal_relation_ids': ['timeline_relation_001'],
-                        'timeline_anchor_ids': ['anchor_hr_complaint', 'anchor_termination_notice'],
-                        'timeline_issue_ids': ['temporal_reverse_before_001'],
-                        'temporal_issue_ids': ['temporal_reverse_before_001'],
-                        'missing_temporal_predicates': ['Before(fact_1,fact_2)'],
-                        'required_provenance_kinds': ['document_artifact'],
-                        'temporal_proof_bundle_ids': ['retaliation:retaliation_1:retaliation_temporal_profile_v1'],
-                        'temporal_proof_objectives': ['retaliation_temporal_frame'],
-                    },
-                },
-                'theorem_export_counts': {
-                    'tdfol_formula_count': 3,
-                    'dcec_formula_count': 2,
-                },
+                'temporal_proof_bundle_ids': ['retaliation:retaliation_1:retaliation_temporal_profile_v1'],
+                'temporal_proof_objectives': ['retaliation_temporal_frame'],
             }
+            assert temporal_proof_bundle['proof_execution_inputs']['source'] == 'temporal_proof_bundle'
+            assert temporal_proof_bundle['proof_execution_inputs']['tdfol_formulas'] == temporal_proof_bundle['theorem_exports']['tdfol_formulas']
+            assert temporal_proof_bundle['theorem_export_counts'] == {
+                'tdfol_formula_count': 3,
+                'dcec_formula_count': 2,
+            }
+            from integrations.ipfs_datasets.logic import export_theorem_from_proof_bundle
+
+            first_export = export_theorem_from_proof_bundle(temporal_proof_bundle)
+            second_export = export_theorem_from_proof_bundle(temporal_proof_bundle)
+            assert first_export['lean4'] == second_export['lean4']
+            assert first_export['coq'] == second_export['coq']
+            assert first_export['proof_bundle_digest'] == temporal_proof_bundle['bundle_digest']
+            assert first_export['tdfol_formula_count'] == 3
+            assert first_export['dcec_formula_count'] == 2
+            assert 'ProtectedActivity(fact_1)' in first_export['lean4']
             assert diagnostics['claim_support_temporal_handoff'] == {
                 'claim_type': 'retaliation',
                 'claim_element_id': 'retaliation:1',
                 'unresolved_temporal_issue_count': 1,
                 'unresolved_temporal_issue_ids': ['temporal_reverse_before_001'],
                 'chronology_task_count': 1,
+                'temporal_next_actions': [
+                    {
+                        'action': 'resolve_temporal_blocker',
+                        'next_action': 'resolve_temporal_blocker',
+                        'follow_up_lane': 'request_document',
+                        'lane': 'request_document',
+                        'follow_up_target': 'document_request',
+                        'proof_criticality': 'high',
+                        'question_objective': 'contradiction_resolution',
+                        'reason': 'Complaint and termination are ordered inconsistently.',
+                        'prompt': 'Complaint and termination are ordered inconsistently.',
+                        'claim_type': 'retaliation',
+                        'claim_element_id': 'retaliation:1',
+                        'claim_element_text': 'Protected activity',
+                        'temporal_missingness_kind': 'temporal_gap',
+                        'follow_up_focus': 'temporal_gap_closure',
+                        'query_strategy': 'temporal_gap_targeted',
+                        'affected_rule': {
+                            'profile_id': 'retaliation_temporal_profile_v1',
+                            'rule_frame_id': 'retaliation_temporal_frame',
+                            'status': 'satisfied',
+                            'blocking_reason': 'Complaint and termination are ordered inconsistently.',
+                        },
+                        'affected_rule_profile_id': 'retaliation_temporal_profile_v1',
+                        'affected_rule_frame_id': 'retaliation_temporal_frame',
+                        'affected_fact_ids': ['fact_1', 'fact_2'],
+                        'affected_relation_ids': ['timeline_relation_001'],
+                        'affected_issue_ids': ['temporal_reverse_before_001'],
+                        'temporal_issue_ids': ['temporal_reverse_before_001'],
+                        'missing_fact_roles': [],
+                        'missing_relations': [
+                            {
+                                'predicate': 'Before(fact_1,fact_2)',
+                                'relation_type': 'before',
+                                'source_fact_id': 'fact_1',
+                                'target_fact_id': 'fact_2',
+                            }
+                        ],
+                        'missing_temporal_predicates': ['Before(fact_1,fact_2)'],
+                        'required_provenance_kinds': ['document_artifact'],
+                        'issue_category': 'temporal_reverse_before',
+                        'rank': 1,
+                        'action_id': 'temporal_next_action:retaliation:retaliation_1:1',
+                    }
+                ],
+                'temporal_next_action_count': 1,
                 'event_ids': ['fact_1', 'fact_2'],
                 'temporal_fact_ids': ['fact_1', 'fact_2'],
                 'temporal_relation_ids': ['timeline_relation_001'],
@@ -2553,9 +3249,37 @@ class TestClaimSupportHook:
                 {
                     'lane': 'clarify_with_complainant',
                     'reason': 'Clarify whether the protected activity occurred before the adverse action.',
+                    'follow_up_target': 'clarification',
+                    'follow_up_lane': 'clarify_with_complainant',
+                    'proof_criticality': 'high',
+                    'question_objective': 'anchor_capture',
                 }
             ],
+            'has_contradictory_dates': False,
+            'has_limitations_risk': False,
         }
+
+    def test_retaliation_temporal_rule_profile_contract_is_data_layer_discoverable(self):
+        profiles = list_temporal_rule_profiles()
+        profile = get_temporal_rule_profile_for_claim_type('employment retaliation')
+        question_hints = get_temporal_rule_question_hints('retaliation')
+        causation_patterns = get_temporal_legal_patterns('employment retaliation', 'causal_connection')
+
+        assert any(item['profile_id'] == 'retaliation_temporal_profile_v1' for item in profiles)
+        assert profile['rule_frame_id'] == 'retaliation_temporal_frame'
+        assert {event['role'] for event in profile['required_events']} == {
+            'protected_activity',
+            'adverse_action',
+        }
+        assert {window['window_id'] for window in profile['legal_windows']} >= {
+            'retaliation_protected_activity_before_adverse_action',
+            'retaliation_eeoc_180_day_charge_window',
+            'retaliation_eeoc_300_day_deferral_charge_window',
+        }
+        assert 'lack_of_employer_knowledge' in profile['defenses']
+        assert any(hint['proof_objective'] == 'anchor_required_event' for hint in question_hints)
+        assert any(hint.get('window_id') == 'retaliation_protected_activity_before_adverse_action' for hint in question_hints)
+        assert any('temporal proximity' in pattern for pattern in causation_patterns)
 
     def test_get_temporal_reasoning_context_prefers_temporal_registries(self):
         try:
@@ -4147,6 +4871,676 @@ class TestClaimSupportHook:
                 ('testimony:retaliation:legacy-proactive', 'retaliation:1', 'Protected activity'),
                 ('testimony:retaliation:legacy-unmatched', None, 'Unknown element'),
             ]
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+
+class TestQuestionRecommendationsM0:
+    """Tests for M0: get_question_recommendations and testimony_backed_count."""
+
+    def _make_hook(self, db_path):
+        try:
+            from mediator.claim_support_hooks import ClaimSupportHook
+        except ImportError as e:
+            pytest.skip(f"ClaimSupportHook requires dependencies: {e}")
+        mock_mediator = Mock()
+        mock_mediator.log = Mock()
+        mock_mediator.get_three_phase_status = Mock(return_value={})
+        return ClaimSupportHook(mock_mediator, db_path=db_path)
+
+    def test_get_question_recommendations_no_data_returns_empty(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            result = hook.get_question_recommendations('testuser', claim_type='employment')
+            assert result['available'] is True
+            assert result['total_recommendations'] == 0
+            assert result['recommendations'] == []
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_question_recommendations_produces_recs_for_gaps(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {
+                    'employment': [
+                        'Protected activity',
+                        'Adverse employment action',
+                        'Causal connection',
+                    ]
+                },
+            )
+            result = hook.get_question_recommendations('testuser', claim_type='employment')
+            recs = result['recommendations']
+            assert result['total_recommendations'] > 0
+            assert len(recs) > 0
+            # All three elements have no support → missing_element lane
+            for rec in recs:
+                assert rec['question_id'].startswith('qrec:')
+                assert rec['question_lane'] in hook._QUESTION_LANE_WEIGHTS
+                assert rec['question_type'] in ('testimony', 'document_request')
+                assert 0.0 < rec['expected_proof_gain'] <= 1.0
+                assert isinstance(rec['question_text'], str) and len(rec['question_text']) > 10
+                assert rec['target_claim_element_id']
+                assert rec['question_reason']
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_question_recommendations_ranked_by_proof_gain(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity', 'Adverse employment action']},
+            )
+            # Add partial support to one element so it differs from zero-support
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_id='employment:2',
+                claim_element_text='Adverse employment action',
+                support_kind='authority',
+                support_ref='42 U.S.C. § 2000e',
+                support_label='Title VII',
+                source_table='legal_authorities',
+            )
+            result = hook.get_question_recommendations('testuser', claim_type='employment')
+            recs = result['recommendations']
+            # Gains should be non-increasing
+            gains = [r['expected_proof_gain'] for r in recs]
+            assert gains == sorted(gains, reverse=True)
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_question_recommendations_distinguishes_testimony_vs_doc_request(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity', 'Adverse employment action']},
+            )
+            # Give element 2 authority support but no evidence → testimony_gap lane
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_id='employment:2',
+                claim_element_text='Adverse employment action',
+                support_kind='authority',
+                support_ref='42 U.S.C. § 2000e',
+                source_table='legal_authorities',
+                support_label='Title VII',
+            )
+            result = hook.get_question_recommendations('testuser', claim_type='employment')
+            recs = result['recommendations']
+            types = {r['question_type'] for r in recs}
+            # At minimum we should see 'testimony' type
+            assert 'testimony' in types
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_question_recommendations_prioritizes_graph_quality_gap_for_covered_element(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.add_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='artifact:hr-summary',
+                support_label='HR summary',
+                source_table='evidence',
+            )
+
+            result = hook.get_question_recommendations(
+                'testuser',
+                claim_type='employment',
+                required_support_kinds=['evidence'],
+            )
+            recs = result['recommendations']
+            quality_recs = [rec for rec in recs if rec['question_lane'] == 'graph_quality_gap']
+
+            assert quality_recs
+            rec = quality_recs[0]
+            assert rec['target_claim_element_id'] == 'employment:1'
+            assert rec['question_type'] == 'testimony'
+            assert rec['support_quality_summary']['scored_path_count'] == 1
+            assert rec['quality_signal_counts']['weak_graph_connectivity'] >= 1
+            assert rec['primary_quality_signal']['signal_type'] == 'weak_graph_connectivity'
+            assert rec['primary_quality_signal']['follow_up_action'] == 'persist_or_query_graph_support'
+            assert rec['quality_follow_up_action'] == 'persist_or_query_graph_support'
+            assert 'connect' in rec['question_text'].lower()
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_question_recommendations_max_recommendations_respected(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': [f'Element {i}' for i in range(10)]},
+            )
+            result = hook.get_question_recommendations(
+                'testuser', claim_type='employment', max_recommendations=3
+            )
+            assert len(result['recommendations']) <= 3
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_summarize_claim_support_includes_testimony_backed_count(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity', 'Adverse employment action']},
+            )
+            # Save a testimony record
+            hook.save_testimony_record(
+                'testuser',
+                'employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                raw_narrative='I filed a complaint with HR on March 5.',
+                actor='testuser',
+                firsthand_status='firsthand',
+            )
+            summary = hook.summarize_claim_support('testuser', 'employment')
+            claim = summary['claims']['employment']
+            assert 'testimony_backed_count' in claim
+            assert claim['testimony_backed_count'] >= 1
+            assert 'testimony_backed_elements' in claim
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_summarize_element_includes_testimony_backed_count(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.save_testimony_record(
+                'testuser',
+                'employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                raw_narrative='Reported the violation on July 1.',
+                firsthand_status='firsthand',
+            )
+            summary = hook.summarize_claim_support('testuser', 'employment')
+            elements = summary['claims']['employment']['elements']
+            assert len(elements) == 1
+            assert 'testimony_backed_count' in elements[0]
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_question_recommendations_testimony_count_and_doc_request_count(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity', 'Adverse employment action']},
+            )
+            result = hook.get_question_recommendations('testuser', claim_type='employment')
+            total = result['testimony_recommendations'] + result['document_request_recommendations']
+            assert total == result['total_recommendations']
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    # --- M2: Fact Registry And Element Support Ledger ---
+
+    def test_persist_fact_record_creates_and_deduplicates(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            result = hook.persist_fact_record(
+                'testuser',
+                'employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                proposition_text='Claimant reported a code violation to HR on 2025-03-01.',
+                source_testimony_id='testimony:employment:abc123',
+                confidence=0.85,
+                validation_state='unvalidated',
+            )
+            assert result['available'] is True
+            assert result['recorded'] is True
+            assert result['fact_id'].startswith('fact:')
+            assert result['created'] is True
+            fact_id = result['fact_id']
+
+            result2 = hook.persist_fact_record(
+                'testuser',
+                'employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                proposition_text='Claimant reported a code violation to HR on 2025-03-01.',
+                source_testimony_id='testimony:employment:abc123',
+                confidence=0.85,
+                validation_state='unvalidated',
+            )
+            assert result2['reused'] is True
+            assert result2['fact_id'] == fact_id
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_persist_fact_record_rejects_empty_proposition_text(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            result = hook.persist_fact_record(
+                'testuser',
+                'employment',
+                proposition_text='   ',
+            )
+            assert result['recorded'] is False
+            assert result['error'] == 'empty_proposition_text'
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_persist_fact_record_normalizes_invalid_validation_state(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            result = hook.persist_fact_record(
+                'testuser',
+                'employment',
+                proposition_text='Something happened.',
+                validation_state='invalid_state',
+            )
+            assert result['recorded'] is True
+            assert result['validation_state'] == 'unvalidated'
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_add_fact_link_creates_and_deduplicates(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            fact_result = hook.persist_fact_record(
+                'testuser',
+                'employment',
+                proposition_text='Manager sent a termination letter on 2025-04-01.',
+                source_artifact_id='artifact:doc123',
+            )
+            fact_id = fact_result['fact_id']
+
+            link_result = hook.add_fact_link(
+                fact_id,
+                'to_element',
+                'employment:1',
+                target_type='claim_element',
+            )
+            assert link_result['available'] is True
+            assert link_result['recorded'] is True
+            assert link_result['link_id'].startswith('fact_link:')
+            assert link_result['created'] is True
+
+            link_result2 = hook.add_fact_link(
+                fact_id,
+                'to_element',
+                'employment:1',
+                target_type='claim_element',
+            )
+            assert link_result2['reused'] is True
+            assert link_result2['link_id'] == link_result['link_id']
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_fact_records_returns_facts_with_links(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            r1 = hook.persist_fact_record(
+                'testuser',
+                'employment',
+                claim_element_id='employment:1',
+                proposition_text='Claimant submitted a formal complaint in writing.',
+                source_testimony_id='testimony:employment:t001',
+                confidence=0.9,
+                validation_state='confirmed',
+            )
+            r2 = hook.persist_fact_record(
+                'testuser',
+                'employment',
+                claim_element_id='employment:1',
+                proposition_text='HR responded with denial within 48 hours.',
+                source_artifact_id='artifact:hr_response',
+                confidence=0.7,
+                uncertainty_flag=True,
+            )
+            hook.add_fact_link(r1['fact_id'], 'to_element', 'employment:1', target_type='claim_element')
+            hook.add_fact_link(r1['fact_id'], 'to_testimony', 'testimony:employment:t001', target_type='testimony')
+            hook.add_fact_link(r2['fact_id'], 'to_element', 'employment:1', target_type='claim_element')
+            hook.add_fact_link(r2['fact_id'], 'to_chunk', 'artifact:hr_response:chunk:0', target_type='document_chunk')
+
+            records = hook.get_fact_records('testuser', 'employment', claim_element_id='employment:1')
+            assert len(records) == 2
+            fids = {rec['fact_id'] for rec in records}
+            assert r1['fact_id'] in fids
+            assert r2['fact_id'] in fids
+
+            r1_record = next(rec for rec in records if rec['fact_id'] == r1['fact_id'])
+            assert r1_record['validation_state'] == 'confirmed'
+            assert len(r1_record['links']) == 2
+            link_kinds = {lnk['link_kind'] for lnk in r1_record['links']}
+            assert 'to_element' in link_kinds
+            assert 'to_testimony' in link_kinds
+
+            r2_record = next(rec for rec in records if rec['fact_id'] == r2['fact_id'])
+            assert r2_record['uncertainty_flag'] is True
+            assert len(r2_record['links']) == 2
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_element_support_ledger_computes_overall_status(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            hook.persist_fact_record(
+                'testuser', 'employment',
+                claim_element_id='employment:1',
+                proposition_text='Fact A.',
+                validation_state='confirmed',
+            )
+            hook.persist_fact_record(
+                'testuser', 'employment',
+                claim_element_id='employment:1',
+                proposition_text='Fact B - contradicted by employer record.',
+                validation_state='contradicted',
+                contradiction_flag=True,
+            )
+
+            ledger = hook.get_element_support_ledger('testuser', 'employment', claim_element_id='employment:1')
+            assert ledger['available'] is True
+            assert ledger['total_facts'] == 2
+            assert ledger['confirmed_count'] == 1
+            assert ledger['contradicted_count'] == 1
+            assert ledger['contradiction_flagged_count'] == 1
+            assert ledger['overall_status'] == 'contradicted'
+            assert len(ledger['facts']) == 2
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_element_support_ledger_empty_returns_missing(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            ledger = hook.get_element_support_ledger('testuser', 'employment', claim_element_id='employment:1')
+            assert ledger['total_facts'] == 0
+            assert ledger['overall_status'] == 'missing'
+            assert ledger['facts'] == {}
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_persist_support_path_creates_and_deduplicates(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            r = hook.persist_fact_record(
+                'testuser', 'employment',
+                claim_element_id='employment:1',
+                proposition_text='Termination notice issued.',
+                source_artifact_id='artifact:termination',
+            )
+            traces = [
+                {
+                    'fact_id': r['fact_id'],
+                    'support_kind': 'evidence',
+                    'source_table': 'evidence_facts',
+                    'source_family': 'evidence',
+                    'source_record_id': 7,
+                    'source_ref': 'artifact:termination',
+                    'record_scope': 'claim',
+                    'artifact_family': 'archived_web_page',
+                    'corpus_family': 'web_archive',
+                    'content_origin': 'historical_archive_capture',
+                    'parse_source': 'ipfs_datasets_py',
+                    'input_format': 'html',
+                    'quality_tier': 'high',
+                    'chunk_id': 'chunk-termination',
+                    'graph_id': 'graph:termination',
+                    'source_passage': {
+                        'chunk_id': 'chunk-termination',
+                        'text': 'Termination notice issued.',
+                    },
+                }
+            ]
+
+            path_result = hook.persist_support_path(
+                'testuser', 'employment', 'employment:1', traces,
+            )
+            assert path_result['available'] is True
+            assert path_result['recorded'] is True
+            assert path_result['proof_path_id'].startswith('path:')
+            assert path_result['created'] is True
+            assert r['fact_id'] in path_result['fact_ids']
+            assert path_result['support_refs'] == ['artifact:termination']
+            assert path_result['support_ref_count'] == 1
+            assert path_result['support_kinds'] == ['evidence']
+            assert path_result['source_families'] == ['evidence']
+            assert path_result['graph_ids'] == ['graph:termination']
+            assert path_result['graph_id_count'] == 1
+            assert path_result['support_fact_registry_summary']['source_family_counts'] == {'evidence': 1}
+            assert path_result['support_fact_registry_summary']['corpus_family_counts'] == {'web_archive': 1}
+            assert path_result['support_fact_registry_summary']['passage_anchored_count'] == 1
+
+            path_result2 = hook.persist_support_path(
+                'testuser', 'employment', 'employment:1', traces,
+            )
+            assert path_result2['reused'] is True
+            assert path_result2['proof_path_id'] == path_result['proof_path_id']
+
+            persisted_paths = hook.get_support_paths_for_element(
+                'testuser',
+                'employment',
+                claim_element_id='employment:1',
+                include_current_traces=False,
+            )
+            persisted_path = persisted_paths['paths'][0]
+            assert persisted_path['support_refs'] == ['artifact:termination']
+            assert persisted_path['support_ref_count'] == 1
+            assert persisted_path['support_kinds'] == ['evidence']
+            assert persisted_path['source_families'] == ['evidence']
+            assert persisted_path['graph_ids'] == ['graph:termination']
+            assert persisted_path['graph_id_count'] == 1
+            assert persisted_path['support_fact_registry_summary']['artifact_family_counts'] == {
+                'archived_web_page': 1
+            }
+            assert persisted_path['metadata']['support_fact_registry_summary']['input_format_counts'] == {'html': 1}
+            assert persisted_path['metadata']['path_drilldown']['support_refs'] == ['artifact:termination']
+
+            no_fact_path = hook.persist_support_path(
+                'testuser',
+                'employment',
+                'employment:1',
+                [{'support_kind': 'authority', 'support_ref': 'authority:adverse-a'}],
+            )
+            no_fact_path_2 = hook.persist_support_path(
+                'testuser',
+                'employment',
+                'employment:1',
+                [{'support_kind': 'authority', 'support_ref': 'authority:supportive-b'}],
+            )
+            assert no_fact_path['proof_path_id'] != no_fact_path_2['proof_path_id']
+            assert no_fact_path['support_refs'] == ['authority:adverse-a']
+            assert no_fact_path_2['support_refs'] == ['authority:supportive-b']
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_support_paths_for_element_includes_current_trace_path(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.persist_fact_record(
+                'testuser', 'employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                proposition_text='Claimant complained to HR.',
+                source_artifact_id='artifact:hr_complaint',
+                confidence=0.8,
+            )
+            hook.upsert_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='artifact:hr_complaint',
+                support_label='HR complaint',
+                source_table='evidence',
+            )
+
+            paths = hook.get_support_paths_for_element(
+                'testuser',
+                'employment',
+                claim_element_id='employment:1',
+            )
+
+            assert paths['available'] is True
+            assert paths['path_count'] == 1
+            current_path = paths['paths'][0]
+            assert current_path['source'] == 'current_traces'
+            assert current_path['persisted'] is False
+            assert current_path['support_refs'] == ['artifact:hr_complaint']
+            assert current_path['support_kinds'] == ['evidence']
+            assert current_path['fact_count'] == 1
+            assert current_path['trace_count'] == 2
+            assert current_path['metadata']['support_trace_summary']['trace_count'] == 2
+            assert 'graph_trace_summary' in current_path['metadata']
+            assert current_path['support_quality']['metadata']['operation'] == 'score_support_path_quality'
+            assert current_path['support_quality_tier'] in {
+                'strong_support',
+                'moderate_support',
+                'weak_support',
+                'duplicate_support',
+            }
+            assert paths['quality_summary']['scored_path_count'] == 1
+            assert paths['quality_summary']['best_quality_score'] == current_path['support_quality_score']
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_get_claim_coverage_matrix_includes_element_support_ledger(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.persist_fact_record(
+                'testuser', 'employment',
+                claim_element_id='employment:1',
+                proposition_text='Claimant engaged in protected activity.',
+                validation_state='confirmed',
+                confidence=0.8,
+            )
+            matrix = hook.get_claim_coverage_matrix('testuser', 'employment')
+            elements = matrix['claims']['employment']['elements']
+            assert len(elements) == 1
+            ledger = elements[0]['element_support_ledger']
+            assert 'available' in ledger
+            assert 'total_facts' in ledger
+            assert 'overall_status' in ledger
+            assert 'facts' in ledger
+            support_paths = elements[0]['support_path_summary']
+            assert support_paths['path_count'] == 1
+            assert support_paths['paths'][0]['source'] == 'current_traces'
+            assert elements[0]['support_quality_summary']['scored_path_count'] == 1
+            assert matrix['claims']['employment']['support_quality_summary']['scored_path_count'] == 1
+            overview = hook.get_claim_overview('testuser', 'employment')
+            overview_claim = overview['claims']['employment']
+            assert overview_claim['support_quality_summary']['scored_path_count'] == 1
+            overview_elements = (
+                overview_claim['covered']
+                + overview_claim['partially_supported']
+                + overview_claim['missing']
+            )
+            assert overview_elements[0]['support_quality_summary']['scored_path_count'] == 1
+        finally:
+            if os.path.exists(db_path):
+                os.unlink(db_path)
+
+    def test_support_packet_has_proof_path_id_field(self):
+        with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+            db_path = f.name
+        try:
+            hook = self._make_hook(db_path)
+            hook.register_claim_requirements(
+                'testuser',
+                {'employment': ['Protected activity']},
+            )
+            hook.upsert_support_link(
+                user_id='testuser',
+                claim_type='employment',
+                claim_element_id='employment:1',
+                claim_element_text='Protected activity',
+                support_kind='evidence',
+                support_ref='artifact:doc1',
+                support_label='Termination letter',
+            )
+            matrix = hook.get_claim_coverage_matrix('testuser', 'employment')
+            elements = matrix['claims']['employment']['elements']
+            assert len(elements) == 1
+            packets = elements[0].get('support_packets', [])
+            assert len(packets) >= 1
+            assert 'proof_path_id' in packets[0]
         finally:
             if os.path.exists(db_path):
                 os.unlink(db_path)

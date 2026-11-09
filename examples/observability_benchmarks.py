@@ -506,12 +506,11 @@ def benchmark_latency_under_load(load_threads: int = 50, test_duration: int = 10
         time.sleep(test_duration)
         stop_flag.set()
         
-        # Wait for completion
+        # Wait for completion and surface worker failures. Returning partial
+        # latency data after a load or measurement worker failed would make the
+        # benchmark result invalid and hide the underlying defect.
         for future in [measurement_future] + load_futures:
-            try:
-                future.result(timeout=5)
-            except:
-                pass
+            future.result(timeout=5)
     
     # Analysis
     if latencies:

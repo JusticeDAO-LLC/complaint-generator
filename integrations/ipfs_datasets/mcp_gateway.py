@@ -32,7 +32,28 @@ def execute_gateway_tool(
     tool_name: str,
     payload: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    result = _complaint_workspace.call_mcp_tool(tool_name, payload or {})
+    try:
+        result = _complaint_workspace.call_mcp_tool(tool_name, payload or {})
+    except ValueError as exc:
+        if not str(exc).startswith("Unknown complaint MCP tool:"):
+            raise
+        # Unknown tools are a normal capability mismatch at this adapter
+        # boundary.  Preserve that distinction instead of leaking an
+        # application-specific exception to adapter consumers.
+        return with_adapter_metadata(
+            {
+                "status": "unavailable",
+                "tool_name": tool_name,
+                "payload": payload or {},
+                "result": None,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            },
+            operation="execute_gateway_tool",
+            backend_available=False,
+            degraded_reason=exc,
+            implementation_status="unavailable",
+        )
     return with_adapter_metadata(
         {
             "status": "available",

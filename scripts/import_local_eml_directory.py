@@ -3,14 +3,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ipfs_datasets_py.processors.legal_data.email_workspace import import_local_eml_directory
-from ipfs_datasets_py.processors.legal_data.email_corpus import build_email_graphrag_artifacts
+from complaint_generator.email_graphrag import build_email_graphrag_artifacts
+from integrations.ipfs_datasets.legal_data import load_legal_symbol
+
+import_local_eml_directory = load_legal_symbol("import_local_eml_directory", module="email_workspace")
 
 
 def build_parser() -> argparse.ArgumentParser:

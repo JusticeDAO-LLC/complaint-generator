@@ -13,7 +13,11 @@ import pytest
 import time
 from typing import Dict, List, Any
 
-from ipfs_datasets_py.logic.security.llm_circuit_breaker import get_circuit_breaker
+from ipfs_datasets_py.logic.security.llm_circuit_breaker import (
+    CircuitBreakerOpenError,
+    CircuitState,
+    get_circuit_breaker,
+)
 from ipfs_datasets_py.logic.observability.metrics_prometheus import get_prometheus_collector
 from ipfs_datasets_py.logic.observability.otel_integration import get_otel_tracer
 
@@ -52,7 +56,7 @@ class MockComplaintAnalyzer:
         """Simulate complaint analysis."""
         self.call_count += 1
         if self.should_fail:
-            raise Exception("Complaint analysis failed")
+            raise RuntimeError("Complaint analysis failed")
         return {
             "complaint_type": "billing",
             "severity": 0.85,
@@ -92,14 +96,30 @@ def decision_tree():
 
 @pytest.fixture
 def observability():
-    """Initialize observability components."""
-    return {
-        "metrics": get_prometheus_collector(),
-        "tracer": get_otel_tracer(),
+    """Initialize isolated state for the shared observability components."""
+    metrics = get_prometheus_collector()
+    breakers = {
         "cb_query": get_circuit_breaker("query_optimizer"),
         "cb_analysis": get_circuit_breaker("complaint_analyzer"),
         "cb_decision": get_circuit_breaker("decision_tree"),
     }
+
+    def reset_shared_state():
+        metrics.reset_all()
+        for breaker in breakers.values():
+            breaker.failure_threshold = 5
+            breaker.timeout_seconds = 60.0
+            breaker.success_threshold = 2
+            breaker.fallback = None
+            breaker.reset()
+
+    reset_shared_state()
+    yield {
+        "metrics": metrics,
+        "tracer": get_otel_tracer(),
+        **breakers,
+    }
+    reset_shared_state()
 
 
 # ============================================================================
@@ -312,17 +332,19 @@ class TestMultiComponentPipeline:
         decision_tree.should_fail = True
         
         analysis_start = time.time()
-        try:
-            analysis = cb_analysis.call(complaint_analyzer.analyze, "Test complaint")
-            analysis_elapsed = time.time() - analysis_start
-            metrics.record_circuit_breaker_call("complaint_analyzer", analysis_elapsed, success=True)
-        except:
-            pass
+        analysis = cb_analysis.call(complaint_analyzer.analyze, "Test complaint")
+        analysis_elapsed = time.time() - analysis_start
+        metrics.record_circuit_breaker_call(
+            "complaint_analyzer", analysis_elapsed, success=True
+        )
         
         # Decision will fail
         decision_start = time.time()
         try:
-            cb_decision.call(decision_tree.decide, {"type": "billing"})
+            cb_decision.call(
+                decision_tree.decide,
+                {"type": analysis["complaint_type"]},
+            )
             decision_elapsed = time.time() - decision_start
             metrics.record_circuit_breaker_call("decision_tree", decision_elapsed, success=True)
         except Exception:
@@ -377,36 +399,51 @@ class TestCircuitBreakerWithObservability:
         assert summary['failure_rate'] > 50.0
         assert summary['failed_calls'] > 0
     
-    def test_circuit_breaker_recovery_tracked(self, complaint_analyzer, observability):
-        """Circuit breaker recovery is tracked in metrics."""
+    def test_circuit_breaker_recovery_tracked(
+        self, complaint_analyzer, observability, monkeypatch
+    ):
+        """A successful half-open probe closes the circuit and is recorded."""
         cb = observability["cb_analysis"]
         metrics = observability["metrics"]
-        cb.timeout_seconds = 0.5  # Short timeout for testing
+
+        # The named breaker is shared through a global registry. Start this stateful
+        # integration scenario from a known state and restore its configuration via
+        # monkeypatch so test ordering cannot change the expected failure modes.
+        cb.reset()
+        monkeypatch.setattr(cb, "failure_threshold", 3)
+        monkeypatch.setattr(cb, "timeout_seconds", 0.01)
+        monkeypatch.setattr(cb, "success_threshold", 1)
         
-        # Cause failures
+        # Reach the failure threshold with the protected operation's expected error.
         complaint_analyzer.should_fail = True
-        for _ in range(5):
-            try:
+        for _ in range(cb.failure_threshold):
+            with pytest.raises(RuntimeError, match="Complaint analysis failed"):
                 cb.call(complaint_analyzer.analyze, "Test")
-            except:
-                pass
-        
-        initial_state = cb.state.value
+
+        assert cb.state is CircuitState.OPEN
+
+        # Calls made before the recovery timeout are rejected without invoking the
+        # protected operation.
+        calls_before_rejection = complaint_analyzer.call_count
+        with pytest.raises(CircuitBreakerOpenError, match="complaint_analyzer"):
+            cb.call(complaint_analyzer.analyze, "Test")
+        assert complaint_analyzer.call_count == calls_before_rejection
         
         # Wait for recovery
         time.sleep(cb.timeout_seconds + 0.1)
         
-        # Try again (test recovery)
+        # An unexpected probe failure must fail the test rather than being converted
+        # into a failure metric and silently accepted as a recovery attempt.
         complaint_analyzer.should_fail = False
-        try:
-            cb.call(complaint_analyzer.analyze, "Test")
-            metrics.record_circuit_breaker_call("complaint_analyzer", 0.01, success=True)
-        except:
-            metrics.record_circuit_breaker_call("complaint_analyzer", 0.01, success=False)
+        result = cb.call(complaint_analyzer.analyze, "Test")
+        metrics.record_circuit_breaker_call("complaint_analyzer", 0.01, success=True)
         
-        # Verify recovery was attempted
+        # Verify recovery completed and its successful probe was observable.
+        assert result["complaint_type"] == "billing"
+        assert cb.state is CircuitState.CLOSED
         summary = metrics.get_metrics_summary("complaint_analyzer")
         assert summary['total_calls'] > 0
+        assert summary['successful_calls'] > 0
 
 
 # ============================================================================
@@ -507,19 +544,13 @@ class TestMetricCorrelation:
         for i in range(50):
             # Analysis call
             start = time.time()
-            try:
-                cb_analysis.call(complaint_analyzer.analyze, f"Test {i}")
-            except:
-                pass
+            cb_analysis.call(complaint_analyzer.analyze, f"Test {i}")
             elapsed = time.time() - start
             metrics.record_circuit_breaker_call("complaint_analyzer", elapsed, success=True)
             
             # Decision call
             start = time.time()
-            try:
-                cb_decision.call(decision_tree.decide, {"test": i})
-            except:
-                pass
+            cb_decision.call(decision_tree.decide, {"test": i})
             elapsed = time.time() - start
             metrics.record_circuit_breaker_call("decision_tree", elapsed, success=True)
         

@@ -1,0 +1,49 @@
+{
+  "skill_asset_id": "complaint-policy-rules",
+  "version": "1.0.0",
+  "name": "Complaint containment policy rules",
+  "description": "Checks complaint text and deontic norms against the workspace policy rule set. Detects deontic violations (prohibition breaches, unmet obligations), deadline issues, and eligibility conflicts. Returns violations and warnings for the editor guardrail panel.",
+  "capability": "strict_containment_policy",
+  "adapter": "integrations/ipfs_datasets/policy_rules.py",
+  "entry_point": "check_policy_rules_with_deontic_norms",
+  "required_for_grounding_modes": ["legal_corpus_only", "strict_legal_containment"],
+  "inputs": {
+    "text": {
+      "type": "string",
+      "description": "The full draft complaint body text."
+    },
+    "norms": {
+      "type": "array",
+      "description": "Optional list of deontic norm dicts from legal_text_to_deontic.",
+      "items": {"type": "object"},
+      "nullable": true
+    }
+  },
+  "outputs": {
+    "violations": {
+      "type": "array",
+      "description": "List of deontic norm violations found in the text.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "violation_id": {"type": "string"},
+          "rule_type": {"type": "string"},
+          "modality": {"type": "string"},
+          "sentence": {"type": "string"},
+          "severity": {"type": "string", "enum": ["error", "warning", "info"]}
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "description": "List of deontic policy warnings that do not constitute hard violations."
+    },
+    "violation_count": {"type": "integer"},
+    "warning_count": {"type": "integer"}
+  },
+  "editor_integration": {
+    "panel": "proof_readiness_flags",
+    "displays": ["violations", "warnings", "violation_count"],
+    "block_on_violation": true
+  }
+}

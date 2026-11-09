@@ -1,18 +1,37 @@
 from __future__ import annotations
 
+import functools
 import json
+import os
 import re
-import tempfile
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from .complaint_mcp_protocol import handle_jsonrpc_message, tool_list_payload
-from .complaint_workspace import ComplaintWorkspaceService, generate_decentralized_id
+from .browser_sessions import (
+    SESSION_COOKIE,
+    BrowserSessionError,
+    BrowserSessionService,
+    browser_session_http_status,
+)
+from .case_routes import INQUIRY_CONFLICT_STATUS, shared_inquiry_conflict
+from .complaint_mcp_protocol import (handle_jsonrpc_message, project_shared_inquiry_contract,
+    tool_list_payload, gui_inference_tool_failed)
+from .complaint_workspace import (
+    ComplaintWorkspaceService,
+    PrincipalRegistry,
+    WorkspaceAccess,
+    WorkspaceAuthorizationDenied,
+    WorkspacePersistenceError,
+    access_from_http_headers,
+    generate_decentralized_id,
+    workspace_access_scope,
+)
+from .fastapi_compat import attach_router_routes
 
 try:
     import python_multipart  # type: ignore  # noqa: F401
@@ -137,10 +156,26 @@ class IntakeRequest(BaseModel):
     answers: Dict[str, Any] = Field(default_factory=dict)
 
 
+class GuiInferenceRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    purpose: str
+    inputs: Dict[str, Any]
+    timeout_seconds: float = Field(default=30.0, gt=0, le=60)
+
+
+class GuiInferenceAdmissionRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    invocation_id: str
+
+
 class IntakeChatTurnRequest(BaseModel):
     user_id: Optional[str] = None
     message: Optional[str] = None
     question_id: Optional[str] = None
+    expected_question_revision: Optional[int] = Field(default=None, ge=0)
+    interview_action: Optional[str] = None
+    expected_graph_revision: Optional[str] = Field(default=None, strict=True)
+    expected_session_revision: Optional[int] = Field(default=None, ge=0, strict=True)
 
 
 class EvidenceRequest(BaseModel):
@@ -151,6 +186,39 @@ class EvidenceRequest(BaseModel):
     content: str
     source: Optional[str] = None
     attachment_names: List[str] = Field(default_factory=list)
+
+
+class DocumentAnnotationTagRequest(BaseModel):
+    user_id: Optional[str] = None
+    document_id: str
+    tags: List[str] = Field(default_factory=list)
+    note: str
+    claim_element_id: str = "causation"
+    title: str = "Dataset document annotation"
+    dataset_kind: str = "dataset"
+    document_title: Optional[str] = None
+    document_text_preview: Optional[str] = None
+    document_metadata: Dict[str, Any] = Field(default_factory=dict)
+    user_metadata: Dict[str, Any] = Field(default_factory=dict)
+    source: Optional[str] = None
+
+
+class WorkspaceDatasetAnnotationRequest(BaseModel):
+    user_id: Optional[str] = None
+    document_id: str
+    tags: List[str] = Field(default_factory=list)
+    note: str
+    claim_element_id: str = "causation"
+    title: str = "Workspace dataset document annotation"
+    document_title: Optional[str] = None
+    document_text_preview: Optional[str] = None
+    collection_id: Optional[str] = None
+    document_type: Optional[str] = None
+    claim_type: Optional[str] = None
+    source_type: Optional[str] = None
+    document_metadata: Dict[str, Any] = Field(default_factory=dict)
+    user_metadata: Dict[str, Any] = Field(default_factory=dict)
+    source: Optional[str] = None
 
 
 class GmailEvidenceImportRequest(BaseModel):
@@ -244,6 +312,35 @@ class DraftUpdateRequest(BaseModel):
     requested_relief: Optional[List[str]] = None
 
 
+class MikeHandoffRequest(BaseModel):
+    user_id: Optional[str] = None
+    mike_base_url: Optional[str] = None
+    project_id: Optional[str] = None
+    workspace_id: Optional[str] = None
+    generate_draft_if_missing: bool = True
+    grounding_mode: Optional[str] = None
+
+
+class MikeDraftSyncRequest(BaseModel):
+    user_id: Optional[str] = None
+    body: str
+    title: Optional[str] = None
+    requested_relief: Optional[List[str]] = None
+    handoff_id: Optional[str] = None
+    project_id: Optional[str] = None
+    workspace_id: Optional[str] = None
+    mike_document_id: Optional[str] = None
+    citation_links: List[Dict[str, Any]] = Field(default_factory=list)
+    redline_summary: Optional[str] = None
+    source_updated_at: Optional[str] = None
+    structured_deltas: List[Dict[str, Any]] = Field(default_factory=list)
+    editor_metadata: Dict[str, Any] = Field(default_factory=dict)
+    grounding_mode: Optional[str] = None
+    assertion_annotations: List[Dict[str, Any]] = Field(default_factory=list)
+    authority_links: List[Dict[str, Any]] = Field(default_factory=list)
+    sync_provenance: Dict[str, Any] = Field(default_factory=dict)
+
+
 class SynopsisUpdateRequest(BaseModel):
     user_id: Optional[str] = None
     synopsis: str
@@ -283,13 +380,186 @@ class PackagedDocketRevalidationPersistRequest(BaseModel):
     chain_until_satisfied: bool = True
 
 
-def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceService] = None) -> APIRouter:
+def _browser_session_http_error(error: BrowserSessionError) -> HTTPException:
+    status, code = browser_session_http_status(error)
+    return HTTPException(status_code=status, detail=code)
+
+
+def create_complaint_workspace_router(
+    service: Optional[ComplaintWorkspaceService] = None,
+    *,
+    principal_registry: Optional[PrincipalRegistry] = None,
+    trusted_local: bool = False,
+    browser_sessions: Optional[BrowserSessionService] = None,
+) -> APIRouter:
+    """HTTP and MCP routes share one principal/case authorizer.
+
+    ``trusted_local`` must be passed explicitly for a local operator binding.
+    A process-wide bearer token or a caller-supplied ``user_id`` does not
+    authorize a private read, write, or export.
+
+    When ``browser_sessions`` is installed, including an unavailable service
+    from a missing verifier or signing key, requests fail closed. That path
+    does not fall back to trusted-local access.
+    """
+
     router = APIRouter()
     workspace = service or ComplaintWorkspaceService()
+    registry = principal_registry
+    sessions = browser_sessions
+
+    async def _bind_request_access(http_request: Request):
+        if sessions is not None:
+            anonymous = http_request.url.path.rstrip("/").endswith("/api/complaint-workspace/auth/login")
+            try:
+                bound = await sessions.bind_http(http_request, allow_anonymous=anonymous)
+            except BrowserSessionError as error:
+                raise _browser_session_http_error(error) from None
+            if bound is None:
+                access = WorkspaceAccess.unauthenticated()
+            else:
+                from .workspace_case_authority import (WorkspaceCaseAuthorityError,
+                    current_workspace_case_authority)
+                try:
+                    authority = current_workspace_case_authority()
+                    if authority is not None:
+                        authority.revalidate(actor_principal_id=bound.principal_id)
+                except WorkspaceCaseAuthorityError:
+                    raise HTTPException(status_code=403, detail="authorization_denied") from None
+                access = WorkspaceAccess.authenticated(bound.principal_id,
+                    case_id=authority.case_id if authority is not None else None)
+                http_request.state.browser_principal = bound
+        else:
+            access = access_from_http_headers(
+                http_request.headers,
+                principal_registry=registry,
+                trusted_local=trusted_local,
+            )
+        with workspace_access_scope(access):
+            yield
+
+    def _register(method_registrar):
+        def wrapper(path: str, *args: Any, **kwargs: Any):
+            def decorator(fn):
+                if path.endswith("/mcp/call") or path.endswith("/mcp/rpc") or path.endswith("/mcp/tools") or path.endswith("/identity"):
+                    return method_registrar(path, *args, **kwargs)(fn)
+
+                @functools.wraps(fn)
+                async def guarded(*guard_args: Any, **guard_kwargs: Any):
+                    try:
+                        return await fn(*guard_args, **guard_kwargs)
+                    except WorkspaceAuthorizationDenied:
+                        raise HTTPException(status_code=403, detail="authorization_denied") from None
+                    except HTTPException:
+                        raise
+                    except Exception:
+                        raise HTTPException(status_code=500, detail="workspace_operation_failed") from None
+
+                return method_registrar(path, *args, **kwargs)(guarded)
+
+            return decorator
+
+        return wrapper
+
+    router.get = _register(router.get)  # type: ignore[method-assign]
+    router.post = _register(router.post)  # type: ignore[method-assign]
+    router.dependencies.append(Depends(_bind_request_access))
+
+    def _json_payload(http_request: Request) -> Dict[str, Any]:
+        payload = getattr(http_request.state, "browser_json", None)
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=401, detail="authentication_failed")
+        return payload
+
+    @router.post("/api/complaint-workspace/auth/login")
+    async def login_browser_session(http_request: Request) -> JSONResponse:
+        if sessions is None or not sessions.configured:
+            raise HTTPException(status_code=503, detail="authentication_unavailable")
+        try:
+            issued = sessions.login(_json_payload(http_request))
+        except BrowserSessionError as error:
+            raise _browser_session_http_error(error) from None
+        response = JSONResponse(issued.public_view())
+        sessions.attach_session_cookie(response, issued)
+        return response
+
+    @router.post("/api/complaint-workspace/auth/logout")
+    async def logout_browser_session(http_request: Request) -> JSONResponse:
+        if sessions is None or not sessions.configured:
+            raise HTTPException(status_code=503, detail="authentication_unavailable")
+        token = str(http_request.cookies.get(SESSION_COOKIE) or "")
+        try:
+            sessions.logout(token, csrf_token=str(http_request.headers.get("x-csrf-token") or ""))
+        except BrowserSessionError as error:
+            raise _browser_session_http_error(error) from None
+        response = JSONResponse({"authenticated": False})
+        sessions.clear_session_cookie(response)
+        return response
+
+    @router.post("/api/complaint-workspace/auth/rotate")
+    async def rotate_browser_session(http_request: Request) -> JSONResponse:
+        if sessions is None or not sessions.configured:
+            raise HTTPException(status_code=503, detail="authentication_unavailable")
+        token = str(http_request.cookies.get(SESSION_COOKIE) or "")
+        try:
+            issued = sessions.rotate(token, csrf_token=str(http_request.headers.get("x-csrf-token") or ""))
+        except BrowserSessionError as error:
+            raise _browser_session_http_error(error) from None
+        response = JSONResponse(issued.public_view())
+        sessions.attach_session_cookie(response, issued)
+        return response
+
+    @router.get("/api/complaint-workspace/auth/session")
+    async def read_browser_session(http_request: Request) -> JSONResponse:
+        bound = getattr(http_request.state, "browser_principal", None)
+        if bound is None:
+            raise HTTPException(status_code=401, detail="session_required")
+        try:
+            resumed = sessions.resume_http(http_request, bound=bound)
+        except BrowserSessionError as error:
+            raise _browser_session_http_error(error) from None
+        return JSONResponse(resumed, headers={"Cache-Control": "private, no-store",
+            "Pragma": "no-cache", "Expires": "0"})
+
+    @router.get("/api/complaint-workspace/factual-graph")
+    async def read_current_factual_graph(
+        user_id: Optional[str] = None,
+        case_id: Optional[str] = None,
+    ):
+        """Current factual projection. Cached flags are not a second graph store."""
+        try:
+            return workspace.current_factual_graph_projection(user_id, case_id=case_id)
+        except WorkspacePersistenceError as error:
+            code = str(error.code or "")
+            if code == "cross_case_id":
+                status_code = 403
+            elif code == "revision_conflict":
+                status_code = 409
+            else:
+                status_code = 503
+            public = code if code in {
+                "unlock_needed", "key_unavailable", "revision_conflict", "cross_case_id",
+                "knowledge_graph_unavailable", "data_graph_owner_unavailable", "factual_ledger_invalid",
+            } else "private_session_unavailable"
+            return JSONResponse(status_code=status_code, content={
+                "status": "unavailable", "error": public, "read_only": True,
+                "user_statements": [], "adopted_evidence": [], "corrections": [], "contradictions": [],
+            })
 
     @router.get("/api/complaint-workspace/session")
-    async def get_session(user_id: Optional[str] = None) -> Dict[str, Any]:
-        return workspace.get_session(user_id)
+    async def get_session(
+        user_id: Optional[str] = None,
+        case_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        try:
+            return workspace.get_session(user_id, case_id=case_id)
+        except WorkspacePersistenceError as error:
+            # The real case/key owner supplies this error. Do not expose its
+            # exception text, paths, ciphertext, or partial session payload.
+            code = str(error.code or "")
+            public = code if code in {"unlock_needed", "key_unavailable", "revision_conflict"} else "private_session_unavailable"
+            return JSONResponse(status_code=409 if public == "revision_conflict" else 503,
+                content={"status": "unavailable", "error": public, "session_readable": False})
 
     @router.post("/api/complaint-workspace/identity")
     async def create_identity() -> Dict[str, Any]:
@@ -300,12 +570,37 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
         return workspace.submit_intake_answers(request.user_id, request.answers)
 
     @router.post("/api/complaint-workspace/intake-chat")
-    async def intake_chat_turn(request: IntakeChatTurnRequest) -> Dict[str, Any]:
-        return workspace.run_intake_chat_turn(
-            request.user_id,
-            message=request.message,
-            question_id=request.question_id,
-        )
+    async def intake_chat_turn(request: IntakeChatTurnRequest) -> Response:
+        action = str(request.interview_action or "").strip().lower()
+        if action in {"correct", "edit", "pause", "cancel", "cap", "unavailable", "saturate", "encrypted_resume"}:
+            # Keep the actual event loop available for logout/revocation while
+            # the guarded effect encrypts. Starlette preserves the issued scope.
+            try:
+                result = await run_in_threadpool(workspace.run_intake_chat_turn,
+                    request.user_id, message=request.message, question_id=request.question_id,
+                    expected_question_revision=request.expected_question_revision,
+                    interview_action=request.interview_action,
+                    expected_graph_revision=request.expected_graph_revision,
+                    expected_session_revision=request.expected_session_revision)
+            except WorkspacePersistenceError as error:
+                if action not in {"pause", "cancel", "cap", "unavailable", "saturate"}:
+                    raise
+                code = error.code if error.code in {"revision_conflict", "unlock_needed", "durability_unproven",
+                    "overwrite_blocked", "wal_unavailable"} else "finite_stop_unavailable"
+                return JSONResponse(status_code=409 if code == "revision_conflict" else 503,
+                    content={"status":"unavailable", "error":code, "outcome_unknown":True,
+                        "legal_sufficiency":False, "worker_stalled":False})
+        else:
+            result = workspace.run_intake_chat_turn(request.user_id,
+                message=request.message, question_id=request.question_id,
+                expected_question_revision=request.expected_question_revision,
+                interview_action=request.interview_action,
+                expected_graph_revision=request.expected_graph_revision,
+                expected_session_revision=request.expected_session_revision)
+        payload = project_shared_inquiry_contract(result)
+        if shared_inquiry_conflict(payload):
+            return JSONResponse(status_code=INQUIRY_CONFLICT_STATUS, content=payload)
+        return JSONResponse(status_code=200, content=payload)
 
     @router.post("/api/complaint-workspace/evidence")
     async def save_evidence(request: EvidenceRequest) -> Dict[str, Any]:
@@ -318,6 +613,51 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
             source=request.source,
             attachment_names=list(request.attachment_names or []),
         )
+
+    @router.post("/api/complaint-workspace/document-annotations/tag")
+    async def tag_document_annotation(request: DocumentAnnotationTagRequest) -> Dict[str, Any]:
+        return workspace.tag_document_annotation(
+            request.user_id,
+            document_id=request.document_id,
+            tags=list(request.tags or []),
+            note=request.note,
+            claim_element_id=request.claim_element_id,
+            title=request.title,
+            dataset_kind=request.dataset_kind,
+            document_title=request.document_title,
+            document_text_preview=request.document_text_preview,
+            document_metadata=dict(request.document_metadata or {}),
+            user_metadata=dict(request.user_metadata or {}),
+            source=request.source,
+        )
+
+    @router.get("/api/complaint-workspace/document-annotations/graph")
+    async def get_document_annotation_graph(user_id: Optional[str] = None) -> Dict[str, Any]:
+        return workspace.get_document_annotation_graph(user_id)
+
+    @router.post("/api/complaint-workspace/workspace-dataset/annotations/tag")
+    async def tag_workspace_dataset_document(request: WorkspaceDatasetAnnotationRequest) -> Dict[str, Any]:
+        return workspace.tag_workspace_dataset_document(
+            request.user_id,
+            document_id=request.document_id,
+            tags=list(request.tags or []),
+            note=request.note,
+            claim_element_id=request.claim_element_id,
+            title=request.title,
+            document_title=request.document_title,
+            document_text_preview=request.document_text_preview,
+            collection_id=request.collection_id,
+            document_type=request.document_type,
+            claim_type=request.claim_type,
+            source_type=request.source_type,
+            document_metadata=dict(request.document_metadata or {}),
+            user_metadata=dict(request.user_metadata or {}),
+            source=request.source,
+        )
+
+    @router.get("/api/complaint-workspace/workspace-dataset/annotations")
+    async def get_workspace_dataset_annotation_index(user_id: Optional[str] = None) -> Dict[str, Any]:
+        return workspace.get_workspace_dataset_annotation_index(user_id)
 
     @router.post("/api/complaint-workspace/import-gmail-evidence")
     async def import_gmail_evidence_route(request: GmailEvidenceImportRequest) -> Dict[str, Any]:
@@ -372,63 +712,16 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
         ) -> Dict[str, Any]:
             if not files:
                 raise HTTPException(status_code=400, detail="At least one file is required.")
-
-            with tempfile.TemporaryDirectory(prefix="complaint-workspace-upload-") as temp_dir:
-                temp_root = Path(temp_dir)
-                temp_paths: List[str] = []
-                uploaded_files: List[Dict[str, Any]] = []
-                for index, file in enumerate(files, start=1):
-                    original_name = Path(str(file.filename or f"upload-{index}")).name or f"upload-{index}"
-                    destination = temp_root / f"{index:04d}_{original_name}"
-                    file_bytes = await file.read()
-                    destination.write_bytes(file_bytes)
-                    temp_paths.append(str(destination))
-                    uploaded_files.append(
-                        {
-                            "filename": original_name,
-                            "content_type": str(file.content_type or "application/octet-stream"),
-                            "size": len(file_bytes),
-                            "temporary_path": str(destination),
-                        }
-                    )
-
-                payload = workspace.import_local_evidence(
-                    user_id,
-                    paths=temp_paths,
-                    claim_element_id=claim_element_id,
-                    kind=kind,
-                    evidence_root=evidence_root,
-                )
-
-                note_record = None
-                normalized_note = str(note or "").strip()
-                if normalized_note:
-                    uploaded_names = [item["filename"] for item in uploaded_files if item.get("filename")]
-                    effective_claim_element_id = claim_element_id
-                    if claim_element_id in {"auto", "suggested"}:
-                        first_import = next(iter(payload.get("imported") or []), {})
-                        effective_claim_element_id = str(
-                            first_import.get("effective_claim_element_id")
-                            or first_import.get("suggested_claim_element_id")
-                            or "causation"
-                        ).strip() or "causation"
-                    note_record = workspace.save_evidence(
-                        user_id,
-                        kind="testimony",
-                        claim_element_id=effective_claim_element_id,
-                        title=str(note_title or "Chat upload note").strip() or "Chat upload note",
-                        content=normalized_note,
-                        source=str(source or "dashboard-chat-upload").strip() or "dashboard-chat-upload",
-                        attachment_names=uploaded_names,
-                    )
-                    payload["note_record"] = note_record.get("saved")
-                    payload["session"] = note_record.get("session")
-                    payload["review"] = note_record.get("review")
-                    payload["case_synopsis"] = note_record.get("case_synopsis")
-
-                payload["uploaded_files"] = uploaded_files
-                payload["upload_source"] = str(source or "dashboard-chat-upload").strip() or "dashboard-chat-upload"
-                return payload
+            return await workspace.upload_local_evidence_files(
+                user_id,
+                files=files,
+                claim_element_id=claim_element_id,
+                kind=kind,
+                evidence_root=evidence_root,
+                note=note,
+                note_title=note_title,
+                source=source,
+            )
     else:
 
         @router.post("/api/complaint-workspace/upload-local-evidence")
@@ -510,6 +803,43 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
             requested_relief=request.requested_relief,
         )
 
+    @router.post("/api/complaint-workspace/mike/handoff")
+    async def build_mike_handoff(request: MikeHandoffRequest) -> Dict[str, Any]:
+        return workspace.build_mike_handoff(
+            request.user_id,
+            mike_base_url=request.mike_base_url,
+            project_id=request.project_id,
+            workspace_id=request.workspace_id,
+            generate_draft_if_missing=request.generate_draft_if_missing,
+            grounding_mode=request.grounding_mode,
+        )
+
+    @router.get("/api/complaint-workspace/mike/status")
+    async def get_mike_integration_status(user_id: Optional[str] = None) -> Dict[str, Any]:
+        return workspace.get_mike_integration_status(user_id)
+
+    @router.post("/api/complaint-workspace/mike/sync")
+    async def sync_mike_final_draft(request: MikeDraftSyncRequest) -> Dict[str, Any]:
+        return workspace.sync_mike_final_draft(
+            request.user_id,
+            body=request.body,
+            title=request.title,
+            requested_relief=request.requested_relief,
+            handoff_id=request.handoff_id,
+            project_id=request.project_id,
+            workspace_id=request.workspace_id,
+            mike_document_id=request.mike_document_id,
+            citation_links=request.citation_links,
+            redline_summary=request.redline_summary,
+            source_updated_at=request.source_updated_at,
+            structured_deltas=request.structured_deltas,
+            editor_metadata=request.editor_metadata,
+            grounding_mode=request.grounding_mode,
+            assertion_annotations=request.assertion_annotations,
+            authority_links=request.authority_links,
+            sync_provenance=request.sync_provenance,
+        )
+
     @router.post("/api/complaint-workspace/update-synopsis")
     async def update_case_synopsis(request: SynopsisUpdateRequest) -> Dict[str, Any]:
         return workspace.update_case_synopsis(request.user_id, request.synopsis)
@@ -521,13 +851,47 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
     @router.get("/api/complaint-workspace/export/download")
     async def download_complaint_packet(
         user_id: Optional[str] = Query(default=None),
+        case_id: Optional[str] = Query(default=None),
         output_format: str = Query(default="json"),
+        cid: Optional[str] = Query(default=None),
+        storage_key: Optional[str] = Query(default=None),
     ) -> Response:
+        if case_id or cid or storage_key:
+            workspace.resolve_private_reference(
+                user_id,
+                case_id=case_id,
+                cid=cid,
+                storage_key=storage_key,
+            )
         artifact = workspace.build_export_artifact(user_id, output_format=output_format)
         return Response(
             content=artifact["body"],
             media_type=str(artifact["media_type"]),
             headers={"Content-Disposition": f'attachment; filename="{artifact["filename"]}"'},
+        )
+
+    @router.get("/api/complaint-workspace/contained-file")
+    async def read_contained_file(
+        relative_name: str,
+        user_id: Optional[str] = Query(default=None),
+    ) -> Dict[str, Any]:
+        payload = workspace.read_contained_workspace_file(user_id, relative_name)
+        return {
+            "content_b64": __import__("base64").b64encode(payload).decode("ascii"),
+            "at_rest_protection": "plaintext_pending",
+        }
+
+    @router.post("/api/complaint-workspace/contained-file")
+    async def write_contained_file(request: Dict[str, Any]) -> Dict[str, Any]:
+        content = request.get("content")
+        if isinstance(content, str):
+            raw = content.encode("utf-8")
+        else:
+            raw = bytes(content or b"")
+        return workspace.write_contained_workspace_file(
+            request.get("user_id"),
+            str(request.get("relative_name") or ""),
+            raw,
         )
 
     @router.get("/api/complaint-workspace/mcp/tools")
@@ -563,6 +927,126 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
             report_format=report_format,
         )
 
+    @router.get("/api/complaint-workspace/docket-dataset/view")
+    async def view_docket_dataset_route(
+        input_path: str,
+        input_type: str = Query(default="single"),
+        include_document_text: bool = Query(default=False),
+        document_limit: int = Query(default=25),
+    ) -> Dict[str, Any]:
+        return _attach_case_calendar(
+            workspace.view_docket_dataset(
+                input_path,
+                input_type=input_type,
+                include_document_text=include_document_text,
+                document_limit=document_limit,
+            )
+        )
+
+    @router.get("/api/complaint-workspace/docket-dataset/search")
+    async def search_docket_dataset_route(
+        input_path: str,
+        query: str,
+        input_type: str = Query(default="single"),
+        search_backend: str = Query(default="bm25"),
+        top_k: int = Query(default=10),
+        vector_dimension: int = Query(default=32),
+    ) -> Dict[str, Any]:
+        return workspace.search_docket_dataset(
+            input_path,
+            input_type=input_type,
+            query=query,
+            search_backend=search_backend,
+            top_k=top_k,
+            vector_dimension=vector_dimension,
+        )
+
+    @router.get("/api/complaint-workspace/docket-dataset/metadata")
+    async def get_docket_dataset_metadata_route(
+        input_path: str,
+        input_type: str = Query(default="single"),
+    ) -> Dict[str, Any]:
+        return workspace.get_docket_dataset_metadata(input_path, input_type=input_type)
+
+    @router.get("/api/complaint-workspace/docket-dataset/graph")
+    async def get_docket_dataset_graph_route(
+        input_path: str,
+        input_type: str = Query(default="single"),
+    ) -> Dict[str, Any]:
+        return workspace.get_docket_dataset_graph(input_path, input_type=input_type)
+
+    @router.get("/api/complaint-workspace/workspace-dataset/view")
+    async def view_workspace_dataset_route(
+        input_path: str,
+        input_type: str = Query(default="single"),
+        include_document_text: bool = Query(default=False),
+        document_limit: int = Query(default=25),
+        collection_id: Optional[str] = Query(default=None),
+        document_type: Optional[str] = Query(default=None),
+        claim_type: Optional[str] = Query(default=None),
+        claim_element_id: Optional[str] = Query(default=None),
+        source_type: Optional[str] = Query(default=None),
+    ) -> Dict[str, Any]:
+        return workspace.view_workspace_dataset(
+            input_path,
+            input_type=input_type,
+            include_document_text=include_document_text,
+            document_limit=document_limit,
+            collection_id=collection_id,
+            document_type=document_type,
+            claim_type=claim_type,
+            claim_element_id=claim_element_id,
+            source_type=source_type,
+        )
+
+    @router.get("/api/complaint-workspace/workspace-dataset/search")
+    async def search_workspace_dataset_route(
+        input_path: str,
+        query: str,
+        input_type: str = Query(default="single"),
+        search_backend: str = Query(default="bm25"),
+        top_k: int = Query(default=10),
+        vector_dimension: int = Query(default=32),
+        collection_id: Optional[str] = Query(default=None),
+        document_type: Optional[str] = Query(default=None),
+        claim_type: Optional[str] = Query(default=None),
+        claim_element_id: Optional[str] = Query(default=None),
+        source_type: Optional[str] = Query(default=None),
+    ) -> Dict[str, Any]:
+        return workspace.search_workspace_dataset(
+            input_path,
+            input_type=input_type,
+            query=query,
+            search_backend=search_backend,
+            top_k=top_k,
+            vector_dimension=vector_dimension,
+            collection_id=collection_id,
+            document_type=document_type,
+            claim_type=claim_type,
+            claim_element_id=claim_element_id,
+            source_type=source_type,
+        )
+
+    @router.get("/api/complaint-workspace/workspace-dataset/graph")
+    async def get_workspace_dataset_graph_route(
+        input_path: str,
+        input_type: str = Query(default="single"),
+        entity_query: str = Query(default=""),
+        relationship_type: str = Query(default=""),
+        document_id: str = Query(default=""),
+        modality: str = Query(default=""),
+        limit: int = Query(default=50),
+    ) -> Dict[str, Any]:
+        return workspace.get_workspace_dataset_graph(
+            input_path,
+            input_type=input_type,
+            entity_query=entity_query,
+            relationship_type=relationship_type,
+            document_id=document_id,
+            modality=modality,
+            limit=limit,
+        )
+
     @router.post("/api/complaint-workspace/packaged-docket/revalidation/execute")
     async def execute_packaged_docket_revalidation_route(
         request: PackagedDocketRevalidationRequest,
@@ -593,14 +1077,60 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
             chain_until_satisfied=request.chain_until_satisfied,
         )
 
+    @router.post("/api/complaint-workspace/inference/dispatch")
+    async def dispatch_gui_inference(request: GuiInferenceRequest) -> Dict[str, Any]:
+        return await run_in_threadpool(workspace.dispatch_bounded_gui_inference, None, purpose=request.purpose,
+            inputs=request.inputs, timeout_seconds=request.timeout_seconds)
+
+    @router.post("/api/complaint-workspace/inference/admit")
+    async def admit_gui_inference(request: GuiInferenceAdmissionRequest) -> Dict[str, Any]:
+        return await run_in_threadpool(workspace.admit_bounded_gui_inference, None, invocation_id=request.invocation_id)
+
     @router.post("/api/complaint-workspace/mcp/call")
-    async def call_mcp_tool(request: McpCallRequest) -> Dict[str, Any]:
-        return workspace.call_mcp_tool(request.tool_name, request.arguments)
+    async def call_mcp_tool(request: McpCallRequest) -> Response:
+        try:
+            threaded_intake = request.tool_name == "complaint.run_intake_chat_turn" and str(
+                request.arguments.get("interview_action") or "").strip().lower() in {"correct", "edit", "pause", "cancel", "cap", "unavailable", "saturate", "encrypted_resume"}
+            if threaded_intake or request.tool_name in {"complaint.dispatch_bounded_gui_inference", "complaint.admit_bounded_gui_inference"}:
+                payload = await run_in_threadpool(workspace.call_mcp_tool, request.tool_name, request.arguments)
+            else:
+                payload = workspace.call_mcp_tool(request.tool_name, request.arguments)
+        except WorkspaceAuthorizationDenied:
+            return JSONResponse(status_code=200, content={"ok": False, "error": "authorization_denied", "isError": True})
+        except Exception:
+            return JSONResponse(status_code=200, content={"ok": False, "error": "workspace_operation_failed", "isError": True})
+        if gui_inference_tool_failed(request.tool_name, payload):
+            return JSONResponse(status_code=200, content={**payload, "ok": False, "isError": True})
+        if request.tool_name == "complaint.run_intake_chat_turn":
+            payload = project_shared_inquiry_contract(payload)
+            if shared_inquiry_conflict(payload):
+                payload = dict(payload)
+                payload["isError"] = True
+                payload["ok"] = False
+                return JSONResponse(status_code=INQUIRY_CONFLICT_STATUS, content=payload)
+        return JSONResponse(status_code=200, content=payload)
 
     @router.post("/api/complaint-workspace/mcp/rpc")
-    async def call_jsonrpc(request: JsonRpcRequest) -> Dict[str, Any]:
-        response = handle_jsonrpc_message(workspace, request.model_dump())
-        return response or {"jsonrpc": "2.0", "id": request.id, "result": None}
+    async def call_jsonrpc(request: JsonRpcRequest, http_request: Request) -> Response:
+        token = os.environ.get("COMPLAINT_MCP_AUTH_TOKEN", "").strip()
+        if token:
+            authorization = http_request.headers.get("authorization", "")
+            if authorization != f"Bearer {token}":
+                raise HTTPException(status_code=401, detail="MCP bearer token required")
+        params = request.params if isinstance(request.params, dict) else {}
+        arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+        threaded_intake = params.get("name") == "complaint.run_intake_chat_turn" and str(
+            arguments.get("interview_action") or "").strip().lower() in {"correct", "edit", "pause", "cancel", "cap", "unavailable", "saturate", "encrypted_resume"}
+        if request.method == "tools/call" and (threaded_intake or params.get("name") in {
+                "complaint.dispatch_bounded_gui_inference", "complaint.admit_bounded_gui_inference"}):
+            response = await run_in_threadpool(handle_jsonrpc_message, workspace, request.model_dump())
+        else:
+            response = handle_jsonrpc_message(workspace, request.model_dump())
+        body = response or {"jsonrpc": "2.0", "id": request.id, "result": None}
+        return Response(
+            content=json.dumps(body),
+            media_type="application/json",
+        )
 
     return router
 
@@ -608,6 +1138,17 @@ def create_complaint_workspace_router(service: Optional[ComplaintWorkspaceServic
 def attach_complaint_workspace_routes(
     app: FastAPI,
     service: Optional[ComplaintWorkspaceService] = None,
+    *,
+    principal_registry: Optional[PrincipalRegistry] = None,
+    trusted_local: bool = False,
+    browser_sessions: Optional[BrowserSessionService] = None,
 ) -> FastAPI:
-    app.include_router(create_complaint_workspace_router(service))
-    return app
+    return attach_router_routes(
+        app,
+        create_complaint_workspace_router(
+            service,
+            principal_registry=principal_registry,
+            trusted_local=trusted_local,
+            browser_sessions=browser_sessions,
+        ),
+    )

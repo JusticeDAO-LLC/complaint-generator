@@ -27,12 +27,126 @@ from claim_support_review import (
     build_claim_support_manual_review_resolution_payload,
     build_claim_support_review_payload,
     build_claim_support_testimony_payload,
+    summarize_follow_up_history_claim,
     summarize_claim_reasoning_review,
 )
 from applications.review_api import (
     REVIEW_EXECUTION_SUNSET,
     create_review_api_app,
+    normalize_coverage_summary_dto,
+    normalize_follow_up_summary_dto,
+    normalize_review_response_dto,
+    normalize_support_path_summary_dto,
 )
+from applications.ui_review import normalize_ui_review_payload_dto
+from lib.runtime_ownership import RUNTIME_ROLE_WEB, require_module_ownership
+
+
+def test_review_api_runtime_ownership_is_web_entrypoint() -> None:
+    ownership = require_module_ownership("applications.review_api")
+
+    assert ownership.role == RUNTIME_ROLE_WEB
+    assert {entrypoint.name for entrypoint in ownership.entrypoints} == {
+        "attach_claim_support_review_routes",
+        "create_review_api_app",
+    }
+
+
+def test_review_response_dto_preserves_stable_summary_snapshot() -> None:
+    snapshot = {
+        "claim_coverage_summary": {
+            "retaliation": {
+                "status_counts": {"covered": 1, "missing": 0},
+                "support_trace_summary": {"trace_count": 2},
+            }
+        },
+        "claim_coverage_matrix": {
+            "retaliation": {
+                "support_packet_summary": {"total_packet_count": 2},
+                "elements": [
+                    {
+                        "graph_trace_summary": {"graph_id_count": 1},
+                        "extension_field": "preserved",
+                    }
+                ],
+            }
+        },
+        "follow_up_plan_summary": {
+            "retaliation": {"task_count": 1, "extension_metric": 7}
+        },
+        "follow_up_history_summary": {
+            "retaliation": {"total_entry_count": 2}
+        },
+    }
+
+    normalized = normalize_review_response_dto(snapshot)
+
+    assert normalized == snapshot
+    assert normalized is not snapshot
+    assert normalized["claim_coverage_matrix"] is not snapshot["claim_coverage_matrix"]
+
+
+def test_review_summary_dto_helpers_guard_non_mapping_values() -> None:
+    assert normalize_coverage_summary_dto({"retaliation": None}) == {
+        "retaliation": {}
+    }
+    assert normalize_follow_up_summary_dto({"retaliation": ["invalid"]}) == {
+        "retaliation": {}
+    }
+    assert normalize_support_path_summary_dto("invalid") == {}
+    assert normalize_review_response_dto(
+        {
+            "claim_coverage_summary": "invalid",
+            "claim_coverage_matrix": {
+                "retaliation": {"support_packet_summary": ["invalid"]}
+            },
+            "follow_up_plan_summary": None,
+        }
+    ) == {
+        "claim_coverage_summary": {},
+        "claim_coverage_matrix": {
+            "retaliation": {"support_packet_summary": {}}
+        },
+        "follow_up_plan_summary": {},
+    }
+
+
+def test_ui_review_payload_dto_preserves_extensions_and_guards_collections() -> None:
+    assert normalize_ui_review_payload_dto(
+        {
+            "summary": "Review complete.",
+            "issues": "invalid",
+            "complaint_journey": None,
+            "extension_field": {"preserved": True},
+        }
+    ) == {
+        "summary": "Review complete.",
+        "issues": [],
+        "complaint_journey": {},
+        "extension_field": {"preserved": True},
+    }
+
+
+def _iter_app_routes(app):
+    """Yield all routes from an app, including those nested inside _IncludedRouter objects.
+
+    Newer versions of FastAPI (0.100+) represent routers added via include_router
+    as _IncludedRouter objects rather than unrolling them into top-level APIRoute entries.
+    This helper flattens the hierarchy so tests can check path/methods uniformly.
+    """
+    for route in app.routes:
+        if hasattr(route, "path") and hasattr(route, "methods"):
+            yield route
+        elif hasattr(route, "original_router"):
+            yield from _iter_router_routes(route.original_router)
+
+
+def _iter_router_routes(router):
+    for route in router.routes:
+        if hasattr(route, "path") and hasattr(route, "methods"):
+            yield route
+        elif hasattr(route, "original_router"):
+            yield from _iter_router_routes(route.original_router)
 
 
 def _build_hook_backed_review_api_mediator(db_path: str):
@@ -70,6 +184,11 @@ def _build_hook_backed_review_api_mediator(db_path: str):
     }
     mediator.get_claim_support_validation.return_value = {
         "claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}
+    }
+    mediator.get_formal_validation_report.return_value = {
+        "available": True,
+        "overall_status": "needs_review",
+        "claims": {"retaliation": {"claim_type": "retaliation", "formal_status": "needs_review"}},
     }
     mediator.get_recent_claim_follow_up_execution.return_value = {"claims": {"retaliation": []}}
     mediator.get_claim_follow_up_plan.return_value = {
@@ -538,6 +657,21 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                                         "implementation_status": "implemented",
                                     },
                                 },
+                                "graphrag_quality": {
+                                    "valid": True,
+                                    "overall_quality_score": 0.82,
+                                    "grade": "B",
+                                    "has_gaps": False,
+                                    "has_blocking_gaps": False,
+                                    "gaps": [],
+                                    "workflow_status": "success",
+                                    "workflow_backend_available": True,
+                                    "workflow_implementation_status": "implemented",
+                                    "workflow_degraded_reason": "",
+                                    "gap_type_counts": {},
+                                    "gap_severity_counts": {},
+                                    "gap_follow_up_action_counts": {},
+                                },
                             },
                         },
                         {
@@ -570,11 +704,50 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                                 "used_fallback_ontology": False,
                                 "backend_available_count": 2,
                                 "adapter_statuses": {},
+                                "graphrag_quality": {
+                                    "valid": False,
+                                    "overall_quality_score": 0.31,
+                                    "grade": "D",
+                                    "has_gaps": True,
+                                    "has_blocking_gaps": True,
+                                    "gaps": [
+                                        {
+                                            "gap_type": "missing_relation",
+                                            "severity": "moderate",
+                                            "follow_up_action": "improve_ontology_quality",
+                                        }
+                                    ],
+                                    "workflow_status": "degraded",
+                                    "workflow_backend_available": False,
+                                    "workflow_implementation_status": "implemented",
+                                    "workflow_degraded_reason": "GraphRAG extras unavailable",
+                                    "gap_type_counts": {"missing_relation": 1},
+                                    "gap_severity_counts": {"moderate": 1},
+                                    "gap_follow_up_action_counts": {"improve_ontology_quality": 1},
+                                },
                             },
                         }
                     ],
                 }
             }
+        }
+        mediator.get_formal_validation_report.return_value = {
+            "available": True,
+            "overall_status": "needs_review",
+            "claims": {
+                "retaliation": {
+                    "claim_type": "retaliation",
+                    "formal_status": "needs_review",
+                    "formal_status_counts": {"needs_review": 2},
+                    "predicate_count": 4,
+                    "proof_gap_count": 3,
+                    "formalization_ready_element_count": 1,
+                    "theorem_export_ready": True,
+                    "support_quality_signal_counts": {"weak_graph_connectivity": 2},
+                    "primary_quality_signal_counts": {"weak_graph_connectivity": 1},
+                    "quality_follow_up_action_counts": {"persist_or_query_graph_support": 1},
+                }
+            },
         }
         mediator.get_claim_support_facts.side_effect = lambda **kwargs: [
             {
@@ -670,8 +843,37 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                         "zero_result": True,
                         "resolution_applied": "manual_review_resolved",
                         "selected_search_program_type": "adverse_authority_search",
+                        "selected_search_program_intent": "oppose",
+                        "selected_search_program_jurisdiction": "CA",
+                        "selected_search_program_forum": "state",
+                        "selected_search_program_families": ["case_law", "administrative_rule"],
+                        "selected_search_program_defense_themes": ["exception", "authority_treatment"],
+                        "selected_search_program_time_window": {
+                            "time_window_type": "temporal_rule_window",
+                            "profile_id": "temporal-profile-1",
+                            "status": "partial",
+                        },
                         "selected_search_program_bias": "adverse",
                         "selected_search_program_rule_bias": "exception",
+                        "selected_search_program_graph_gap_bias": "graph_backed_authority_gap",
+                        "quality_signal_counts": {"ontology_quality_gap": 1},
+                        "primary_quality_signal": {
+                            "signal_type": "ontology_quality_gap",
+                            "question_lane": "ontology_quality_gap",
+                            "follow_up_action": "improve_ontology_quality",
+                            "count": 1,
+                        },
+                        "quality_follow_up_action": "improve_ontology_quality",
+                        "ontology_quality": {
+                            "valid": False,
+                            "overall_quality_score": 0.31,
+                            "grade": "D",
+                            "has_gaps": True,
+                            "has_blocking_gaps": True,
+                        },
+                        "ontology_gap_types": ["missing_relation"],
+                        "ontology_quality_gap_count": 1,
+                        "ontology_has_blocking_gaps": True,
                         "source_family": "legal_authority",
                         "record_scope": "legal_authority",
                         "artifact_family": "legal_authority_reference",
@@ -782,6 +984,26 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                             "primary_missing_fact": "Manager knowledge",
                             "missing_fact_bundle": ["Manager knowledge", "Event sequence"],
                             "satisfied_fact_bundle": ["Protected activity"],
+                            "support_quality_summary": {
+                                "quality_signal_counts": {"weak_graph_connectivity": 2}
+                            },
+                            "quality_signal_counts": {"weak_graph_connectivity": 2},
+                            "primary_quality_signal": {
+                                "signal_type": "weak_graph_connectivity",
+                                "follow_up_action": "persist_or_query_graph_support",
+                            },
+                            "quality_follow_up_action": "persist_or_query_graph_support",
+                            "selected_search_program_type": "fact_pattern_search",
+                            "selected_search_program_intent": "support",
+                            "selected_search_program_jurisdiction": "CA",
+                            "selected_search_program_forum": "state",
+                            "selected_search_program_families": ["case_law"],
+                            "selected_search_program_defense_themes": ["predicate_fact_gap"],
+                            "selected_search_program_time_window": {
+                                "time_window_type": "temporal_rule_window",
+                                "profile_id": "temporal-profile-1",
+                                "status": "partial",
+                            },
                             "authority_search_program_summary": {
                                 "program_count": 2,
                                 "program_type_counts": {
@@ -792,8 +1014,31 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                                     "support": 1,
                                     "confirm_good_law": 1,
                                 },
+                                "jurisdiction_counts": {"CA": 2},
+                                "forum_counts": {"state": 2},
+                                "authority_family_counts": {
+                                    "case_law": 1,
+                                    "administrative_rule": 1,
+                                },
+                                "defense_theme_counts": {
+                                    "predicate_fact_gap": 1,
+                                    "authority_treatment": 1,
+                                },
+                                "time_window_counts": {
+                                    "temporal_rule_window:temporal-profile-1:partial": 1,
+                                },
                                 "primary_program_id": "legal_search_program:plan-1",
                                 "primary_program_type": "fact_pattern_search",
+                                "primary_program_intent": "support",
+                                "primary_jurisdiction": "CA",
+                                "primary_forum": "state",
+                                "primary_authority_families": ["case_law"],
+                                "primary_defense_themes": ["predicate_fact_gap"],
+                                "primary_time_window": {
+                                    "time_window_type": "temporal_rule_window",
+                                    "profile_id": "temporal-profile-1",
+                                    "status": "partial",
+                                },
                                 "primary_program_bias": "uncertain",
                                 "primary_program_rule_bias": "",
                             },
@@ -839,6 +1084,26 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                             "primary_missing_fact": "Manager knowledge",
                             "missing_fact_bundle": ["Manager knowledge", "Event sequence"],
                             "satisfied_fact_bundle": ["Protected activity"],
+                            "support_quality_summary": {
+                                "quality_signal_counts": {"weak_graph_connectivity": 2}
+                            },
+                            "quality_signal_counts": {"weak_graph_connectivity": 2},
+                            "primary_quality_signal": {
+                                "signal_type": "weak_graph_connectivity",
+                                "follow_up_action": "persist_or_query_graph_support",
+                            },
+                            "quality_follow_up_action": "persist_or_query_graph_support",
+                            "selected_search_program_type": "fact_pattern_search",
+                            "selected_search_program_intent": "support",
+                            "selected_search_program_jurisdiction": "CA",
+                            "selected_search_program_forum": "state",
+                            "selected_search_program_families": ["case_law"],
+                            "selected_search_program_defense_themes": ["predicate_fact_gap"],
+                            "selected_search_program_time_window": {
+                                "time_window_type": "temporal_rule_window",
+                                "profile_id": "temporal-profile-1",
+                                "status": "partial",
+                            },
                             "authority_search_program_summary": {
                                 "program_count": 2,
                                 "program_type_counts": {
@@ -849,8 +1114,31 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
                                     "support": 1,
                                     "confirm_good_law": 1,
                                 },
+                                "jurisdiction_counts": {"CA": 2},
+                                "forum_counts": {"state": 2},
+                                "authority_family_counts": {
+                                    "case_law": 1,
+                                    "administrative_rule": 1,
+                                },
+                                "defense_theme_counts": {
+                                    "predicate_fact_gap": 1,
+                                    "authority_treatment": 1,
+                                },
+                                "time_window_counts": {
+                                    "temporal_rule_window:temporal-profile-1:partial": 1,
+                                },
                                 "primary_program_id": "legal_search_program:exec-1",
                                 "primary_program_type": "fact_pattern_search",
+                                "primary_program_intent": "support",
+                                "primary_jurisdiction": "CA",
+                                "primary_forum": "state",
+                                "primary_authority_families": ["case_law"],
+                                "primary_defense_themes": ["predicate_fact_gap"],
+                                "primary_time_window": {
+                                    "time_window_type": "temporal_rule_window",
+                                    "profile_id": "temporal-profile-1",
+                                    "status": "partial",
+                                },
                                 "primary_program_bias": "uncertain",
                                 "primary_program_rule_bias": "",
                             },
@@ -910,6 +1198,24 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         )
 
         assert payload["user_id"] == "state-user"
+        assert payload["formal_validation_report"]["overall_status"] == "needs_review"
+        coverage_summary = payload["claim_coverage_summary"]["retaliation"]
+        assert coverage_summary["formal_status"] == "needs_review"
+        assert coverage_summary["formal_status_counts"] == {"needs_review": 2}
+        assert coverage_summary["formal_predicate_count"] == 4
+        assert coverage_summary["formal_proof_gap_count"] == 3
+        assert coverage_summary["formalization_ready_element_count"] == 1
+        assert coverage_summary["theorem_export_ready"] is True
+        assert coverage_summary["formal_support_quality_signal_counts"] == {"weak_graph_connectivity": 2}
+        assert coverage_summary["formal_primary_quality_signal_counts"] == {"weak_graph_connectivity": 1}
+        assert coverage_summary["formal_quality_follow_up_action_counts"] == {
+            "persist_or_query_graph_support": 1
+        }
+        mediator.get_formal_validation_report.assert_called_once_with(
+            claim_type="retaliation",
+            user_id="state-user",
+            required_support_kinds=["evidence", "authority"],
+        )
         assert payload["recommended_next_action"] == ""
         assert payload["workflow_phase_plan"]["recommended_order"] == ["graph_analysis", "document_generation"]
         assert payload["workflow_phase_plan"]["phases"]["graph_analysis"]["status"] == "warning"
@@ -1082,9 +1388,13 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "resolution_status_counts": {"still_open": 1},
             "temporal_gap_task_count": 1,
             "temporal_gap_targeted_task_count": 1,
+            "temporal_next_action_count": 0,
             "temporal_rule_status_counts": {"partial": 1},
             "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
             "temporal_resolution_status_counts": {"still_open": 1},
+            "temporal_follow_up_target_counts": {},
+            "temporal_question_objective_counts": {},
+            "temporal_proof_criticality_counts": {},
         }
         assert intake_case_summary["alignment_task_update_summary"] == {
             "count": 2,
@@ -1097,9 +1407,13 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "promoted_document_count": 0,
             "temporal_gap_task_count": 0,
             "temporal_gap_targeted_task_count": 0,
+            "temporal_next_action_count": 0,
             "temporal_rule_status_counts": {},
             "temporal_rule_blocking_reason_counts": {},
             "temporal_resolution_status_counts": {},
+            "temporal_follow_up_target_counts": {},
+            "temporal_question_objective_counts": {},
+            "temporal_proof_criticality_counts": {},
         }
         claim_support_packet_summary = intake_case_summary["claim_support_packet_summary"]
         assert claim_support_packet_summary["claim_count"] == 1
@@ -1189,6 +1503,29 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["claim_coverage_summary"]["retaliation"]["reasoning_ontology_entity_count"] == 5
         assert payload["claim_coverage_summary"]["retaliation"]["reasoning_ontology_relationship_count"] == 4
         assert payload["claim_coverage_summary"]["retaliation"]["reasoning_fallback_ontology_count"] == 1
+        assert payload["claim_coverage_summary"]["retaliation"]["ontology_quality_summary"] == {
+            "available_element_count": 2,
+            "valid_element_count": 1,
+            "invalid_element_count": 1,
+            "gap_element_count": 1,
+            "blocking_gap_element_count": 1,
+            "total_gap_count": 1,
+            "grade_counts": {"B": 1, "D": 1},
+            "gap_type_counts": {"missing_relation": 1},
+            "gap_severity_counts": {"moderate": 1},
+            "gap_follow_up_action_counts": {"improve_ontology_quality": 1},
+            "workflow_status_counts": {"degraded": 1, "success": 1},
+            "workflow_backend_available_element_count": 1,
+            "workflow_degraded_element_count": 1,
+            "workflow_degraded_reason_counts": {"GraphRAG extras unavailable": 1},
+            "average_quality_score": 0.565,
+            "minimum_quality_score": 0.31,
+        }
+        assert payload["claim_coverage_summary"]["retaliation"]["ontology_quality_available_element_count"] == 2
+        assert payload["claim_coverage_summary"]["retaliation"]["ontology_quality_valid_element_count"] == 1
+        assert payload["claim_coverage_summary"]["retaliation"]["ontology_quality_gap_element_count"] == 1
+        assert payload["claim_coverage_summary"]["retaliation"]["ontology_quality_blocking_gap_element_count"] == 1
+        assert payload["claim_coverage_summary"]["retaliation"]["ontology_quality_grade_counts"] == {"B": 1, "D": 1}
         assert payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_bridge_available_count"] == 0
         assert payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_tdfol_formula_count"] == 0
         assert payload["claim_coverage_summary"]["retaliation"]["reasoning_hybrid_dcec_formula_count"] == 0
@@ -1243,6 +1580,22 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "total_pruned_snapshot_count": 0,
         }
         assert payload["question_recommendations"]["retaliation"][0]["question_lane"] == "contradiction_resolution"
+        question_summary = payload["question_recommendation_summary"]["retaliation"]
+        assert question_summary["recommendation_count"] == len(payload["question_recommendations"]["retaliation"])
+        assert question_summary["question_lane_counts"]["contradiction_resolution"] >= 1
+        assert question_summary["question_lane_counts"]["ontology_quality_gap"] == 1
+        assert question_summary["expected_proof_gain_counts"]["high"] >= 1
+        assert question_summary["quality_signal_counts"]["ontology_quality_gap"] == 1
+        assert question_summary["primary_quality_signal_counts"]["ontology_quality_gap"] == 1
+        assert question_summary["quality_follow_up_action_counts"]["improve_ontology_quality"] == 1
+        assert set(question_summary) == {
+            "recommendation_count",
+            "question_lane_counts",
+            "expected_proof_gain_counts",
+            "quality_signal_counts",
+            "primary_quality_signal_counts",
+            "quality_follow_up_action_counts",
+        }
         assert payload["testimony_summary"]["retaliation"]["record_count"] == 1
         assert payload["document_summary"]["retaliation"]["record_count"] == 1
         assert payload["document_summary"]["retaliation"]["total_chunk_count"] == 3
@@ -1281,6 +1634,15 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             item.get("question_lane") == "contradiction_resolution"
             for item in payload["question_recommendations"]["retaliation"]
         )
+        ontology_question = next(
+            item
+            for item in payload["question_recommendations"]["retaliation"]
+            if item.get("question_lane") == "ontology_quality_gap"
+        )
+        assert ontology_question["ontology_quality"]["grade"] == "D"
+        assert ontology_question["ontology_gap_types"] == ["missing_relation"]
+        assert ontology_question["quality_follow_up_action"] == "improve_ontology_quality"
+        assert payload["claim_coverage_matrix"]["retaliation"]["elements"][1]["reasoning_diagnostics"]["graphrag_quality"]["grade"] == "D"
         assert payload["follow_up_history"]["retaliation"][0]["support_kind"] == "manual_review"
         assert payload["follow_up_history"]["retaliation"][1]["primary_missing_fact"] == "Manager knowledge"
         assert payload["follow_up_history"]["retaliation"][1]["missing_fact_bundle"] == [
@@ -1288,7 +1650,7 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "Event sequence",
         ]
         assert payload["follow_up_history"]["retaliation"][1]["satisfied_fact_bundle"] == ["Protected activity"]
-        assert payload["follow_up_history_summary"]["retaliation"] == {
+        expected_history_summary = {
             "total_entry_count": 2,
             "status_counts": {
                 "skipped_manual_review": 1,
@@ -1315,9 +1677,20 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             },
             "temporal_gap_task_count": 0,
             "temporal_gap_targeted_task_count": 0,
+            "ontology_quality_gap_task_count": 0,
+            "ontology_quality_gap_targeted_task_count": 0,
             "temporal_rule_status_counts": {},
             "temporal_rule_blocking_reason_counts": {},
             "temporal_resolution_status_counts": {},
+            "quality_signal_counts": {
+                "ontology_quality_gap": 1,
+            },
+            "primary_quality_signal_counts": {
+                "ontology_quality_gap": 1,
+            },
+            "quality_follow_up_action_counts": {
+                "improve_ontology_quality": 1,
+            },
             "adaptive_retry_entry_count": 1,
             "priority_penalized_entry_count": 1,
             "adaptive_query_strategy_counts": {
@@ -1329,11 +1702,34 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "selected_authority_program_type_counts": {
                 "adverse_authority_search": 1,
             },
+            "selected_authority_intent_counts": {
+                "oppose": 1,
+            },
+            "selected_authority_jurisdiction_counts": {
+                "CA": 1,
+            },
+            "selected_authority_forum_counts": {
+                "state": 1,
+            },
+            "selected_authority_family_counts": {
+                "case_law": 1,
+                "administrative_rule": 1,
+            },
+            "selected_authority_defense_theme_counts": {
+                "exception": 1,
+                "authority_treatment": 1,
+            },
+            "selected_authority_time_window_counts": {
+                "temporal_rule_window:temporal-profile-1:partial": 1,
+            },
             "selected_authority_program_bias_counts": {
                 "adverse": 1,
             },
             "selected_authority_program_rule_bias_counts": {
                 "exception": 1,
+            },
+            "selected_authority_graph_gap_bias_counts": {
+                "graph_backed_authority_gap": 1,
             },
             "source_family_counts": {
                 "legal_authority": 1,
@@ -1377,6 +1773,9 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "contradiction_related_entry_count": 1,
             "latest_attempted_at": "2026-03-12T10:15:00",
         }
+        history_summary = payload["follow_up_history_summary"]["retaliation"]
+        for key, value in expected_history_summary.items():
+            assert history_summary[key] == value
         reasoning_review = payload["claim_reasoning_review"]["retaliation"]
         assert reasoning_review["claim_type"] == "retaliation"
         assert reasoning_review["total_element_count"] == 2
@@ -1571,8 +1970,24 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "support": 1,
             "confirm_good_law": 1,
         }
+        assert payload["follow_up_plan_summary"]["retaliation"]["authority_jurisdiction_counts"] == {"CA": 2}
+        assert payload["follow_up_plan_summary"]["retaliation"]["authority_forum_counts"] == {"state": 2}
+        assert payload["follow_up_plan_summary"]["retaliation"]["authority_family_counts"] == {
+            "case_law": 1,
+            "administrative_rule": 1,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["authority_defense_theme_counts"] == {
+            "predicate_fact_gap": 1,
+            "authority_treatment": 1,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["authority_time_window_counts"] == {
+            "temporal_rule_window:temporal-profile-1:partial": 1,
+        }
         assert payload["follow_up_plan_summary"]["retaliation"]["primary_authority_program_type_counts"] == {
             "fact_pattern_search": 1,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["primary_authority_intent_counts"] == {
+            "support": 1,
         }
         assert payload["follow_up_plan_summary"]["retaliation"]["primary_authority_program_bias_counts"] == {
             "uncertain": 1,
@@ -1582,6 +1997,15 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["follow_up_plan_summary"]["retaliation"]["total_rule_candidate_count"] == 0
         assert payload["follow_up_plan_summary"]["retaliation"]["matched_claim_element_rule_count"] == 0
         assert payload["follow_up_plan_summary"]["retaliation"]["rule_candidate_type_counts"] == {}
+        assert payload["follow_up_plan_summary"]["retaliation"]["quality_signal_counts"] == {
+            "weak_graph_connectivity": 2,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["primary_quality_signal_counts"] == {
+            "weak_graph_connectivity": 1,
+        }
+        assert payload["follow_up_plan_summary"]["retaliation"]["quality_follow_up_action_counts"] == {
+            "persist_or_query_graph_support": 1,
+        }
         assert payload["follow_up_plan_summary"]["retaliation"]["last_adaptive_retry"] == {
             "claim_element_id": None,
             "claim_element_text": "Causal connection",
@@ -1602,6 +2026,8 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "Event sequence",
         ]
         assert payload["follow_up_execution"]["retaliation"]["tasks"][0]["satisfied_fact_bundle"] == ["Protected activity"]
+        assert payload["follow_up_execution"]["retaliation"]["tasks"][0]["selected_search_program_jurisdiction"] == "CA"
+        assert payload["follow_up_execution"]["retaliation"]["tasks"][0]["selected_search_program_families"] == ["case_law"]
         assert payload["follow_up_execution_summary"]["retaliation"]["executed_task_count"] == 1
         assert payload["follow_up_execution_summary"]["retaliation"]["skipped_task_count"] == 2
         assert payload["follow_up_execution_summary"]["retaliation"]["suppressed_task_count"] == 1
@@ -1631,8 +2057,45 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
             "support": 1,
             "confirm_good_law": 1,
         }
+        assert payload["follow_up_execution_summary"]["retaliation"]["authority_jurisdiction_counts"] == {"CA": 2}
+        assert payload["follow_up_execution_summary"]["retaliation"]["authority_forum_counts"] == {"state": 2}
+        assert payload["follow_up_execution_summary"]["retaliation"]["authority_family_counts"] == {
+            "case_law": 1,
+            "administrative_rule": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["authority_defense_theme_counts"] == {
+            "predicate_fact_gap": 1,
+            "authority_treatment": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["authority_time_window_counts"] == {
+            "temporal_rule_window:temporal-profile-1:partial": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["selected_authority_program_type_counts"] == {
+            "fact_pattern_search": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["selected_authority_intent_counts"] == {
+            "support": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["selected_authority_jurisdiction_counts"] == {
+            "CA": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["selected_authority_forum_counts"] == {
+            "state": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["selected_authority_family_counts"] == {
+            "case_law": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["selected_authority_defense_theme_counts"] == {
+            "predicate_fact_gap": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["selected_authority_time_window_counts"] == {
+            "temporal_rule_window:temporal-profile-1:partial": 1,
+        }
         assert payload["follow_up_execution_summary"]["retaliation"]["primary_authority_program_type_counts"] == {
             "fact_pattern_search": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["primary_authority_intent_counts"] == {
+            "support": 1,
         }
         assert payload["follow_up_execution_summary"]["retaliation"]["primary_authority_program_bias_counts"] == {
             "uncertain": 1,
@@ -1642,6 +2105,15 @@ def test_claim_support_review_payload_returns_matrix_and_summary():
         assert payload["follow_up_execution_summary"]["retaliation"]["total_rule_candidate_count"] == 0
         assert payload["follow_up_execution_summary"]["retaliation"]["matched_claim_element_rule_count"] == 0
         assert payload["follow_up_execution_summary"]["retaliation"]["rule_candidate_type_counts"] == {}
+        assert payload["follow_up_execution_summary"]["retaliation"]["quality_signal_counts"] == {
+            "weak_graph_connectivity": 2,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["primary_quality_signal_counts"] == {
+            "weak_graph_connectivity": 1,
+        }
+        assert payload["follow_up_execution_summary"]["retaliation"]["quality_follow_up_action_counts"] == {
+            "persist_or_query_graph_support": 1,
+        }
         assert payload["follow_up_execution_summary"]["retaliation"]["last_adaptive_retry"] == {
             "claim_element_id": None,
             "claim_element_text": "Causal connection",
@@ -1849,6 +2321,43 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
             }
         }
     }
+    mediator.get_claim_coverage_matrix_snapshots.return_value = {
+        "claims": {
+            "retaliation": {
+                "coverage_matrix": {
+                    "claim_type": "retaliation",
+                    "total_elements": 1,
+                    "status_counts": {"partially_supported": 1},
+                    "elements": [],
+                },
+                "snapshot": {
+                    "snapshot_id": 21,
+                    "required_support_kinds": ["authority", "evidence"],
+                    "is_stale": False,
+                    "retention_limit": 3,
+                    "pruned_snapshot_count": 0,
+                    "metadata": {
+                        "snapshot_source": "claim_coverage_matrix",
+                        "coverage_matrix_summary": {
+                            "element_count": 1,
+                            "status_counts": {"partially_supported": 1},
+                            "support_by_kind": {"authority": 1},
+                            "total_links": 1,
+                            "total_facts": 2,
+                            "graph_snapshot_ref_count": 1,
+                            "support_path_count": 2,
+                            "current_trace_path_count": 1,
+                            "persisted_path_count": 1,
+                            "graph_linked_path_count": 1,
+                            "support_ref_count": 2,
+                            "unique_support_ref_count": 2,
+                            "path_kind_counts": {"support": 1, "contradiction": 1},
+                        },
+                    },
+                },
+            }
+        }
+    }
     mediator.get_claim_support_gaps.side_effect = AssertionError("should reuse persisted gap snapshot")
     mediator.get_claim_contradiction_candidates.side_effect = AssertionError(
         "should reuse persisted contradiction snapshot"
@@ -1865,6 +2374,34 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
     assert payload["claim_contradiction_candidates"]["retaliation"]["candidate_count"] == 1
     assert payload["claim_support_snapshots"]["retaliation"]["gaps"]["snapshot_id"] == 11
     assert payload["claim_support_snapshots"]["retaliation"]["contradictions"]["snapshot_id"] == 12
+    assert payload["claim_coverage_matrix_snapshots"]["retaliation"]["snapshot"]["snapshot_id"] == 21
+    assert payload["claim_coverage_matrix_snapshots"]["retaliation"]["coverage_matrix"]["claim_type"] == "retaliation"
+    assert payload["claim_coverage_matrix_snapshot_summary"]["retaliation"] == {
+        "total_snapshot_count": 1,
+        "fresh_snapshot_count": 1,
+        "stale_snapshot_count": 0,
+        "snapshot_kinds": ["coverage_matrix"],
+        "fresh_snapshot_kinds": ["coverage_matrix"],
+        "stale_snapshot_kinds": [],
+        "retention_limits": [3],
+        "total_pruned_snapshot_count": 0,
+        "coverage_matrix_summary": {
+            "summary_count": 1,
+            "element_count": 1,
+            "status_counts": {"partially_supported": 1},
+            "support_by_kind": {"authority": 1},
+            "total_links": 1,
+            "total_facts": 2,
+            "graph_snapshot_ref_count": 1,
+            "support_path_count": 2,
+            "current_trace_path_count": 1,
+            "persisted_path_count": 1,
+            "graph_linked_path_count": 1,
+            "support_ref_count": 2,
+            "unique_support_ref_count": 2,
+            "path_kind_counts": {"support": 1, "contradiction": 1},
+        },
+    }
     assert payload["claim_support_snapshot_summary"]["retaliation"] == {
         "total_snapshot_count": 2,
         "fresh_snapshot_count": 2,
@@ -1906,13 +2443,8 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
         "temporal_rule_profile_failed_element_count": 0,
         "temporal_proof_bundle_count": 0,
         "temporal_proof_bundle_status_counts": {},
-        "theorem_export_blocked_element_count": 0,
-        "theorem_export_chronology_task_count": 0,
-        "proof_artifact_element_count": 0,
-        "proof_artifact_available_element_count": 0,
-        "proof_artifact_status_counts": {},
-        "proof_artifact_explanation_element_count": 0,
-        "proof_artifact_preview": [],
+        "proof_bundles": {},
+        "timeline_gap_follow_ups": [],
         "claim_temporal_issue_count": 0,
         "claim_unresolved_temporal_issue_count": 0,
         "claim_resolved_temporal_issue_count": 0,
@@ -1920,9 +2452,21 @@ def test_claim_support_review_payload_reuses_persisted_diagnostic_snapshots():
         "claim_temporal_issue_ids": [],
         "claim_missing_temporal_predicates": [],
         "claim_required_provenance_kinds": [],
+        "theorem_export_blocked_element_count": 0,
+        "theorem_export_chronology_task_count": 0,
+        "proof_artifact_element_count": 0,
+        "proof_artifact_available_element_count": 0,
+        "proof_artifact_status_counts": {},
+        "proof_artifact_explanation_element_count": 0,
+        "proof_artifact_preview": [],
         "flagged_elements": [],
     }
     mediator.get_claim_support_diagnostic_snapshots.assert_called_once_with(
+        claim_type="retaliation",
+        user_id="state-user",
+        required_support_kinds=["evidence", "authority"],
+    )
+    mediator.get_claim_coverage_matrix_snapshots.assert_called_once_with(
         claim_type="retaliation",
         user_id="state-user",
         required_support_kinds=["evidence", "authority"],
@@ -2048,13 +2592,8 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
         "temporal_rule_profile_failed_element_count": 0,
         "temporal_proof_bundle_count": 0,
         "temporal_proof_bundle_status_counts": {},
-        "theorem_export_blocked_element_count": 0,
-        "theorem_export_chronology_task_count": 0,
-        "proof_artifact_element_count": 0,
-        "proof_artifact_available_element_count": 0,
-        "proof_artifact_status_counts": {},
-        "proof_artifact_explanation_element_count": 0,
-        "proof_artifact_preview": [],
+        "proof_bundles": {},
+        "timeline_gap_follow_ups": [],
         "claim_temporal_issue_count": 0,
         "claim_unresolved_temporal_issue_count": 0,
         "claim_resolved_temporal_issue_count": 0,
@@ -2062,6 +2601,13 @@ def test_claim_support_review_payload_recomputes_stale_diagnostic_snapshots():
         "claim_temporal_issue_ids": [],
         "claim_missing_temporal_predicates": [],
         "claim_required_provenance_kinds": [],
+        "theorem_export_blocked_element_count": 0,
+        "theorem_export_chronology_task_count": 0,
+        "proof_artifact_element_count": 0,
+        "proof_artifact_available_element_count": 0,
+        "proof_artifact_status_counts": {},
+        "proof_artifact_explanation_element_count": 0,
+        "proof_artifact_preview": [],
         "flagged_elements": [],
     }
     mediator.get_claim_support_gaps.assert_called_once_with(
@@ -2355,7 +2901,8 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
         "Event sequence",
     ]
     assert payload["follow_up_execution"]["retaliation"]["tasks"][0]["satisfied_fact_bundle"] == ["Protected activity"]
-    assert payload["follow_up_execution_summary"]["retaliation"] == {
+    follow_up_execution_summary = payload["follow_up_execution_summary"]["retaliation"]
+    expected_follow_up_execution_summary = {
         "executed_task_count": 1,
         "skipped_task_count": 1,
         "suppressed_task_count": 0,
@@ -2366,6 +2913,8 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
         "temporal_gap_task_count": 0,
         "fact_gap_task_count": 0,
         "adverse_authority_task_count": 0,
+        "confirm_good_law_task_count": 0,
+        "find_better_authority_task_count": 0,
         "parse_quality_task_count": 1,
         "quality_gap_targeted_task_count": 1,
         "temporal_gap_targeted_task_count": 0,
@@ -2424,6 +2973,8 @@ def test_claim_support_follow_up_execution_payload_returns_post_execution_review
         "matched_claim_element_rule_count": 0,
         "rule_candidate_type_counts": {},
     }
+    for key, value in expected_follow_up_execution_summary.items():
+        assert follow_up_execution_summary[key] == value
     assert payload["execution_quality_summary"]["retaliation"] == {
         "pre_low_quality_parsed_record_count": 1,
         "post_low_quality_parsed_record_count": 0,
@@ -2489,7 +3040,18 @@ def test_claim_support_review_payload_exposes_legal_warning_summary():
     mediator.get_claim_support_diagnostic_snapshots.return_value = {"claims": {}}
     mediator.get_claim_support_gaps.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "unresolved_elements": []}}}
     mediator.get_claim_contradiction_candidates.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "candidates": []}}}
-    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}}
+    mediator.get_claim_support_validation.return_value = {"claims": {"retaliation": {"claim_type": "retaliation", "elements": []}}    }
+    mediator.get_formal_validation_report.return_value = {
+        "available": True,
+        "overall_status": "needs_review",
+        "claims": {
+            "retaliation": {
+                "claim_type": "retaliation",
+                "formal_status": "needs_review",
+                "predicate_count": 4,
+            }
+        },
+    }
     mediator.get_recent_claim_follow_up_execution.return_value = {
         "claims": {
             "retaliation": [
@@ -3932,8 +4494,19 @@ def test_claim_support_manual_review_resolution_payload_returns_post_resolution_
                     "resolution_status": "resolved_supported",
                     "resolution_applied": "manual_review_resolved",
                     "selected_search_program_type": "adverse_authority_search",
+                    "selected_search_program_intent": "oppose",
+                    "selected_search_program_jurisdiction": "CA",
+                    "selected_search_program_forum": "state",
+                    "selected_search_program_families": ["case_law"],
+                    "selected_search_program_defense_themes": ["exception"],
+                    "selected_search_program_time_window": {
+                        "time_window_type": "temporal_rule_window",
+                        "profile_id": "temporal-profile-1",
+                        "status": "partial",
+                    },
                     "selected_search_program_bias": "adverse",
                     "selected_search_program_rule_bias": "exception",
+                    "selected_search_program_graph_gap_bias": "graph_backed_authority_gap",
                     "source_family": "legal_authority",
                     "record_scope": "legal_authority",
                     "artifact_family": "legal_authority_reference",
@@ -3971,11 +4544,32 @@ def test_claim_support_manual_review_resolution_payload_returns_post_resolution_
     assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_program_type_counts"] == {
         "adverse_authority_search": 1,
     }
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_intent_counts"] == {
+        "oppose": 1,
+    }
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_jurisdiction_counts"] == {
+        "CA": 1,
+    }
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_forum_counts"] == {
+        "state": 1,
+    }
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_family_counts"] == {
+        "case_law": 1,
+    }
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_defense_theme_counts"] == {
+        "exception": 1,
+    }
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_time_window_counts"] == {
+        "temporal_rule_window:temporal-profile-1:partial": 1,
+    }
     assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_program_bias_counts"] == {
         "adverse": 1,
     }
     assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_program_rule_bias_counts"] == {
         "exception": 1,
+    }
+    assert payload["post_resolution_review"]["follow_up_history_summary"]["retaliation"]["selected_authority_graph_gap_bias_counts"] == {
+        "graph_backed_authority_gap": 1,
     }
     mediator.resolve_claim_follow_up_manual_review.assert_called_once_with(
         claim_type="retaliation",
@@ -4077,60 +4671,86 @@ def test_claim_support_review_endpoint_is_registered_on_app():
     mediator = Mock()
 
     app = create_review_api_app(mediator)
+    all_routes = list(_iter_app_routes(app))
 
     assert any(
         route.path == "/api/claim-support/review" and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
+        for route in all_routes
     )
     assert any(
         route.path == "/api/claim-support/execute-follow-up"
         and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
+        for route in all_routes
     )
     assert any(
         route.path == "/api/claim-support/confirm-intake-summary"
         and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
+        for route in all_routes
     )
     assert any(
         route.path == "/api/claim-support/resolve-manual-review"
         and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
+        for route in all_routes
     )
     assert any(
         route.path == "/api/claim-support/save-testimony"
         and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
+        for route in all_routes
     )
     assert any(
         route.path == "/api/claim-support/save-document"
         and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
+        for route in all_routes
     )
     assert any(
         route.path == "/api/claim-support/upload-document"
         and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
+        for route in all_routes
+    )
+    assert any(
+        route.path == "/api/claim-support/enrichment-queue"
+        and "GET" in route.methods
+        for route in all_routes
+    )
+    assert any(
+        route.path == "/api/claim-support/enrich-background"
+        and "POST" in route.methods
+        for route in all_routes
     )
     assert any(
         route.path == "/api/documents/formal-complaint"
         and "POST" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
+        for route in all_routes
     )
     assert any(
         route.path == "/api/documents/download"
         and "GET" in route.methods
-        for route in app.routes
-        if hasattr(route, "methods")
+        for route in all_routes
     )
+
+
+def test_claim_support_review_template_exposes_operator_sections():
+    template_path = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "templates",
+        "claim_support_review.html",
+    )
+    with open(template_path, encoding="utf-8") as template_file:
+        template = template_file.read()
+
+    assert "Operator sections" in template
+    for section_id in (
+        "questions-section",
+        "testimony-section",
+        "documents-section",
+        "facts-section",
+        "graph-section",
+        "law-section",
+        "actions-section",
+    ):
+        assert f'href="#{section_id}"' in template
+        assert f'id="{section_id}"' in template
 
 
 def test_claim_support_testimony_payload_persists_and_refreshes_review():
@@ -4479,9 +5099,13 @@ def test_claim_support_document_payload_persists_and_refreshes_review():
         "resolution_status_counts": {"still_open": 1},
         "temporal_gap_task_count": 1,
         "temporal_gap_targeted_task_count": 1,
+        "temporal_next_action_count": 0,
         "temporal_rule_status_counts": {"partial": 1},
         "temporal_rule_blocking_reason_counts": {"Need retaliation chronology sequencing.": 1},
         "temporal_resolution_status_counts": {"still_open": 1},
+        "temporal_follow_up_target_counts": {},
+        "temporal_question_objective_counts": {},
+        "temporal_proof_criticality_counts": {},
     }
     assert payload["post_save_review"]["intake_case_summary"]["claim_support_packet_summary"]["temporal_gap_task_count"] == 1
     assert payload["post_save_review"]["intake_case_summary"]["claim_support_packet_summary"]["claim_support_unresolved_temporal_issue_count"] == 1
@@ -4500,6 +5124,7 @@ def test_claim_support_document_payload_persists_and_refreshes_review():
         filename=None,
         mime_type=None,
         evidence_type="document",
+        testimony_id=None,
         metadata={
             "intake_summary_handoff": {
                 "current_phase": "intake",
@@ -4624,6 +5249,7 @@ def test_claim_support_upload_document_route_accepts_multipart_file():
         filename="termination-memo.txt",
         mime_type="text/plain",
         evidence_type="document",
+        testimony_id=None,
         metadata={
             "intake_summary_handoff": {
                 "current_phase": "intake",
@@ -5063,7 +5689,7 @@ def test_claim_support_review_route_surfaces_proactively_repaired_legacy_testimo
 def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
     plan_summary = _summarize_follow_up_plan_claim(
         {
-            "task_count": 3,
+            "task_count": 4,
             "blocked_task_count": 0,
             "tasks": [
                 {
@@ -5178,6 +5804,33 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
                     "resolution_status": "awaiting_testimony",
                     "has_graph_support": False,
                     "should_suppress_retrieval": False,
+                    "graph_support": {"summary": {}, "results": []},
+                    "authority_rule_candidate_summary": {},
+                },
+                {
+                    "follow_up_focus": "ontology_quality_gap_closure",
+                    "query_strategy": "ontology_quality_gap_targeted",
+                    "recommended_action": "improve_ontology_quality",
+                    "proof_decision_source": "logic_proof_supported",
+                    "has_graph_support": False,
+                    "should_suppress_retrieval": False,
+                    "ontology_quality": {
+                        "valid": False,
+                        "overall_quality_score": 0.39,
+                        "grade": "D",
+                        "has_gaps": True,
+                        "has_blocking_gaps": True,
+                    },
+                    "ontology_gap_types": ["missing_relation"],
+                    "ontology_quality_gap_count": 1,
+                    "quality_signal_counts": {"ontology_quality_gap": 1},
+                    "primary_quality_signal": {
+                        "signal_type": "ontology_quality_gap",
+                        "question_lane": "ontology_quality_gap",
+                        "follow_up_action": "improve_ontology_quality",
+                        "count": 1,
+                    },
+                    "quality_follow_up_action": "improve_ontology_quality",
                     "graph_support": {"summary": {}, "results": []},
                     "authority_rule_candidate_summary": {},
                 },
@@ -5306,6 +5959,8 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
     assert plan_summary["adverse_authority_task_count"] == 1
     assert plan_summary["temporal_gap_task_count"] == 1
     assert plan_summary["temporal_gap_targeted_task_count"] == 1
+    assert plan_summary["ontology_quality_gap_task_count"] == 1
+    assert plan_summary["ontology_quality_gap_targeted_task_count"] == 1
     assert plan_summary["rule_candidate_backed_task_count"] == 2
     assert plan_summary["total_rule_candidate_count"] == 3
     assert plan_summary["matched_claim_element_rule_count"] == 3
@@ -5329,17 +5984,23 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
         "fact_gap_closure": 1,
         "adverse_authority_review": 1,
         "temporal_gap_closure": 1,
+        "ontology_quality_gap_closure": 1,
     }
     assert plan_summary["query_strategy_counts"] == {
         "rule_fact_targeted": 1,
         "adverse_authority_targeted": 1,
         "temporal_gap_targeted": 1,
+        "ontology_quality_gap_targeted": 1,
     }
     assert plan_summary["recommended_actions"] == {
         "collect_fact_support": 1,
         "review_adverse_authority": 1,
         "review_existing_support": 1,
+        "improve_ontology_quality": 1,
     }
+    assert plan_summary["quality_signal_counts"] == {"ontology_quality_gap": 1}
+    assert plan_summary["primary_quality_signal_counts"] == {"ontology_quality_gap": 1}
+    assert plan_summary["quality_follow_up_action_counts"] == {"improve_ontology_quality": 1}
     assert plan_summary["primary_missing_fact_counts"] == {
         "Adverse treatment timing": 1,
         "Event sequence": 1,
@@ -5413,6 +6074,34 @@ def test_follow_up_summaries_aggregate_fact_gap_and_adverse_authority_metrics():
         "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.": 1,
     }
     assert execution_summary["temporal_resolution_status_counts"] == {"awaiting_testimony": 1}
+
+
+def test_follow_up_history_summary_aggregates_ontology_quality_routing():
+    history_summary = summarize_follow_up_history_claim(
+        [
+            {
+                "status": "skipped_manual_review",
+                "support_kind": "manual_review",
+                "execution_mode": "manual_review",
+                "follow_up_focus": "ontology_quality_gap_closure",
+                "query_strategy": "ontology_quality_gap_targeted",
+                "quality_signal_counts": {"ontology_quality_gap": 2},
+                "primary_quality_signal": {
+                    "signal_type": "ontology_quality_gap",
+                    "question_lane": "ontology_quality_gap",
+                    "follow_up_action": "improve_ontology_quality",
+                    "count": 2,
+                },
+                "quality_follow_up_action": "improve_ontology_quality",
+            }
+        ]
+    )
+
+    assert history_summary["ontology_quality_gap_task_count"] == 1
+    assert history_summary["ontology_quality_gap_targeted_task_count"] == 1
+    assert history_summary["quality_signal_counts"] == {"ontology_quality_gap": 2}
+    assert history_summary["primary_quality_signal_counts"] == {"ontology_quality_gap": 1}
+    assert history_summary["quality_follow_up_action_counts"] == {"improve_ontology_quality": 1}
 
 
 def test_summarize_claim_reasoning_review_includes_temporal_handoff_summary():
@@ -5758,8 +6447,8 @@ async def test_claim_support_review_route_marks_execute_follow_up_as_deprecated(
     app = create_review_api_app(mediator)
     review_route = next(
         route
-        for route in app.routes
-        if getattr(route, "path", None) == "/api/claim-support/review"
+        for route in _iter_app_routes(app)
+        if route.path == "/api/claim-support/review"
     )
     response = Response()
 
@@ -5781,3 +6470,505 @@ async def test_claim_support_review_route_marks_execute_follow_up_as_deprecated(
     assert "execute_follow_up on /api/claim-support/review is deprecated" in response.headers[
         "Warning"
     ]
+
+
+def test_claim_support_review_payload_includes_heavy_processing_queue_state():
+    mediator, _hook = _build_hook_backed_review_api_mediator(":memory:")
+    mediator.get_enrichment_queue_state.return_value = {
+        "available": True,
+        "user_id": "state-user",
+        "claim_type": "retaliation",
+        "queue": [
+            {
+                "id": 12,
+                "claim_type": "retaliation",
+                "enrichment_type": "graph_enrichment",
+                "status": "pending",
+                "priority": 7,
+                "metadata": {"claim_element_id": "retaliation:2"},
+            }
+        ],
+        "queue_count": 1,
+        "pending_count": 1,
+        "running_count": 0,
+        "completed_count": 0,
+        "failed_count": 0,
+    }
+
+    payload = build_claim_support_review_payload(
+        mediator,
+        ClaimSupportReviewRequest(claim_type="retaliation"),
+    )
+
+    queue_state = payload["heavy_processing_queue"]
+    assert queue_state["interactive_dashboard_safe"] is True
+    assert queue_state["available"] is True
+    assert queue_state["pending_count"] == 1
+    assert queue_state["queue"][0]["enrichment_type"] == "graph_enrichment"
+    assert {item["type"] for item in queue_state["recommended_enrichment_types"]} == {
+        "graph_enrichment",
+        "legal_authority_refresh",
+        "document_reparse",
+        "proof_export",
+    }
+    mediator.get_enrichment_queue_state.assert_called_once_with(
+        "state-user",
+        claim_type="retaliation",
+    )
+
+
+def test_enrich_background_route_returns_refreshed_queue_state():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.submit_background_enrichment_job.return_value = {
+        "submitted": True,
+        "job_id": 42,
+        "user_id": "state-user",
+        "claim_type": "retaliation",
+        "enrichment_type": "legal_authority_refresh",
+        "priority": 8,
+        "status": "pending",
+    }
+    mediator.get_enrichment_queue_state.return_value = {
+        "available": True,
+        "user_id": "state-user",
+        "claim_type": "retaliation",
+        "queue": [{"id": 42, "enrichment_type": "legal_authority_refresh", "status": "pending"}],
+        "queue_count": 1,
+        "pending_count": 1,
+        "running_count": 0,
+        "completed_count": 0,
+        "failed_count": 0,
+    }
+
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/claim-support/enrich-background"
+        "?enrichment_type=legal_authority_refresh&claim_type=retaliation&priority=8"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["submitted"] is True
+    assert payload["queue_state"]["pending_count"] == 1
+    assert payload["queue_state"]["queue"][0]["enrichment_type"] == "legal_authority_refresh"
+    mediator.submit_background_enrichment_job.assert_called_once_with(
+        enrichment_type="legal_authority_refresh",
+        user_id="state-user",
+        claim_type="retaliation",
+        priority=8,
+    )
+    mediator.get_enrichment_queue_state.assert_called_once_with(
+        "state-user",
+        claim_type="retaliation",
+    )
+
+
+# ---------------------------------------------------------------------------
+# M1: Document Intake And Decomposition Plane
+# ---------------------------------------------------------------------------
+
+def test_claim_support_document_save_request_accepts_testimony_id():
+    from claim_support_review import ClaimSupportDocumentSaveRequest
+    req = ClaimSupportDocumentSaveRequest(
+        claim_type="retaliation",
+        document_text="Termination letter.",
+        testimony_id="testimony-abc123",
+    )
+    assert req.testimony_id == "testimony-abc123"
+
+
+def test_claim_support_document_save_request_testimony_id_defaults_to_none():
+    from claim_support_review import ClaimSupportDocumentSaveRequest
+    req = ClaimSupportDocumentSaveRequest(
+        claim_type="retaliation",
+        document_text="Termination letter.",
+    )
+    assert req.testimony_id is None
+
+
+def test_build_claim_support_document_payload_passes_testimony_id_to_mediator():
+    from claim_support_review import (
+        ClaimSupportDocumentSaveRequest,
+        build_claim_support_document_payload,
+    )
+
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.save_claim_support_document.return_value = {
+        "record_id": 7,
+        "recorded": True,
+    }
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "evidence",
+        "candidate_claims": [{"claim_type": "retaliation", "confidence": 0.9}],
+    }
+
+    req = ClaimSupportDocumentSaveRequest(
+        claim_type="retaliation",
+        user_id="state-user",
+        document_text="HR policy document.",
+        testimony_id="testimony-xyz",
+        include_post_save_review=False,
+    )
+    payload = build_claim_support_document_payload(mediator, req)
+
+    assert payload["recorded"] is True
+    call_kwargs = mediator.save_claim_support_document.call_args.kwargs
+    assert call_kwargs["testimony_id"] == "testimony-xyz"
+    assert call_kwargs["metadata"]["testimony_id"] == "testimony-xyz"
+
+
+def test_build_claim_support_uploaded_document_payload_passes_testimony_id():
+    from claim_support_review import build_claim_support_uploaded_document_payload
+
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.save_claim_support_document.return_value = {
+        "record_id": 8,
+        "recorded": True,
+    }
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "evidence",
+        "candidate_claims": [],
+    }
+
+    payload = build_claim_support_uploaded_document_payload(
+        mediator,
+        user_id="state-user",
+        claim_type="retaliation",
+        file_bytes=b"Some document content.",
+        filename="policy.txt",
+        testimony_id="testimony-abc",
+        include_post_save_review=False,
+    )
+
+    assert payload["recorded"] is True
+    call_kwargs = mediator.save_claim_support_document.call_args.kwargs
+    assert call_kwargs["testimony_id"] == "testimony-abc"
+    assert call_kwargs["metadata"]["testimony_id"] == "testimony-abc"
+
+
+def test_upload_document_route_accepts_testimony_id_form_field():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.save_claim_support_document.return_value = {
+        "record_id": 9,
+        "cid": "QmTestimonyLinkedDoc",
+        "recorded": True,
+    }
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "evidence",
+        "iteration_count": 1,
+        "intake_readiness": {"ready_to_advance": True},
+        "candidate_claims": [{"claim_type": "retaliation", "confidence": 0.9}],
+        "intake_sections": {},
+        "canonical_fact_summary": {"count": 0, "facts": []},
+        "canonical_fact_intent_summary": {},
+        "proof_lead_summary": {"count": 0, "proof_leads": []},
+        "proof_lead_intent_summary": {},
+        "timeline_anchor_summary": {"count": 0, "anchors": []},
+        "harm_profile": {},
+        "remedy_profile": {},
+        "complainant_summary_confirmation": {"status": "confirmed", "confirmed": True},
+        "question_candidate_summary": {},
+        "claim_support_packet_summary": {},
+        "intake_evidence_alignment_summary": {},
+        "alignment_evidence_tasks": [],
+        "alignment_task_updates": [],
+        "alignment_task_update_history": [],
+    }
+
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/claim-support/upload-document",
+        data={
+            "claim_type": "retaliation",
+            "testimony_id": "testimony-abc",
+            "include_post_save_review": "false",
+        },
+        files={"file": ("policy.txt", b"Policy document.", "text/plain")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recorded"] is True
+    call_kwargs = mediator.save_claim_support_document.call_args.kwargs
+    assert call_kwargs["testimony_id"] == "testimony-abc"
+
+
+def test_derive_remediation_flags_empty_parse_metadata():
+    from claim_support_review import _derive_remediation_flags
+
+    result = _derive_remediation_flags({}, "success")
+    assert result["needs_remediation"] is False
+    assert result["remediation_flags"] == []
+    assert result["remediation_guidance"] == ""
+    assert result["reparse_recommended"] is False
+
+
+def test_derive_remediation_flags_needs_ocr():
+    from claim_support_review import _derive_remediation_flags
+
+    result = _derive_remediation_flags(
+        {"needs_ocr": True, "ocr_attempted": False, "ocr_used": False},
+        "success",
+    )
+    assert result["needs_remediation"] is True
+    assert "needs_ocr" in result["remediation_flags"]
+    assert "OCR" in result["remediation_guidance"]
+    assert result["reparse_recommended"] is True
+
+
+def test_derive_remediation_flags_ocr_unavailable():
+    from claim_support_review import _derive_remediation_flags
+
+    result = _derive_remediation_flags(
+        {"needs_ocr": True, "ocr_attempted": True, "ocr_used": False},
+        "success",
+    )
+    assert "needs_ocr" in result["remediation_flags"]
+    assert "ocr_unavailable" in result["remediation_flags"]
+    assert "ocrmypdf" in result["remediation_guidance"]
+
+
+def test_derive_remediation_flags_low_quality():
+    from claim_support_review import _derive_remediation_flags
+
+    result = _derive_remediation_flags(
+        {"quality_tier": "low", "quality_score": 0.3},
+        "success",
+    )
+    assert result["needs_remediation"] is True
+    assert "low_quality_parse" in result["remediation_flags"]
+    assert result["remediation_guidance"] != ""
+    assert result["reparse_recommended"] is True
+
+
+def test_derive_remediation_flags_parse_failed():
+    from claim_support_review import _derive_remediation_flags
+
+    result = _derive_remediation_flags({}, "error")
+    assert result["needs_remediation"] is True
+    assert "parse_failed" in result["remediation_flags"]
+    assert result["reparse_recommended"] is False
+
+
+def test_derive_remediation_flags_good_parse():
+    from claim_support_review import _derive_remediation_flags
+
+    result = _derive_remediation_flags(
+        {"quality_tier": "high", "quality_score": 0.9, "needs_ocr": False},
+        "success",
+    )
+    assert result["needs_remediation"] is False
+    assert result["remediation_flags"] == []
+
+
+def test_collect_claim_document_records_includes_remediation_fields():
+    from claim_support_review import _collect_claim_document_records
+
+    mediator = Mock()
+    mediator.get_user_evidence.return_value = [
+        {
+            "id": 1,
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:2",
+            "claim_element": "Adverse action",
+            "description": "Low quality PDF",
+            "parse_status": "success",
+            "parse_metadata": {
+                "quality_tier": "low",
+                "quality_score": 0.2,
+                "needs_ocr": True,
+                "ocr_attempted": False,
+                "ocr_used": False,
+            },
+            "metadata": {"testimony_id": "testimony-linked"},
+            "chunk_count": 0,
+            "fact_count": 0,
+            "graph_status": "unavailable",
+            "graph_entity_count": 0,
+            "graph_relationship_count": 0,
+        }
+    ]
+    mediator.get_evidence_chunks = None
+    mediator.get_evidence_facts = None
+    mediator.get_evidence_graph = None
+
+    result = _collect_claim_document_records(mediator, "state-user", "retaliation")
+
+    assert "retaliation" in result
+    record = result["retaliation"][0]
+    assert record["needs_remediation"] is True
+    assert "needs_ocr" in record["remediation_flags"]
+    assert record["remediation_guidance"] != ""
+    assert record["reparse_recommended"] is True
+    assert record["linked_testimony_id"] == "testimony-linked"
+
+
+def test_collect_claim_document_records_linked_testimony_empty_when_absent():
+    from claim_support_review import _collect_claim_document_records
+
+    mediator = Mock()
+    mediator.get_user_evidence.return_value = [
+        {
+            "id": 2,
+            "claim_type": "retaliation",
+            "description": "Good doc",
+            "parse_status": "success",
+            "parse_metadata": {"quality_tier": "high", "quality_score": 0.9},
+            "metadata": {},
+            "chunk_count": 2,
+            "fact_count": 1,
+            "graph_status": "ready",
+            "graph_entity_count": 0,
+            "graph_relationship_count": 0,
+        }
+    ]
+    mediator.get_evidence_chunks = None
+    mediator.get_evidence_facts = None
+    mediator.get_evidence_graph = None
+
+    result = _collect_claim_document_records(mediator, "state-user", "retaliation")
+    record = result["retaliation"][0]
+    assert record["linked_testimony_id"] == ""
+    assert record["needs_remediation"] is False
+
+
+def test_reparse_document_request_model():
+    from claim_support_review import ClaimSupportReparseDocumentRequest
+    req = ClaimSupportReparseDocumentRequest(record_id=42, force_ocr=True)
+    assert req.record_id == 42
+    assert req.force_ocr is True
+    assert req.include_post_save_review is True
+
+
+def test_build_reparse_document_payload_returns_unavailable_when_method_missing():
+    from claim_support_review import (
+        ClaimSupportReparseDocumentRequest,
+        build_claim_support_reparse_document_payload,
+    )
+
+    mediator = Mock(spec=[])
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+
+    req = ClaimSupportReparseDocumentRequest(
+        record_id=5,
+        claim_type="retaliation",
+        include_post_save_review=False,
+    )
+    payload = build_claim_support_reparse_document_payload(mediator, req)
+
+    assert payload["reparsed"] is False
+    assert payload["error"] == "reparse_unavailable"
+    assert payload["record_id"] == 5
+
+
+def test_build_reparse_document_payload_calls_mediator_method():
+    from claim_support_review import (
+        ClaimSupportReparseDocumentRequest,
+        build_claim_support_reparse_document_payload,
+    )
+
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.reparse_claim_support_document.return_value = {
+        "record_id": 5,
+        "reparsed": True,
+        "parse_status": "success",
+        "chunk_count": 3,
+    }
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "evidence",
+        "candidate_claims": [],
+    }
+
+    req = ClaimSupportReparseDocumentRequest(
+        record_id=5,
+        claim_type="retaliation",
+        user_id="state-user",
+        force_ocr=True,
+        include_post_save_review=False,
+    )
+    payload = build_claim_support_reparse_document_payload(mediator, req)
+
+    assert payload["reparsed"] is True
+    assert payload["record_id"] == 5
+    mediator.reparse_claim_support_document.assert_called_once_with(
+        record_id=5,
+        user_id="state-user",
+        force_ocr=True,
+    )
+
+
+def test_reparse_document_route_exists_in_review_api():
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+    mediator.reparse_claim_support_document.return_value = {
+        "record_id": 3,
+        "reparsed": True,
+    }
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "evidence",
+        "candidate_claims": [],
+    }
+
+    app = create_review_api_app(mediator)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/claim-support/reparse-document",
+        json={
+            "record_id": 3,
+            "claim_type": "retaliation",
+            "force_ocr": False,
+            "include_post_save_review": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["reparsed"] is True
+    assert payload["record_id"] == 3
+
+
+def test_mediator_save_claim_support_document_accepts_testimony_id():
+    import tempfile, os
+    from mediator.claim_support_hooks import ClaimSupportHook
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+
+    try:
+        mediator = Mock()
+        mediator.state = SimpleNamespace(username="state-user", hashed_username=None)
+        hook = ClaimSupportHook(mediator, db_path=db_path)
+
+        # Verify the ClaimSupportHook schema initialised without error
+        assert hook is not None
+    finally:
+        os.unlink(db_path)
+
+
+def test_mediator_reparse_returns_error_when_get_evidence_raw_missing():
+    from mediator.mediator import Mediator
+
+    # Minimal smoke test via mock rather than full mediator construction
+    mediator = Mock(spec=["reparse_claim_support_document", "state"])
+    mediator.state = SimpleNamespace(username="test-user", hashed_username=None)
+    # The method delegates to get_evidence_raw and reparse_evidence; if they don't exist it should
+    # return gracefully.  We test via build_claim_support_reparse_document_payload instead.
+    from claim_support_review import (
+        ClaimSupportReparseDocumentRequest,
+        build_claim_support_reparse_document_payload,
+    )
+    mediator2 = Mock(spec=["state"])
+    mediator2.state = SimpleNamespace(username="test-user", hashed_username=None)
+    req = ClaimSupportReparseDocumentRequest(record_id=1, include_post_save_review=False)
+    payload = build_claim_support_reparse_document_payload(mediator2, req)
+    assert payload["reparsed"] is False

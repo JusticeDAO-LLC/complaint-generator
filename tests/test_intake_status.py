@@ -972,6 +972,10 @@ def test_build_intake_case_review_summary_returns_additive_structured_fields():
         "temporal_rule_status_counts": {"partial": 1},
         "temporal_rule_blocking_reason_counts": {"Retaliation chronology remains unresolved.": 1},
         "temporal_resolution_status_counts": {"awaiting_testimony": 1},
+        "temporal_next_action_count": 0,
+        "temporal_follow_up_target_counts": {},
+        "temporal_question_objective_counts": {},
+        "temporal_proof_criticality_counts": {},
     }
     assert summary["alignment_task_updates"][0]["resolution_status"] == "partially_addressed"
     assert summary["alignment_task_update_history"][1]["evidence_sequence"] == 2
@@ -1265,3 +1269,72 @@ def test_build_intake_status_summary_preserves_authored_chronology_readiness():
         assert summary["claim_support_packet_summary"]["temporal_rule_blocking_reason_counts"] == {
             "Need retaliation chronology sequencing.": 1,
         }
+
+
+def test_build_intake_status_summary_exposes_support_lane_and_quality_counts():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "current_phase": "intake",
+        "claim_support_packet_summary": {
+            "claim_count": 1,
+            "supported_blocking_element_ratio": 0.5,
+            "proof_readiness_score": 0.75,
+            "support_lane_label_counts": {"corroborated": 2, "testimony_only": 1},
+            "support_quality_counts": {"credible": 2, "suggestive": 1},
+        },
+    }
+
+    summary = build_intake_status_summary(mediator)
+
+    assert summary["proof_readiness_score"] == 0.75
+    assert summary["support_lane_label_counts"] == {"corroborated": 2, "testimony_only": 1}
+    assert summary["support_quality_counts"] == {"credible": 2, "suggestive": 1}
+
+
+def test_build_intake_case_review_summary_aggregates_support_lane_counts_from_alignment():
+    mediator = Mock()
+    mediator.get_three_phase_status.return_value = {
+        "intake_evidence_alignment_summary": {
+            "claim_count": 2,
+            "aligned_element_count": 3,
+            "unsupported_shared_count": 1,
+            "claims": {
+                "retaliation": {
+                    "intake_required_element_ids": ["protected_activity"],
+                    "packet_element_statuses": {},
+                    "shared_elements": [],
+                    "intake_only_element_ids": [],
+                    "evidence_only_element_ids": [],
+                    "support_lane_label_counts": {"corroborated": 1, "testimony_only": 1},
+                    "support_quality_counts": {"credible": 1, "suggestive": 1},
+                },
+                "discrimination": {
+                    "intake_required_element_ids": ["adverse_action"],
+                    "packet_element_statuses": {},
+                    "shared_elements": [],
+                    "intake_only_element_ids": [],
+                    "evidence_only_element_ids": [],
+                    "support_lane_label_counts": {"corroborated": 1, "documentary": 1},
+                    "support_quality_counts": {"credible": 1, "draft_ready": 1},
+                },
+            },
+        },
+        "claim_support_packet_summary": {
+            "claim_count": 2,
+            "proof_readiness_score": 0.6,
+        },
+    }
+
+    summary = build_intake_case_review_summary(mediator)
+
+    csps = summary["claim_support_packet_summary"]
+    assert csps["support_lane_label_counts"] == {
+        "corroborated": 2,
+        "testimony_only": 1,
+        "documentary": 1,
+    }
+    assert csps["support_quality_counts"] == {
+        "credible": 2,
+        "suggestive": 1,
+        "draft_ready": 1,
+    }

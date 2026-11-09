@@ -1,0 +1,31 @@
+{
+  "schema": "complaint-generator/duplicate-owner@1",
+  "interface_version": "1.0.0",
+  "task_id": "CIMP-MOD-15",
+  "concern": "deontic_logic",
+  "status": "owned",
+  "merged": false,
+  "owner": "lib.deontic_logic",
+  "executed": false,
+  "comparison": {
+    "method": "ast",
+    "scope": "module-level public functions",
+    "signatures_match": true,
+    "public_functions": {
+      "lib/deontic_logic.py": {},
+      "complaint_phases/deontic_logic.py": {}
+    }
+  },
+  "modules": [
+    {
+      "module": "lib.deontic_logic",
+      "path": "lib/deontic_logic.py",
+      "role": "owner"
+    },
+    {
+      "module": "complaint_phases.deontic_logic",
+      "path": "complaint_phases/deontic_logic.py",
+      "role": "compatibility_facade"
+    }
+  ]
+}

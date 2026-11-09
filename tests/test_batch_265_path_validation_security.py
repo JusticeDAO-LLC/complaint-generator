@@ -292,19 +292,11 @@ class TestOutputPathValidation:
     
     def test_output_path_traversal_denied(self, temp_workspace):
         """Output path traversal should be denied."""
-        exception_raised = False
-        try:
-            result = validate_output_path(
+        with raises(PathValidationError, match="escape base directory"):
+            validate_output_path(
                 "../../../tmp/evil.txt",
                 base_dir=temp_workspace
             )
-            # If we get here, no exception was raised
-            assert False, f"Expected PathValidationError but got result: {result}"
-        except PathValidationError as e:
-            exception_raised = True
-            assert "escape base directory" in str(e), f"Wrong error message: {e}"
-        
-        assert exception_raised, "PathValidationError was not raised"
     
     def test_output_to_system_path_denied(self, temp_workspace):
         """Writing to system paths should be denied."""

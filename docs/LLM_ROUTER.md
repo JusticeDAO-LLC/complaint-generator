@@ -1,6 +1,6 @@
 # Using LLM Router Backend
 
-The complaint-generator now includes a backend that uses the `llm_router` from the `ipfs_datasets_py` submodule to route LLM requests. This provides a unified interface for working with multiple LLM providers.
+The complaint-generator backend routes LLM requests through `integrations/ipfs_accelerate/routers.py`, which calls `ipfs_accelerate_py.llm_router`. The datasets `llm_router` module is a compatibility alias of that same module. Embeddings and multimodal calls use the matching accelerate routers. This provides a unified interface for working with multiple LLM providers.
 
 ## Features
 

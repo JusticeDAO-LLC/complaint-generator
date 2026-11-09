@@ -19,6 +19,7 @@ from applications.review_api import attach_claim_support_review_routes
 from applications.document_ui import attach_document_ui_routes
 from applications.review_ui import attach_claim_support_review_ui_routes, attach_review_health_routes
 from complaint_phases import ComplaintPhase
+from lib.runtime_ownership import RUNTIME_ROLE_WEB, require_module_ownership
 
 
 pytestmark = [pytest.mark.no_auto_network, pytest.mark.browser]
@@ -32,28 +33,57 @@ except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
 
-def _build_browser_smoke_app(mediator: Mock) -> FastAPI:
-    app = FastAPI(title="Claim Support Review Smoke")
-    attach_claim_support_review_routes(app, mediator)
-    attach_claim_support_review_ui_routes(app)
-    attach_review_health_routes(app, "claim-support-review-smoke")
+def _build_playwright_fixture_app(
+    *,
+    title: str,
+    health_service: str,
+    mediator: Mock | None = None,
+    include_document_ui: bool = False,
+) -> FastAPI:
+    """Assemble the route mix shared by review and document browser fixtures."""
+    app = FastAPI(title=title)
+    if include_document_ui:
+        attach_document_ui_routes(app)
+    if mediator is not None:
+        attach_claim_support_review_routes(app, mediator)
+        attach_claim_support_review_ui_routes(app)
+    attach_review_health_routes(app, health_service)
     return app
+
+
+def _build_browser_smoke_app(mediator: Mock) -> FastAPI:
+    return _build_playwright_fixture_app(
+        title="Claim Support Review Smoke",
+        health_service="claim-support-review-smoke",
+        mediator=mediator,
+    )
+
+
+def test_review_ui_runtime_ownership_is_web_entrypoint() -> None:
+    ownership = require_module_ownership("applications.review_ui")
+
+    assert ownership.role == RUNTIME_ROLE_WEB
+    assert {entrypoint.name for entrypoint in ownership.entrypoints} == {
+        "create_review_dashboard_app",
+        "create_review_surface_app",
+    }
 
 
 def _build_document_browser_smoke_app() -> FastAPI:
-    app = FastAPI(title="Document Builder Smoke")
-    attach_document_ui_routes(app)
-    attach_review_health_routes(app, "document-builder-smoke")
-    return app
+    return _build_playwright_fixture_app(
+        title="Document Builder Smoke",
+        health_service="document-builder-smoke",
+        include_document_ui=True,
+    )
 
 
 def _build_document_review_browser_smoke_app(mediator: Mock) -> FastAPI:
-    app = FastAPI(title="Document Review Flow Smoke")
-    attach_document_ui_routes(app)
-    attach_claim_support_review_routes(app, mediator)
-    attach_claim_support_review_ui_routes(app)
-    attach_review_health_routes(app, "document-review-flow-smoke")
-    return app
+    return _build_playwright_fixture_app(
+        title="Document Review Flow Smoke",
+        health_service="document-review-flow-smoke",
+        mediator=mediator,
+        include_document_ui=True,
+    )
     
 def _build_document_workflow_priority_fixture(
     *,
@@ -342,6 +372,10 @@ def _build_hook_backed_browser_mediator(db_path: str):
             "temporal_issue_count": 1,
             "temporal_partial_order_ready_element_count": 0,
             "temporal_warning_count": 1,
+            "temporal_rule_profile_available_element_count": 1,
+            "temporal_rule_profile_satisfied_element_count": 0,
+            "temporal_rule_profile_partial_element_count": 1,
+            "temporal_rule_profile_failed_element_count": 0,
             "temporal_gap_task_count": 1,
             "temporal_gap_targeted_task_count": 1,
             "temporal_rule_status_counts": {"partial": 1},
@@ -1143,6 +1177,21 @@ def _serve_app(app: FastAPI):
         thread.join(timeout=10)
 
 
+@contextmanager
+def _launch_browser():
+    """Build and reliably dispose the Chromium fixture used by smoke tests."""
+    if not PLAYWRIGHT_AVAILABLE or sync_playwright is None:
+        pytest.skip("Playwright not available")
+
+    with sync_playwright() as playwright_context:
+        browser = playwright_context.chromium.launch()
+        try:
+            yield browser
+        finally:
+            if browser.is_connected():
+                browser.close()
+
+
 def test_claim_support_review_dashboard_smoke_shows_proactively_repaired_legacy_testimony_links():
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")
@@ -1196,8 +1245,7 @@ def test_claim_support_review_dashboard_smoke_shows_proactively_repaired_legacy_
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -1220,8 +1268,6 @@ def test_claim_support_review_dashboard_smoke_shows_proactively_repaired_legacy_
                 assert "Protected activity" in element_text
                 assert "facts=2 links=2" in element_text
                 assert "PARTIALLY_SUPPORTED" in element_text
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -1247,8 +1293,7 @@ def test_claim_support_review_dashboard_smoke_preserves_support_kind_in_canonica
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?"
@@ -1265,8 +1310,6 @@ def test_claim_support_review_dashboard_smoke_preserves_support_kind_in_canonica
                 assert page.locator("#support-kind").input_value() == "authority"
                 assert "Claims For Relief" in page.locator("#prefill-context-line").inner_text()
                 assert "Focused lane: Authority." in page.locator("#prefill-context-line").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -1440,6 +1483,10 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
                     "temporal_issue_count": 1,
                     "temporal_partial_order_ready_element_count": 0,
                     "temporal_warning_count": 1,
+                    "temporal_rule_profile_available_element_count": 1,
+                    "temporal_rule_profile_satisfied_element_count": 0,
+                    "temporal_rule_profile_partial_element_count": 1,
+                    "temporal_rule_profile_failed_element_count": 0,
                     "temporal_gap_task_count": 1,
                     "temporal_gap_targeted_task_count": 1,
                     "temporal_rule_status_counts": {"partial": 1},
@@ -1498,8 +1545,7 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
 
     app = _build_document_browser_smoke_app()
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             page.goto(f"{base_url}/document")
             page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -1637,8 +1683,6 @@ def test_document_builder_smoke_renders_question_review_links_with_section_aware
             assert "Confirm intake summary" in preview_text
             assert "Confirmation records the latest intake summary snapshot before evidence marshalling continues." in preview_text
 
-            browser.close()
-
 
 def test_document_builder_smoke_routes_workflow_priority_back_to_manual_review():
     if not PLAYWRIGHT_AVAILABLE:
@@ -1745,8 +1789,7 @@ def test_document_builder_smoke_routes_workflow_priority_back_to_manual_review()
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -1773,8 +1816,6 @@ def test_document_builder_smoke_routes_workflow_priority_back_to_manual_review()
                 assert "alignment_task_update_sort=manual_review_first" in page.url
                 assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
                 assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -1897,8 +1938,7 @@ def test_document_builder_smoke_uses_workflow_phase_plan_for_priority_when_next_
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -1916,8 +1956,6 @@ def test_document_builder_smoke_uses_workflow_phase_plan_for_priority_when_next_
                 assert workflow_link is not None
                 assert "section=summary_of_facts" in workflow_link
                 assert "follow_up_support_kind=evidence" in workflow_link
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -2106,8 +2144,7 @@ def test_document_builder_smoke_routes_workflow_priority_to_focused_review_surfa
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -2143,8 +2180,6 @@ def test_document_builder_smoke_routes_workflow_priority_to_focused_review_surfa
                 assert page.locator("#alignment-task-update-sort").input_value() == expected_sort
                 assert expected_focus_label in focus_chips
                 assert f"Focused lane: {expected_lane_label}." in prefill_context
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -2245,8 +2280,7 @@ def test_document_builder_smoke_routes_workflow_priority_to_support_packet_revie
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -2273,8 +2307,6 @@ def test_document_builder_smoke_routes_workflow_priority_to_support_packet_revie
                 assert page.locator("#support-kind").input_value() == "evidence"
                 assert page.locator("#alignment-task-update-sort").input_value() == "newest_first"
                 assert "Opened from document workflow." in page.locator("#prefill-context-line").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -2361,8 +2393,7 @@ def test_document_builder_smoke_marks_complete_evidence_as_ready_for_drafting():
 
     app = _build_document_browser_smoke_app()
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             page.goto(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
             page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -2379,8 +2410,6 @@ def test_document_builder_smoke_marks_complete_evidence_as_ready_for_drafting():
             assert "focus claim: retaliation" in workflow_text.lower()
             assert "proof readiness: 0.94" in workflow_text
             assert "Open Review Dashboard" in workflow_text
-
-            browser.close()
 
 
 def test_document_builder_smoke_marks_generate_formal_complaint_as_current_priority():
@@ -2464,8 +2493,7 @@ def test_document_builder_smoke_marks_generate_formal_complaint_as_current_prior
 
     app = _build_document_browser_smoke_app()
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             page.goto(f"{base_url}/document?claim_type=retaliation&user_id=browser-smoke-text-link")
             page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -2482,8 +2510,6 @@ def test_document_builder_smoke_marks_generate_formal_complaint_as_current_prior
             assert "focus claim: retaliation" in workflow_text.lower()
             assert "proof readiness: 0.98" in workflow_text
             assert "Open Review Dashboard" in workflow_text
-
-            browser.close()
 
 
 def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment():
@@ -2506,8 +2532,7 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -2899,8 +2924,6 @@ def test_claim_support_review_dashboard_smoke_renders_intake_evidence_alignment(
                 assert "alignment_task_update_sort=oldest_first" in page.url
                 assert "sort: oldest_first" in reloaded_alignment_summary
                 assert reloaded_alignment_updates.index("evidence event: 1") < reloaded_alignment_updates.index("evidence event: 2")
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -2926,8 +2949,7 @@ def test_claim_support_review_dashboard_smoke_confirms_intake_summary():
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -2951,7 +2973,6 @@ def test_claim_support_review_dashboard_smoke_confirms_intake_summary():
                 intake_readiness = page.locator("#intake-readiness-criteria-chips").inner_text()
                 intake_context = page.locator("#intake-context-chips").inner_text()
                 confirmation_status = page.locator("#confirm-intake-summary-status").inner_text()
-                browser.close()
 
         assert "summary confirmation: confirmed" in intake_status
         assert "ready Complainant Summary Confirmed" in intake_readiness
@@ -2991,8 +3012,7 @@ def test_claim_support_review_dashboard_smoke_reviews_manual_conflicts_from_next
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -3031,8 +3051,6 @@ def test_claim_support_review_dashboard_smoke_reviews_manual_conflicts_from_next
                 assert page.locator("#resolution-element-id").input_value() == "retaliation:3"
                 assert page.locator("#resolution-element-text").input_value() == "Causal connection"
                 assert page.locator("#resolution-status").input_value() == "resolved_supported"
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3120,8 +3138,7 @@ def test_claim_support_review_dashboard_smoke_reviews_promoted_support_from_next
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -3177,8 +3194,6 @@ def test_claim_support_review_dashboard_smoke_reviews_promoted_support_from_next
                 assert page.locator("#document-element-text").input_value() == "Retaliation:2"
                 assert page.locator("#document-label").input_value() == "Validation support for Retaliation:2"
                 assert page.locator("#document-text").input_value() == "Validation follow-up for promoted support tied to Retaliation:2."
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3223,8 +3238,7 @@ def test_claim_support_review_dashboard_smoke_filters_pending_review_alignment_u
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -3305,8 +3319,6 @@ def test_claim_support_review_dashboard_smoke_filters_pending_review_alignment_u
                 assert "sort: pending_review_first" in reloaded_alignment_summary
                 assert reloaded_alignment_updates.index("artifact: artifact-pending") < reloaded_alignment_updates.index("artifact: artifact-conflict")
                 assert reloaded_alignment_updates.index("artifact: artifact-pending") < reloaded_alignment_updates.index("artifact: artifact-open")
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3340,8 +3352,7 @@ def test_claim_support_review_dashboard_smoke_reviews_intake_gaps_from_next_acti
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -3378,8 +3389,6 @@ def test_claim_support_review_dashboard_smoke_reviews_intake_gaps_from_next_acti
                 assert "Summary Of Facts" in focus_chips
                 assert "Evidence lane" in focus_chips
                 assert "Focused lane: Evidence." in prefill_context
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3449,8 +3458,7 @@ def test_claim_support_review_dashboard_smoke_uses_workflow_phase_plan_for_graph
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -3476,8 +3484,6 @@ def test_claim_support_review_dashboard_smoke_uses_workflow_phase_plan_for_graph
 
                 assert "section=summary_of_facts" in page.url
                 assert "follow_up_support_kind=evidence" in page.url
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3509,8 +3515,7 @@ def test_claim_support_review_dashboard_smoke_reviews_knowledge_graph_inputs_fro
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -3535,8 +3540,6 @@ def test_claim_support_review_dashboard_smoke_reviews_knowledge_graph_inputs_fro
 
                 assert "Timeline Ordering" in page.locator("body").inner_text()
                 assert page.locator("#intake-timeline-summary-chips").inner_text().count("timeline anchors") >= 0
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3568,8 +3571,7 @@ def test_claim_support_review_dashboard_smoke_reviews_dependency_inputs_from_nex
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -3593,8 +3595,6 @@ def test_claim_support_review_dashboard_smoke_reviews_dependency_inputs_from_nex
                 )
 
                 assert "Cross-phase element alignment for retaliation" in page.locator("#intake-evidence-alignment-summary-list").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3632,8 +3632,7 @@ def test_claim_support_review_dashboard_smoke_reviews_denoising_queue_from_next_
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -3657,8 +3656,6 @@ def test_claim_support_review_dashboard_smoke_reviews_denoising_queue_from_next_
                 )
 
                 assert "Termination date conflicts with reported complaint timeline" in page.locator("#intake-contradiction-list").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3703,8 +3700,7 @@ def test_claim_support_review_dashboard_smoke_reviews_legal_graph_inputs_from_ne
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -3728,8 +3724,6 @@ def test_claim_support_review_dashboard_smoke_reviews_legal_graph_inputs_from_ne
                 )
 
                 assert "Unresolved legal elements for retaliation" in page.locator("#intake-matching-summary-list").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3778,8 +3772,7 @@ def test_claim_support_review_dashboard_smoke_reviews_neurosymbolic_matching_fro
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -3804,8 +3797,6 @@ def test_claim_support_review_dashboard_smoke_reviews_neurosymbolic_matching_fro
                 matching_text = page.locator("#intake-matching-summary-list").inner_text()
                 assert "missing legal elements: 2" in matching_text
                 assert "question target: retaliation:2" in matching_text
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3840,8 +3831,7 @@ def test_claim_support_review_dashboard_smoke_opens_formal_builder_from_generate
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -3864,8 +3854,6 @@ def test_claim_support_review_dashboard_smoke_opens_formal_builder_from_generate
 
                 assert "Formal Complaint Builder" in page.locator("body").inner_text()
                 assert "Generate Formal Complaint" in page.locator("body").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3936,8 +3924,7 @@ def test_claim_support_review_dashboard_smoke_uses_workflow_phase_plan_for_docum
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -3963,8 +3950,6 @@ def test_claim_support_review_dashboard_smoke_uses_workflow_phase_plan_for_docum
 
                 packet_summary_text = page.locator("#claim-support-packet-summary-chips").inner_text().lower()
                 assert "proof readiness" in packet_summary_text
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -3999,8 +3984,7 @@ def test_claim_support_review_dashboard_smoke_reviews_evidence_gap_task_from_nex
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -4030,8 +4014,6 @@ def test_claim_support_review_dashboard_smoke_reviews_evidence_gap_task_from_nex
                 assert page.locator("#support-kind").input_value() == "evidence"
                 assert "Alignment task for retaliation" in page.locator("#alignment-evidence-task-list").inner_text()
                 assert "element: retaliation:3" in page.locator("#alignment-evidence-task-list").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -4081,8 +4063,7 @@ def test_claim_support_review_dashboard_smoke_reviews_chronology_task_from_next_
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -4116,8 +4097,6 @@ def test_claim_support_review_dashboard_smoke_reviews_chronology_task_from_next_
                 assert page.locator("#support-kind").input_value() == "evidence"
                 assert "Alignment task for retaliation" in page.locator("#alignment-evidence-task-list").inner_text()
                 assert "element: retaliation:3" in page.locator("#alignment-evidence-task-list").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -4153,8 +4132,7 @@ def test_claim_support_review_dashboard_smoke_hands_off_complete_evidence_to_doc
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -4176,8 +4154,6 @@ def test_claim_support_review_dashboard_smoke_hands_off_complete_evidence_to_doc
 
                 assert "Formal Complaint Builder" in page.locator("body").inner_text()
                 assert "Generate Formal Complaint" in page.locator("body").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -4213,8 +4189,7 @@ def test_claim_support_review_dashboard_smoke_builds_claim_support_packets_from_
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-smoke-text-link"
@@ -4238,8 +4213,6 @@ def test_claim_support_review_dashboard_smoke_builds_claim_support_packets_from_
 
                 assert page.locator("#execution-result-card").is_visible()
                 assert "Execution completed" in page.locator("#execution-result-card").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -4270,8 +4243,7 @@ def test_claim_support_review_dashboard_smoke_uploads_document_via_playwright_an
 
         app = _build_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(
                     f"{base_url}/claim-support-review?claim_type=retaliation&user_id=browser-upload-user"
@@ -4295,7 +4267,6 @@ def test_claim_support_review_dashboard_smoke_uploads_document_via_playwright_an
                 )
 
                 document_list_text = page.locator("#document-list").inner_text()
-                browser.close()
 
         assert "Schedule reduction memo" in document_list_text
         assert "Adverse action" in document_list_text
@@ -4468,6 +4439,10 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
                     "temporal_issue_count": 1,
                     "temporal_partial_order_ready_element_count": 0,
                     "temporal_warning_count": 1,
+                    "temporal_rule_profile_available_element_count": 1,
+                    "temporal_rule_profile_satisfied_element_count": 0,
+                    "temporal_rule_profile_partial_element_count": 1,
+                    "temporal_rule_profile_failed_element_count": 0,
                     "temporal_gap_task_count": 1,
                     "temporal_gap_targeted_task_count": 1,
                     "temporal_rule_status_counts": {"partial": 1},
@@ -4525,8 +4500,7 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
 
     app = _build_document_browser_smoke_app()
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             page.goto(f"{base_url}/document/optimization-trace")
             page.evaluate("payload => window.renderTrace(payload)", payload)
@@ -4664,8 +4638,6 @@ def test_optimization_trace_smoke_renders_question_review_links_with_support_kin
             assert "confirm on review dashboard" in normalized_intake_confirmation_text
             assert normalized_intake_confirmation_text.count("confirm on review dashboard") == 1
 
-            browser.close()
-
 
 def test_optimization_trace_smoke_renders_workflow_phase_guidance():
     if not PLAYWRIGHT_AVAILABLE:
@@ -4758,8 +4730,7 @@ def test_optimization_trace_smoke_renders_workflow_phase_guidance():
 
     app = _build_document_browser_smoke_app()
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             page.goto(f"{base_url}/document/optimization-trace")
             page.evaluate("payload => window.renderTrace(payload)", payload)
@@ -4783,8 +4754,6 @@ def test_optimization_trace_smoke_renders_workflow_phase_guidance():
             assert "draft ready: no" in workflow_text
             assert "targets: templates/document.html" in workflow_text
             assert "next actions: re-run document optimization after graph improvements." in workflow_text
-
-            browser.close()
 
 
 def test_optimization_trace_smoke_renders_ready_workflow_phase_guidance():
@@ -4874,8 +4843,7 @@ def test_optimization_trace_smoke_renders_ready_workflow_phase_guidance():
 
     app = _build_document_browser_smoke_app()
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             page.goto(f"{base_url}/document/optimization-trace")
             page.evaluate("payload => window.renderTrace(payload)", payload)
@@ -4900,8 +4868,6 @@ def test_optimization_trace_smoke_renders_ready_workflow_phase_guidance():
             assert "optimization final score: 0.92" in workflow_text
             assert "targets: document_pipeline.py" in workflow_text
             assert "no workflow phase guidance recorded" not in workflow_text
-
-            browser.close()
 
 
 def test_document_builder_smoke_confirms_intake_summary_handoff():
@@ -5041,8 +5007,7 @@ def test_document_builder_smoke_confirms_intake_summary_handoff():
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -5078,8 +5043,6 @@ def test_document_builder_smoke_confirms_intake_summary_handoff():
                 assert normalized_handoff_text.count("confirmed at") == 1
                 assert normalized_handoff_text.count("source document") == 1
                 assert normalized_handoff_text.count("open review dashboard") == 1
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -5183,8 +5146,7 @@ def test_optimization_trace_smoke_renders_confirmed_intake_summary_handoff():
 
     app = _build_document_browser_smoke_app()
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             page.goto(f"{base_url}/document/optimization-trace")
             page.evaluate("payload => window.renderTrace(payload)", payload)
@@ -5206,8 +5168,6 @@ def test_optimization_trace_smoke_renders_confirmed_intake_summary_handoff():
             assert "note: reviewed with complainant for evidence handoff" in normalized_intake_confirmation_text
             assert "open review dashboard" in normalized_intake_confirmation_text
             assert normalized_intake_confirmation_text.count("open review dashboard") == 1
-
-            browser.close()
 
 
 def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
@@ -5348,8 +5308,7 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
 
     app = _build_document_browser_smoke_app()
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             page.goto(f"{base_url}/document/optimization-trace")
             page.evaluate("payload => window.renderTrace(payload)", payload)
@@ -5454,8 +5413,6 @@ def test_optimization_trace_smoke_renders_claim_support_temporal_handoff():
                 page.locator("#traceStatusMessage").inner_text().strip()
                 == "Proof explanation copied for Causal connection."
             )
-
-            browser.close()
 
 
 def test_document_preview_smoke_renders_claim_reasoning_chronology_rollups():
@@ -5592,8 +5549,7 @@ def test_document_preview_smoke_renders_claim_reasoning_chronology_rollups():
 
     app = _build_document_browser_smoke_app()
     with _serve_app(app) as base_url:
-        with sync_playwright() as playwright_context:
-            browser = playwright_context.chromium.launch()
+        with _launch_browser() as browser:
             page = browser.new_page()
             page.goto(f"{base_url}/document")
             page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -5610,6 +5566,116 @@ def test_document_preview_smoke_renders_claim_reasoning_chronology_rollups():
             assert "retaliation chronology provenance: testimony_record, document_artifact, legal_authority" in preview_text
             assert "claim support missing predicates: before(event-hr-report,event-termination)" in preview_text
             assert "claim support required provenance: testimony_record, document_artifact, legal_authority" in preview_text
+
+
+def test_document_preview_smoke_renders_chronology_blocker_summary():
+    """T6/T5: chronology_blocker_summary in draft.source_context renders a chip panel."""
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "generated_at": "2026-03-22T14:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": ["Plaintiff reported discrimination before termination."],
+            "factual_allegation_paragraphs": [],
+            "legal_standards": [],
+            "claims_for_relief": [],
+            "requested_relief": ["Compensatory damages."],
+            "draft_text": "Sample draft.",
+            "exhibits": [],
+            "source_context": {
+                "chronology_blocker_summary": {
+                    "chronology_blocked": True,
+                    "proof_readiness_score": 0.35,
+                    "temporal_gap_task_count": 2,
+                    "unresolved_temporal_issue_count": 3,
+                    "unresolved_temporal_issue_ids": ["ti-001", "ti-002", "ti-003"],
+                    "temporal_rule_profile_failed_element_count": 1,
+                    "temporal_rule_profile_partial_element_count": 0,
+                    "failed_rule_frame_ids": ["retaliation_temporal_frame"],
+                    "summary": "Chronology blockers remain: 2 pending chronology gap tasks; 3 unresolved temporal issues; 1 element with failed temporal rule profile.",
+                }
+            },
+        },
+        "drafting_readiness": {"sections": {}, "claims": [], "warnings": []},
+        "filing_checklist": [],
+        "review_links": {},
+    }
+
+    app = _build_document_browser_smoke_app()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.goto(f"{base_url}/document")
+            page.evaluate("payload => window.renderPreview(payload)", payload)
+            page.wait_for_function(
+                "() => document.getElementById('document-chronology-blocker-summary') !== null"
+            )
+
+            blocker_el = page.locator("#document-chronology-blocker-summary")
+            assert blocker_el.count() == 1, "Expected chronology blocker summary card"
+
+            card_text = blocker_el.inner_text().lower()
+            # Card heading
+            assert "chronology blockers present" in card_text
+            # Chips: failed elements, unresolved issues, tasks
+            assert "failed rule elements: 1" in card_text
+            assert "unresolved issues: 3" in card_text
+            assert "chronology tasks: 2" in card_text
+            # Proof readiness score chip
+            assert "proof readiness:" in card_text
+            # Failed rule frame id chip
+            assert "retaliation_temporal_frame" in card_text
+
+            browser.close()
+
+
+def test_document_preview_smoke_chronology_blocker_absent_when_no_blockers():
+    """T6/T5: chronology_blocker_summary panel is absent when no blockers exist."""
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    payload = {
+        "generated_at": "2026-03-22T14:00:00+00:00",
+        "draft": {
+            "court_header": "IN THE UNITED STATES DISTRICT COURT",
+            "case_caption": {
+                "plaintiffs": ["Jane Doe"],
+                "defendants": ["Acme Corporation"],
+            },
+            "summary_of_facts": [],
+            "factual_allegation_paragraphs": [],
+            "legal_standards": [],
+            "claims_for_relief": [],
+            "requested_relief": [],
+            "draft_text": "Sample draft.",
+            "exhibits": [],
+            # No source_context / no chronology_blocker_summary → panel should not appear.
+        },
+        "drafting_readiness": {"sections": {}, "claims": [], "warnings": []},
+        "filing_checklist": [],
+        "review_links": {},
+    }
+
+    app = _build_document_browser_smoke_app()
+    with _serve_app(app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.goto(f"{base_url}/document")
+            page.evaluate("payload => window.renderPreview(payload)", payload)
+            page.wait_for_function(
+                "() => document.getElementById('previewRoot').children.length > 0"
+            )
+
+            blocker_els = page.locator("#document-chronology-blocker-summary")
+            assert blocker_els.count() == 0, "Chronology blocker panel should not render when no blockers"
 
             browser.close()
 
@@ -5721,8 +5787,7 @@ def test_document_builder_question_review_link_click_preserves_focus_on_review_p
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -5745,8 +5810,6 @@ def test_document_builder_question_review_link_click_preserves_focus_on_review_p
                 assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
                 assert "Claims For Relief" in page.locator("#prefill-context-line").inner_text()
                 assert "Focused lane: Authority." in page.locator("#prefill-context-line").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -5873,8 +5936,7 @@ def test_document_builder_pending_review_link_click_preserves_queue_focus_on_rev
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -5894,8 +5956,6 @@ def test_document_builder_pending_review_link_click_preserves_queue_focus_on_rev
                 assert page.locator("#claim-type").input_value() == "retaliation"
                 assert page.locator("#alignment-task-update-filter").input_value() == "pending_review"
                 assert page.locator("#alignment-task-update-sort").input_value() == "pending_review_first"
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -6022,8 +6082,7 @@ def test_document_builder_manual_review_link_click_preserves_queue_focus_on_revi
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -6043,8 +6102,6 @@ def test_document_builder_manual_review_link_click_preserves_queue_focus_on_revi
                 assert page.locator("#claim-type").input_value() == "retaliation"
                 assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
                 assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -6183,8 +6240,7 @@ def test_document_builder_intake_claim_review_link_prefers_manual_review_queue_f
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -6204,8 +6260,6 @@ def test_document_builder_intake_claim_review_link_prefers_manual_review_queue_f
                 assert page.locator("#claim-type").input_value() == "retaliation"
                 assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
                 assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -6330,8 +6384,7 @@ def test_document_builder_claim_readiness_review_link_prefers_manual_review_queu
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -6351,8 +6404,6 @@ def test_document_builder_claim_readiness_review_link_prefers_manual_review_queu
                 assert page.locator("#claim-type").input_value() == "retaliation"
                 assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
                 assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -6459,8 +6510,7 @@ def test_optimization_trace_pending_review_link_click_preserves_queue_focus_on_r
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document/optimization-trace")
                 page.evaluate("payload => window.renderTrace(payload)", payload)
@@ -6481,8 +6531,6 @@ def test_optimization_trace_pending_review_link_click_preserves_queue_focus_on_r
                 assert page.locator("#claim-type").input_value() == "retaliation"
                 assert page.locator("#alignment-task-update-filter").input_value() == "pending_review"
                 assert page.locator("#alignment-task-update-sort").input_value() == "pending_review_first"
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -6592,8 +6640,7 @@ def test_optimization_trace_intake_claim_review_link_prefers_manual_review_queue
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document/optimization-trace")
                 page.evaluate("payload => window.renderTrace(payload)", payload)
@@ -6614,8 +6661,6 @@ def test_optimization_trace_intake_claim_review_link_prefers_manual_review_queue
                 assert page.locator("#claim-type").input_value() == "retaliation"
                 assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
                 assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -6713,8 +6758,7 @@ def test_optimization_trace_manual_review_link_click_preserves_queue_focus_on_re
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document/optimization-trace")
                 page.evaluate("payload => window.renderTrace(payload)", payload)
@@ -6735,8 +6779,6 @@ def test_optimization_trace_manual_review_link_click_preserves_queue_focus_on_re
                 assert page.locator("#claim-type").input_value() == "retaliation"
                 assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
                 assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -6849,8 +6891,7 @@ def test_document_builder_intake_section_review_link_click_preserves_focus_on_re
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -6872,8 +6913,6 @@ def test_document_builder_intake_section_review_link_click_preserves_focus_on_re
                 assert page.locator("#alignment-task-update-sort").input_value() == "newest_first"
                 assert "Proof Leads" in page.locator("#prefill-context-line").inner_text()
                 assert "Focused lane: Evidence." in page.locator("#prefill-context-line").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -6983,8 +7022,7 @@ def test_document_builder_readiness_section_review_link_preserves_focus_on_revie
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -7005,8 +7043,6 @@ def test_document_builder_readiness_section_review_link_preserves_focus_on_revie
                 assert page.locator("#support-kind").input_value() == "authority"
                 assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
                 assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -7157,8 +7193,7 @@ def test_document_builder_checklist_review_link_preserves_focus_on_review_page()
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document")
                 page.evaluate("payload => window.renderPreview(payload)", payload)
@@ -7190,8 +7225,6 @@ def test_document_builder_checklist_review_link_preserves_focus_on_review_page()
                 assert page.locator("#support-kind").input_value() == "authority"
                 assert page.locator("#alignment-task-update-filter").input_value() == "manual_review"
                 assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -7275,8 +7308,7 @@ def test_optimization_trace_question_review_link_click_preserves_focus_on_review
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document/optimization-trace")
                 page.evaluate("payload => window.renderTrace(payload)", payload)
@@ -7300,8 +7332,6 @@ def test_optimization_trace_question_review_link_click_preserves_focus_on_review
                 assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
                 assert "Claims For Relief" in page.locator("#prefill-context-line").inner_text()
                 assert "Focused lane: Authority." in page.locator("#prefill-context-line").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -7385,8 +7415,7 @@ def test_optimization_trace_intake_section_review_link_click_preserves_focus_on_
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document/optimization-trace")
                 page.evaluate("payload => window.renderTrace(payload)", payload)
@@ -7410,8 +7439,6 @@ def test_optimization_trace_intake_section_review_link_click_preserves_focus_on_
                 assert page.locator("#alignment-task-update-sort").input_value() == "manual_review_first"
                 assert "Claims For Relief" in page.locator("#prefill-context-line").inner_text()
                 assert "Focused lane: Authority." in page.locator("#prefill-context-line").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
@@ -7514,8 +7541,7 @@ def test_optimization_trace_intake_handoff_link_opens_review_dashboard_with_conf
 
         app = _build_document_review_browser_smoke_app(mediator)
         with _serve_app(app) as base_url:
-            with sync_playwright() as playwright_context:
-                browser = playwright_context.chromium.launch()
+            with _launch_browser() as browser:
                 page = browser.new_page()
                 page.goto(f"{base_url}/document/optimization-trace")
                 page.evaluate("payload => window.renderTrace(payload)", payload)
@@ -7533,8 +7559,6 @@ def test_optimization_trace_intake_handoff_link_opens_review_dashboard_with_conf
                 assert "claim_type=retaliation" in page.url
                 assert page.locator("#claim-type").input_value() == "retaliation"
                 assert "Latest intake summary snapshot is awaiting complainant confirmation." in page.locator("#confirm-intake-summary-status").inner_text()
-
-                browser.close()
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)

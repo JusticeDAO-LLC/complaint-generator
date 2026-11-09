@@ -1,11 +1,10 @@
 import json
 import socket
-import tempfile
 import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from unittest.mock import Mock
 
 import pytest
@@ -325,14 +324,16 @@ def _build_document_package(artifact_dir: Path) -> dict:
 
 
 @pytest.fixture
-def site_app(monkeypatch: pytest.MonkeyPatch):
+def site_app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import applications.complaint_workspace as complaint_workspace_module
     import applications.document_api as document_api_module
     import applications.ui_review as ui_review_module
     import complaint_generator.ui_ux_workflow as ui_ux_workflow_module
 
+    monkeypatch.setattr(complaint_workspace_module, "_SESSION_DIR", tmp_path / "sessions")
     mediator = _build_dashboard_mediator()
-    artifact_dir = Path(tempfile.mkdtemp(prefix="complaint-site-playwright-"))
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
     mediator.build_formal_complaint_document_package = Mock(return_value=_build_document_package(artifact_dir))
 
     trace_bytes = json.dumps(TRACE_PAYLOAD).encode("utf-8")
@@ -706,7 +707,9 @@ def test_unified_navigation_connects_primary_pages(site_app: FastAPI):
             ]
 
             for label, suffix, expected_text in expect_texts:
-                href = page.get_by_role("link", name=label, exact=True).first.get_attribute("href")
+                shell_navigation = page.locator("#cg-app-shell")
+                navigation = shell_navigation if shell_navigation.count() else page.locator('[data-surface-nav="primary"]')
+                href = navigation.get_by_role("link", name=label, exact=True).get_attribute("href")
                 assert href
                 parsed_href = urlparse(href)
                 assert parsed_href.path == suffix
@@ -714,6 +717,12 @@ def test_unified_navigation_connects_primary_pages(site_app: FastAPI):
                 page.goto(destination)
                 page.wait_for_load_state("networkidle")
                 assert expected_text in page.locator("body").inner_text()
+                if label == "Secure Intake":
+                    operator_mode = page.get_by_role("link", name="Use operator mode", exact=True)
+                    operator_mode.wait_for()
+                    assert page.locator("#cg-app-shell").get_by_role("link", name="Editor", exact=True).count() == 0
+                    operator_mode.click()
+                    page.get_by_role("link", name="Use client mode", exact=True).wait_for()
 
             browser.close()
 
@@ -735,20 +744,26 @@ def test_document_generation_links_back_to_claim_review(site_app: FastAPI):
             page.locator("#generateButton").click()
 
             page.wait_for_function("() => document.getElementById('artifactMetric').textContent.includes('ready')")
-            page.wait_for_function(
-                '() => Array.from(document.querySelectorAll(\'a[href*="/claim-support-review?"]\')).length > 0'
+            contextual_review_links = page.locator(
+                '#previewRoot a[data-review-intent-link="true"][href*="/claim-support-review?"]'
             )
+            contextual_review_links.first.wait_for()
 
-            review_links = page.evaluate(
-                """() => Array.from(document.querySelectorAll('a[href*="/claim-support-review?"]'))
+            review_links = contextual_review_links.evaluate_all(
+                """nodes => nodes
                     .map((node) => ({ text: (node.textContent || '').trim(), href: node.getAttribute('href') || '' }))"""
             )
 
             matching_links = [link for link in review_links if "claim_type=retaliation" in link["href"]]
             assert matching_links, review_links
 
-            page.locator('a[href*="claim_type=retaliation"]').first.click()
+            shell_review = page.locator('#cg-app-shell .cg-app-shell__nav-link[href*="/claim-support-review"]')
+            assert shell_review.get_attribute("aria-disabled") == "true"
+            page.locator(
+                '#previewRoot a[data-review-intent-link="true"][href*="claim_type=retaliation"]'
+            ).first.click()
             page.wait_for_url("**/claim-support-review?**claim_type=retaliation**")
+            assert page.locator("#claim-type").input_value() == "retaliation"
             page.locator("#review-button").click()
             page.wait_for_function("() => document.getElementById('element-list').textContent.includes('Protected activity')")
 
@@ -802,6 +817,7 @@ def test_workspace_page_uses_browser_mcp_sdk(site_app: FastAPI):
             page.wait_for_function(
                 "() => document.getElementById('workspace-status').textContent.includes('site-sdk-user')"
             )
+            page.wait_for_function("() => document.body.dataset.workspaceHydrated === 'ready'")
 
             assert page.evaluate(
                 "() => typeof window.ComplaintMcpSdk?.ComplaintMcpClient === 'function'"
@@ -825,6 +841,7 @@ def test_workspace_page_uses_browser_mcp_sdk(site_app: FastAPI):
                 "() => typeof window.ComplaintMcpSdk.ComplaintMcpClient.prototype.updateClaimType === 'function'"
             )
 
+            page.locator('#intake-show-all-button').click()
             page.locator('#intake-party_name').fill('Jane Doe')
             page.locator('#intake-opposing_party').fill('Acme Corporation')
             page.locator('#intake-protected_activity').fill('Reported discrimination to HR')
@@ -865,6 +882,104 @@ def test_workspace_page_uses_browser_mcp_sdk(site_app: FastAPI):
             browser.close()
 
 
+def test_dashboard_page_reacts_to_shared_workspace_sync_events(site_app: FastAPI):
+    if not PLAYWRIGHT_AVAILABLE:
+        pytest.skip("Playwright not available")
+
+    with _serve_app(site_app) as base_url:
+        with sync_playwright() as playwright_context:
+            browser = playwright_context.chromium.launch()
+            page = browser.new_page()
+            page.on("dialog", _dismiss_dialog)
+
+            page.goto(f"{base_url}/dashboards?user_id=dashboard-sync-user")
+            page.wait_for_function(
+                "() => typeof window.ComplaintMcpSdk?.SYNC_EVENT_NAME === 'string'"
+            )
+
+            page.evaluate(
+                """() => {
+                    const detail = {
+                        event_type: 'workspace.updated',
+                        user_id: 'dashboard-sync-user',
+                        payload: {
+                            session: {
+                                user_id: 'dashboard-sync-user',
+                                claim_type: 'retaliation',
+                                case_synopsis: 'Protected activity preceded the adverse action.',
+                                intake_answers: {
+                                    party_name: 'Jane Doe',
+                                    opposing_party: 'Acme Corporation',
+                                },
+                                evidence: {
+                                    testimony: [{ title: 'Timeline note' }],
+                                    documents: [{ title: 'Termination notice' }],
+                                },
+                                draft: {
+                                    title: 'Draft complaint',
+                                },
+                            },
+                            review: {
+                                overview: {
+                                    missing_elements: 0,
+                                },
+                            },
+                            complaint_readiness: {
+                                recommended_route: '/workspace',
+                            },
+                        },
+                    };
+                    window.dispatchEvent(new CustomEvent(window.ComplaintMcpSdk.SYNC_EVENT_NAME, { detail }));
+                }"""
+            )
+
+            page.wait_for_function(
+                "() => document.getElementById('dashboard-workspace-session-chip').textContent.includes('dashboard-sync-user')"
+            )
+            assert page.locator("#dashboard-workspace-answered").text_content() == "2"
+            assert page.locator("#dashboard-workspace-evidence").text_content() == "2"
+            assert page.locator("#dashboard-workspace-draft").text_content() == "Yes"
+            assert "Refine draft" in (page.locator("#dashboard-heads-up-action").text_content() or "")
+
+            page.evaluate(
+                """() => {
+                    const detail = {
+                        event_type: 'workspace.reset',
+                        user_id: 'dashboard-sync-user',
+                        payload: {
+                            session: {
+                                user_id: 'dashboard-sync-user',
+                                claim_type: 'retaliation',
+                                case_synopsis: '',
+                                intake_answers: {},
+                                evidence: {
+                                    testimony: [],
+                                    documents: [],
+                                },
+                            },
+                            review: {
+                                overview: {
+                                    missing_elements: 0,
+                                },
+                            },
+                            complaint_readiness: {
+                                recommended_route: '/workspace',
+                            },
+                        },
+                    };
+                    window.dispatchEvent(new CustomEvent(window.ComplaintMcpSdk.SYNC_EVENT_NAME, { detail }));
+                }"""
+            )
+
+            page.wait_for_function(
+                "() => document.getElementById('dashboard-workspace-evidence').textContent.trim() === '0'"
+            )
+            assert page.locator("#dashboard-workspace-draft").text_content() == "No"
+            assert "Continue intake" in (page.locator("#dashboard-heads-up-action").text_content() or "")
+
+            browser.close()
+
+
 def test_real_workspace_browser_flow_generates_formal_complaint_downloads_and_optimizer_feedback(site_app: FastAPI, tmp_path: Path):
     if not PLAYWRIGHT_AVAILABLE:
         pytest.skip("Playwright not available")
@@ -875,17 +990,21 @@ def test_real_workspace_browser_flow_generates_formal_complaint_downloads_and_op
             page = browser.new_page()
             page.on("dialog", _dismiss_dialog)
 
-            page.goto(f"{base_url}/workspace?user_id=site-full-flow-user")
+            page.goto(f"{base_url}/workspace?user_id=site-full-flow-user&shell_mode=operator")
             page.wait_for_function(
                 "() => document.getElementById('workspace-status').textContent.includes('site-full-flow-user')"
             )
+            page.wait_for_function("() => document.body.dataset.workspaceHydrated === 'ready'")
 
+            page.locator('#intake-show-all-button').click()
             page.locator('#intake-party_name').fill('Jordan Example')
             page.locator('#intake-opposing_party').fill('Acme Corporation')
             page.locator('#intake-protected_activity').fill('Reported discrimination to HR')
             page.locator('#intake-adverse_action').fill('Was terminated two days later')
             page.locator('#intake-timeline').fill('Report on March 8, termination on March 10')
             page.locator('#intake-harm').fill('Lost wages and emotional distress')
+            if page.locator('#intake-court-details').get_attribute('open') is None:
+                page.locator('#intake-court-details > summary').click()
             page.locator('#intake-court_header').fill('FOR THE NORTHERN DISTRICT OF CALIFORNIA')
             page.locator('#save-intake-button').click()
             page.wait_for_function(
@@ -900,11 +1019,16 @@ def test_real_workspace_browser_flow_generates_formal_complaint_downloads_and_op
                 "() => document.getElementById('workspace-status').textContent.includes('Shared case synopsis saved')"
             )
 
-            page.locator('#handoff-chat-button').click()
+            chat_handoff = page.locator('#handoff-chat-button')
+            prepared_prompt = parse_qs(urlparse(chat_handoff.get_attribute('href')).query)['prefill_message'][0]
+            assert prepared_prompt
+            chat_handoff.click()
             page.wait_for_url("**/chat?**")
             page.wait_for_function(
-                "() => document.getElementById('chat-context-prefill').textContent.includes('Prepared mediator prompt')"
+                "prompt => document.getElementById('chat-context-prefill').textContent.includes(prompt)",
+                arg=prepared_prompt,
             )
+            assert page.locator('#chat-form input').input_value() == prepared_prompt.replace('\r', '').replace('\n', '')
             page.locator('#chat-form input').fill('I reported discrimination to HR, and my manager terminated me two days later.')
             page.get_by_role('button', name='Send').click()
             page.wait_for_function(
@@ -915,6 +1039,7 @@ def test_real_workspace_browser_flow_generates_formal_complaint_downloads_and_op
             page.wait_for_function(
                 "() => document.getElementById('workspace-status').textContent.includes('site-full-flow-user')"
             )
+            page.wait_for_function("() => document.body.dataset.workspaceHydrated === 'ready'")
             page.wait_for_function(
                 "() => document.getElementById('continuity-gating-summary').textContent.includes('same DID-backed complaint session') || document.getElementById('continuity-gating-summary').textContent.includes('same DID-backed') || document.getElementById('continuity-gating-summary').textContent.includes('shared complaint record')"
             )
@@ -1008,7 +1133,7 @@ def test_real_workspace_browser_flow_generates_formal_complaint_downloads_and_op
 
             page.get_by_role('button', name='CLI + MCP', exact=True).click()
             page.wait_for_function(
-                "() => document.getElementById('integrations-operations-preview').textContent.includes('Recommended tool workflow')"
+                "() => /Recommended (?:tool|schema-first) workflow:/.test(document.getElementById('integrations-operations-preview').textContent)"
             )
             page.wait_for_function(
                 "() => document.getElementById('tool-list-summary').textContent.includes('MCP tools')"

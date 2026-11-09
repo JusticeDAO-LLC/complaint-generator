@@ -1,0 +1,1856 @@
+Task: SUP-CONTRACT-PAYLOADS Payload contract validation and fixture hygiene
+Started: 2026-07-21T01:18:19.197988+00:00
+Workspace: /tmp/ipfs-supervisor-worktrees/sup-contract-payloads-attempt-2-1784596699
+Branch: implementation/sup-contract-payloads-attempt-2-1784596699
+Baseline: 6562a5849488860f8f3557618ef0fe608062f6fd
+Command: bash -lc '
+prompt_file=$(mktemp)
+trap '"'"'rm -f "$prompt_file"'"'"' EXIT
+cat > "$prompt_file"
+codex_bin="$1"
+copilot_bin="$2"
+workspace="$3"
+codex_model="$4"
+codex_context="$5"
+codex_reasoning="$6"
+codex_max_threads="$7"
+codex_max_depth="$8"
+copilot_model="$9"
+copilot_effort="${10}"
+copilot_context="${11}"
+copilot_max_continues="${12}"
+
+if [[ -n "$codex_bin" ]]; then
+    codex_args=(exec --dangerously-bypass-approvals-and-sandbox -C "$workspace")
+    # Model selection
+    [[ -n "$codex_model" ]] && codex_args+=(-m "$codex_model")
+    # Context window, reasoning, and sub-agent configuration via -c overrides
+    [[ -n "$codex_context" ]] && codex_args+=(-c "model_context_window=$codex_context")
+    [[ -n "$codex_reasoning" ]] && codex_args+=(-c "model_reasoning_effort="$codex_reasoning"")
+    [[ -n "$codex_max_threads" ]] && codex_args+=(-c "agents.max_threads=$codex_max_threads")
+    [[ -n "$codex_max_depth" ]] && codex_args+=(-c "agents.max_depth=$codex_max_depth")
+    codex_args+=(-)
+
+    if "${codex_bin}" "${codex_args[@]}" < "$prompt_file"; then
+        exit 0
+    else
+        rc=$?
+        printf '"'"'codex exec failed with exit %s; falling back to copilot\n'"'"' "$rc" >&2
+    fi
+fi
+
+copilot_args=(--silent --allow-all-tools --allow-all-paths --no-ask-user --autopilot)
+# Model selection
+[[ -n "$copilot_model" ]] && copilot_args+=(--model="$copilot_model")
+# Reasoning effort
+[[ -n "$copilot_effort" ]] && copilot_args+=(--effort="$copilot_effort")
+# Long context tier (1M tokens)
+[[ -n "$copilot_context" ]] && copilot_args+=(--context "$copilot_context")
+# Autopilot continuation limit (safety cap)
+[[ -n "$copilot_max_continues" ]] && copilot_args+=(--max-autopilot-continues "$copilot_max_continues")
+copilot_args+=(--prompt "$(cat "$prompt_file")")
+
+exec "$copilot_bin" "${copilot_args[@]}"
+' bash /usr/local/bin/codex /usr/local/bin/copilot /tmp/ipfs-supervisor-worktrees/sup-contract-payloads-attempt-2-1784596699 '' 200000 high 10 2 '' high long_context 30
+
+2026-07-21T01:18:20.682415Z ERROR codex_models_manager::cache: failed to load models cache: missing field `supports_reasoning_summaries` at line 88 column 5
+OpenAI Codex v0.144.6
+--------
+workdir: /tmp/ipfs-supervisor-worktrees/sup-contract-payloads-attempt-2-1784596699
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: high
+reasoning summaries: none
+session id: 019f8240-a018-7fd3-ab57-7b55cc05551c
+--------
+user
+You are an autonomous implementation agent working in this repository.
+
+Implement this backlog task completely and thoroughly. Produce a full, production-ready implementation
+that covers all expected outputs. Do not artificially limit scope or break the work into smaller pieces —
+deliver the entire task in one pass, touching as many files as needed.
+
+Task:
+- ID: SUP-CONTRACT-PAYLOADS
+- Title: Payload contract validation and fixture hygiene
+- Priority: P0
+- Track: sup
+- Attempt: 2
+- Todo file: docs/task_boards/ipfs_supervisor_task_board.md
+- Source line: 412
+- Depends on: none
+- Expected outputs: docs/PAYLOAD_CONTRACTS.md, scripts/validate_task_boards.py, tests/test_task_board_contracts.py
+- Validation commands: python scripts/validate_task_boards.py; python -m pytest tests/test_task_board_contracts.py -q
+- Acceptance: Every json fence in PAYLOAD_CONTRACTS.md parses as JSON. Task-board validation catches malformed payload examples before supervisor execution. Contract changes remain compatible with markdown and machine-readable consumers.
+
+
+Primary plan document:
+- docs/AI_AGENT_CHAT_IMPLEMENTATION_PLAN.md when the task ID starts with AGENT-
+- docs/211_SERVICE_NAVIGATION_PORTAL_PLAN.md when the task ID starts with PORTAL-
+
+Rules:
+- Read the relevant plan and nearby code before editing.
+- Do not revert unrelated local changes.
+- Prefer existing repo patterns. Implement comprehensively — create all necessary files, classes, functions, tests, and integrations that the task requires.
+- Implement ALL expected outputs for this task in full. Do not leave stubs, placeholders, or TODOs.
+- If a compact execution packet or goal packet is shown, implement a single cohesive change that advances all the shared packet evidence together without making unrelated edits.
+- You may create new files and modify multiple existing files. Larger, complete implementations are preferred over minimal patches.
+- Run the listed validation commands when practical.
+- The daemon will run the listed validation commands and will only commit and merge the worktree if they pass.
+- Leave generated artifacts and shared dependency paths alone; the daemon restores dist, screenshot artifacts, and linked node_modules before commit.
+- If validation cannot be run, record why in your final response.
+- Do not mark the backlog task completed manually unless the task explicitly asks for TODO metadata changes.
+- Final response should list changed files and validation results.
+
+codex
+I’ll inspect the task board, existing docs, scripts, and tests first so the contract format matches the repo instead of inventing a parallel convention.
+exec
+/bin/bash -lc "sed -n '390,435p' docs/task_boards/ipfs_supervisor_task_board.md" in /tmp/ipfs-supervisor-worktrees/sup-contract-payloads-attempt-2-1784596699
+ succeeded in 0ms:
+- Depends on: TEMP-T4
+- Outputs: templates/claim_support_review.html, templates/document.html, templates/optimization_trace.html, applications/review_api.py, applications/document_api.py, docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md
+- Validation: python -m pytest tests/test_claim_support_review_dashboard_flow.py tests/test_claim_support_review_playwright_smoke.py -q; python -m pytest tests/test_claim_support_review_template.py -q
+- Acceptance: Operators can move from summary metrics to concrete chronology blockers. Drafting surfaces do not overstate readiness when timing rules are unproved. Review and document flows consume the same temporal proof payloads.
+- Source doc: docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md
+- Canonical task id: TEMP-T5
+- Canonical status: validation_required
+
+## SUP-TEMP-T6 Regression and gold-case enforcement
+
+- Status: todo
+- Completion: validation
+- Priority: P0
+- Track: sup
+- Depends on: TEMP-T5
+- Outputs: tests/test_t1_t3_temporal_next_steps.py, tests/test_temporal_rule_profiles.py, tests/test_claim_support_hooks.py, tests/test_review_api.py, tests/test_mediator_three_phase.py, tests/test_claim_support_review_dashboard_flow.py, tests/test_claim_support_review_playwright_smoke.py, tests/test_intake_status.py, docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md
+- Validation: python -m pytest tests/test_claim_support_hooks.py tests/test_review_api.py tests/test_claim_support_review_dashboard_flow.py tests/test_claim_support_review_playwright_smoke.py tests/test_mediator_three_phase.py tests/test_intake_status.py -q; python scripts/run_claim_support_review_regression.py --browser on
+- Acceptance: Chronology regressions fail on payload drift and UI drift. At least one gold case proves sufficient ordering and one fails for an explainable temporal reason.
+- Source doc: docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md
+- Canonical task id: TEMP-T6
+- Canonical status: validation_required
+
+## SUP-CONTRACT-PAYLOADS Payload contract validation and fixture hygiene
+
+- Status: todo
+- Completion: validation
+- Priority: P0
+- Track: sup
+- Depends on: 
+- Outputs: docs/PAYLOAD_CONTRACTS.md, scripts/validate_task_boards.py, tests/test_task_board_contracts.py
+- Validation: python scripts/validate_task_boards.py; python -m pytest tests/test_task_board_contracts.py -q
+- Acceptance: Every json fence in PAYLOAD_CONTRACTS.md parses as JSON. Task-board validation catches malformed payload examples before supervisor execution. Contract changes remain compatible with markdown and machine-readable consumers.
+- Source doc: docs/PAYLOAD_CONTRACTS.md
+- Canonical task id: CONTRACT-PAYLOADS
+- Canonical status: validation_required
+
+exec
+/bin/bash -lc 'pwd && rg --files' in /tmp/ipfs-supervisor-worktrees/sup-contract-payloads-attempt-2-1784596699
+ succeeded in 0ms:
+/tmp/ipfs-supervisor-worktrees/sup-contract-payloads-attempt-2-1784596699
+batch_231_llm_fallback_profile.py
+AUTONOMOUS_SESSION_REPORT.md
+workflow_phase_guidance.py
+config.review_surface.json
+test_probate_integration.py
+PERFORMANCE_OPTIMIZATION_SESSION_COMPLETE.md
+SESSION_84_PHASE4_EXTENDED_SUMMARY.md
+applications/__init__.py
+applications/complaint_mcp_server.py
+applications/complaint_workspace_api.py
+applications/site_ui.py
+applications/dashboard_ui.py
+applications/document_ui.py
+applications/review_ui.py
+applications/launcher.py
+applications/complaint_mcp_protocol.py
+applications/complaint_cli.py
+applications/fastapi_compat.py
+applications/ui_review.py
+applications/document_api.py
+applications/complaint_workspace.py
+applications/review_api.py
+applications/cli.py
+setup.py
+applications/server.py
+config.review_surface.huggingface_router.json
+test_criticscor_comparisons.py
+BATCH_202_PLAN.md
+SESSION_84_PHASE4_SUMMARY.md
+README_OLD_BACKUP.md
+config.huggingface_router.json
+document_optimization.py
+complaint_analysis/prompt_templates.py
+complaint_analysis/indexer.py
+complaint_analysis/complaint_types.py
+complaint_analysis/keywords.py
+complaint_analysis/dei_provision_extractor.py
+complaint_analysis/README.md
+patches/be80bac00cb8b667.json
+patches/6514372c090a926a.patch
+patches/patch_history.json
+patches/1b8e9b0fdcb781df.patch
+patches/c5b5667b756c64b4.json
+patches/c5b5667b756c64b4.patch
+patches/e4631a2f82113468.patch
+patches/fc12a1812d71f4c7.json
+patches/eb2d6dad0379baeb.json
+patches/f75ccacd6107c1f9.patch
+patches/75b38ae8a6ee421b.patch
+patches/290463c4944f30f4.patch
+patches/e0a186b0a6b1de09.patch
+patches/ab3906ceb3c45f53.patch
+patches/8c34d52106da17f3.json
+patches/ab3906ceb3c45f53.json
+patches/1b8e9b0fdcb781df.json
+patches/eb2d6dad0379baeb.patch
+patches/fc12a1812d71f4c7.patch
+patches/f75ccacd6107c1f9.json
+patches/6514372c090a926a.json
+patches/4fc71fa1da29942a.patch
+patches/e0a186b0a6b1de09.json
+patches/4fc71fa1da29942a.json
+patches/be80bac00cb8b667.patch
+patches/290463c4944f30f4.json
+patches/e4631a2f82113468.json
+patches/8c34d52106da17f3.patch
+patches/75b38ae8a6ee421b.json
+workspace/improve_temporary_session_complaint.py
+complaint_analysis/decision_trees.py
+complaint_analysis/research_seed_generator.py
+complaint_analysis/seed_generator.py
+complaint_analysis/dei_risk_scoring.py
+complaint_analysis/dei_report_generator.py
+P3_SESSION_4_INFRASTRUCTURE_SUMMARY.md
+main.py
+scripts/graphrag_email_manifest.py
+benchmarks/bench_sentence_window_scaling.py
+claim_support_review.py
+intake_status.py
+playwright.config.js
+test_main_app_surface.py
+run.py
+Makefile
+BENCHMARK_SUITE_SESSION_SUMMARY.md
+BATCH_254_258_SESSION_SUMMARY.md
+SESSION_84_FINAL_SUMMARY.md
+PARALLEL_VALIDATION_FIX_REPORT.md
+QUERY_OPTIMIZER_INTEGRATION_SESSION_WIP.md
+config.adversarial_autopatch_live.json
+SESSION_84_PROGRESS.md
+README.md
+QUERY_OPTIMIZER_MODULARIZATION_COMPLETION.md
+scripts/generate_feature_wiring_matrix.py
+scripts/check_hacc_routers.py
+scripts/summarize_reranker_metrics.py
+scripts/build_legal_corpus_index.py
+scripts/show_hacc_grounded_history.py
+scripts/run_hacc_grounded_pipeline.py
+scripts/merge_email_manifests.py
+scripts/generate_email_search_plan.py
+scripts/agentic_complaint_evidence_scraper.py
+scripts/validate_intake_follow_up_worksheet.py
+scripts/run_standard_regression.py
+scripts/enrich_email_timeline_authorities.py
+TODO.md
+scripts/search_email_agentic.py
+scripts/compare_hacc_matrix_runs.py
+scripts/run_hacc_adversarial_report.py
+scripts/backfill_claim_testimony_links.py
+scripts/render_supervisor_markdown_board.py
+scripts/master_case_email.py
+scripts/run_hacc_preset_matrix.py
+scripts/agentic_scraper_cli.py
+scripts/gmail_duckdb_daemon.py
+scripts/generate_decision_trees.py
+scripts/import_gmail_evidence.py
+scripts/validate_task_boards.py
+scripts/cleanup_imports.py
+scripts/run_hacc_grounding_regression.py
+scripts/import_local_eml_directory.py
+scripts/run_gmail_duckdb_pipeline.py
+scripts/run_claim_support_review_regression.py
+scripts/generate_hacc_email_seed_plan.py
+scripts/embed_hacc_knowledge_graph.py
+scripts/run_package_install_smoke.py
+scripts/watch_hacc_adversarial_run.py
+scripts/run_cli_mediator.sh
+scripts/validate_canary_ops.py
+scripts/build_email_timeline_handoff.py
+scripts/process_hacc_pdfs_to_kg.py
+scripts/ui_ux_optimizer_daemon.py
+scripts/synthesize_hacc_complaint.py
+scripts/run_hacc_unit_regression.py
+complaint_analysis/decision_trees/tax_law_tree.json
+complaint_analysis/decision_trees/family_law_tree.json
+complaint_analysis/decision_trees/immigration_tree.json
+complaint_analysis/decision_trees/civil_rights_tree.json
+complaint_analysis/decision_trees/environmental_law_tree.json
+complaint_analysis/decision_trees/healthcare_tree.json
+complaint_analysis/decision_trees/criminal_defense_tree.json
+complaint_analysis/decision_trees/free_speech_tree.json
+UNIFIED_PERFORMANCE_ANALYSIS.md
+complaint_analysis/decision_trees/probate_tree.json
+complaint_analysis/decision_trees/intellectual_property_tree.json
+config.llm_router.json
+complaint_analysis/decision_trees/consumer_tree.json
+plan-mcpPlusPlusIntegration.prompt.md
+complaint_analysis/decision_trees/housing_tree.json
+pytest.ini
+complaint_analysis/decision_trees/dei_tree.json
+BATCH_305_306_SESSION_SUMMARY.md
+complaint_analysis/decision_trees/employment_tree.json
+complaint_analysis/base.py
+complaint_analysis/__init__.py
+SESSION_SUMMARY_PERFORMANCE_PROFILING_PROGRESS.md
+examples/legal_authority_research_demo.py
+examples/search_hooks_demo.py
+examples/sweep_ranker.py
+examples/session84_observability_examples.py
+examples/session_sgd_report.py
+examples/hacc_integration_example.py
+examples/observability_benchmarks.py
+examples/chaos_testing_scenarios.py
+tmp_validation_llm_enabled/llm-user.json
+complaint_analysis/risk_scoring.py
+complaint_analysis/legal_patterns.py
+complaint_analysis/analyzer.py
+complaint_analysis/temporal_rule_profiles.py
+complaint_analysis/research_queue_workflow.py
+complaint_analysis/response_parsers.py
+complaint_analysis/research_bootstrap_workflow.py
+workspace/temporary-cli-session-migration/README.md
+requirements.txt
+P3_INFRASTRUCTURE_COMPLETION_SESSION.md
+add_init_vars.py
+README_OLD.md
+test_complaint_mcp_protocol.py
+examples/evidence_management_demo.py
+examples/adversarial_harness_standalone.py
+examples/parallelism_backoff_sweep.py
+examples/complaint_analysis_integration_demo.py
+examples/codex_multi_run_autopatch.py
+examples/dei_taxonomy_example.py
+examples/three_phase_example.py
+examples/legal_analysis_demo.py
+examples/adversarial_optimization_demo.py
+examples/codex_multi_run_autopatch_loop.py
+examples/web_evidence_discovery_demo.py
+examples/adversarial_harness_autopatch_demo.py
+examples/adversarial_harness_example.py
+examples/codex_autopatch_from_run.py
+examples/hacc_dei_analysis_example.py
+examples/batch_sgd_cycle.py
+examples/claim_support_review_demo.py
+examples/complaint_analysis_taxonomies_demo.py
+SESSION_3_COMPLETE_SUMMARY.md
+SESSION_SUMMARY_PERFORMANCE_CYCLE_2.md
+SESSION_SUMMARY_2026_02_24_COMPLETE.md
+config.adversarial_autopatch_live_batch.json
+test_extraction_config_validation.py
+README_OLD_FULL.md
+lib/knowledge_graph_formats.py
+lib/deontic_logic.py
+lib/__init__.py
+backends/__init__.py
+backends/openai.py
+backends/openaibackend.py
+backends/multimodal_router_backend.py
+backends/llm_router_backend.py
+backends/huggingface.py
+complaint_generator.egg-info/PKG-INFO
+backends/workstation.py
+complaint_generator.egg-info/requires.txt
+complaint_generator.egg-info/entry_points.txt
+complaint_generator.egg-info/dependency_links.txt
+complaint_generator.egg-info/top_level.txt
+complaint_generator.egg-info/SOURCES.txt
+complaint_generator/email_credentials.py
+complaint_generator/__main__.py
+complaint_generator/legacy_session_migration.py
+complaint_generator/email_graphrag.py
+complaint_generator/workspace.py
+complaint_generator/local_evidence_import.py
+complaint_generator/evidence_relevance.py
+complaint_generator/email_pipeline.py
+complaint_generator/__init__.py
+complaint_generator/data_migration.py
+complaint_generator/ui_optimizer_daemon.py
+complaint_generator/cli.py
+complaint_generator/agentic_evidence_download.py
+complaint_generator/email_oauth.py
+complaint_generator/apps.py
+complaint_generator/mcp.py
+complaint_generator/entrypoints.py
+complaint_generator/mcp_server.py
+complaint_generator/email_timeline_handoff.py
+complaint_generator/ui_ux_workflow.py
+complaint_generator/email_import.py
+complaint_generator/review.py
+complaint_generator/email_agentic_search.py
+complaint_generator/email_authority_enrichment.py
+complaint_generator/email_seed_planner.py
+PHASE_2_COMPLETION_SUMMARY.md
+document_pipeline.py
+playwright/server.js
+playwright/playwright_server.js
+playwright/playwright_app.py
+ITEM_7_COMPLETION_SUMMARY.md
+docs/DEPLOYMENT.md
+docs/BACKENDS.md
+docs/PROFILING_BATCH_264_ANALYSIS.md
+docs/IPFS_DATASETS_PY_DIRECT_IMPORT_AUDIT.md
+docs/COMPLAINT_ANALYSIS_EXAMPLES.md
+docs/IPFS_DATASETS_PY_BATCH6_IMPLEMENTATION_PLAN.md
+docs/ARCHITECTURE.md
+playwright/tests/complaint-flow.spec.js
+DOCUMENTATION_INDEX.md
+update_detect_graph_type.py
+BATCH_329_EXCEPTION_HANDLING_SUMMARY.md
+playwright/tests/navigation.spec.js
+lib/document_render/reportlab_helpers.py
+lib/document_render/__init__.py
+lib/legal_document.py
+lib/support_map.py
+lib/log.py
+lib/knowledge_graph_export.py
+adversarial_harness/harness.py
+adversarial_harness/session.py
+adversarial_harness/demo_autopatch.py
+adversarial_harness/__init__.py
+adversarial_harness/complainant.py
+adversarial_harness/hacc_evidence.py
+adversarial_harness/critic.py
+adversarial_harness/README.md
+adversarial_harness/search_hooks.py
+adversarial_harness/seed_complaints.py
+adversarial_harness/optimizer.py
+tmp_validation_llm_draft/validation-user.json
+docs/integration/CIRCUIT_BREAKER_GUIDE.md
+add_optimization_methods.py
+SESSION_4_QUERY_OPTIMIZER_INTEGRATION_COMPLETE.md
+docs/HACC_INTEGRATION_ARCHITECTURE.md
+config.adversarial_autopatch_demo.json
+docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md
+test_pipeline_error_recovery.py
+docs/API_REFERENCE_AGENTIC.md
+test_parallel_validation_fix.py
+MANIFEST.in
+SESSION_SUMMARY_2024_02_24.md
+playwright/tests/helpers/fixtures.js
+playwright/tests/support/mockApi.js
+lib/formal_logic/__init__.py
+lib/formal_logic/core.py
+lib/formal_logic/frames.py
+docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md
+docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_FILE_WORKLIST.md
+docs/API_REFERENCE_GRAPHRAG.md
+lib/chat_payloads.py
+TESTING.md
+add_dedup_factory.py
+CONTRIBUTING.md
+SESSION_SUMMARY_2026_02_23.md
+package.json
+docs/observability/TROUBLESHOOTING.md
+docs/task_boards/ipfs_supervisor_task_board.md
+docs/task_boards/ipfs_supervisor_task_board.json
+docs/EXTRACTION_CONFIG_GUIDE.md
+docs/HACC_SCRIPTS_REUSE_ANALYSIS.md
+docs/PRODUCTION_DEPLOYMENT_GUIDE.md
+tmp_workspace_debug/did-key-fallback-238d1d58205943569241ca68b96e5afb.json
+docs/HACC_QUICK_REFERENCE.md
+tests/test_ontology_critic_explain_score.py
+docs/LEGAL_HOOKS.md
+docs/HACC_INTEGRATION.md
+tests/test_ipld_logic_storage_dependency.py
+docs/EXAMPLES.md
+tests/test_entity_linking_disambiguation.py
+tests/test_batch_231_diversity.py
+AUDIT_DICT_RETURNS_REPORT.md
+docs/SEARCH_HOOKS.md
+tests/test_email_duckdb_index.py
+complete_optimizer_integration.py
+docs/ADVERSARIAL_HARNESS.md
+drift_report_mcp.json
+tests/test_batch_237_entropy_metrics.py
+BATCH_328_API_RETURN_TYPES_SUMMARY.md
+tests/test_complaint_phases.py
+tests/test_deontic_logic.py
+batch_230_benchmark.py
+tests/test_ipfs_datasets_loader.py
+tests/test_document_optimization_workflow_actions.py
+pyproject.toml
+tests/test_contextual_entity_disambiguation.py
+tests/test_run_claim_support_review_regression_cli.py
+tests/test_advanced_ontology_features.py
+logs/test.log
+tests/test_llm_router_backend.py
+logs/UNCAUGHT_EXCEPTION.log
+tests/test_theorem_export.py
+tests/test_ipfs_provenance.py
+tests/test_import_gmail_evidence_cli.py
+tests/test_validation_cache_types.py
+tests/test_retrieval_orchestrator_fusion.py
+tests/test_claim_support_review_playwright_smoke.py
+tests/test_canary_ops_validation.py
+tests/test_batch_207_legalgraph_methods.py
+tests/test_symbolicai_logic_dependency.py
+tests/test_batch_223_dependency_graph_methods.py
+tests/test_primary_surface_button_contract.py
+tests/test_batch_236_quantile_metrics.py
+docs/PROFILING_BATCH_262_ANALYSIS.md
+tests/test_batch_216_complaint_risk_scorer_methods.py
+docs/IPFS_DATASETS_PY_BATCH1_STATUS_AUDIT.md
+docs/FEATURE_WIRING_MATRIX.json
+tests/test_batch_227_dependency_graph_methods.py
+docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md
+tests/test_complaint_taxonomies.py
+docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md
+docs/IPFS_DATASETS_PY_BATCH1_SLICE2_TASKLIST.md
+docs/HACC_FILES_SUMMARY.md
+docs/LAYPERSON_DOCKET_WORKSPACE_UI_UX_PLAN.md
+docs/CHRONOLOGY_FIRST_INTAKE_EVIDENCE_NEXT_BATCH_PLAN.md
+docs/HACC_ANALYSIS_README.md
+docs/PAYLOAD_CONTRACTS.md
+docs/MIKE_INTEGRATION_PLAYBOOK.md
+docs/EVIDENCE_MANAGEMENT.md
+docs/OBSERVABILITY_INDEX.md
+docs/IPFS_DATASETS_PY_FILE_WORKLIST.md
+docs/TEMPORAL_TIMELINE_PROOF_PLAN.md
+tests/test_inquiries_priority.py
+docs/GRAPHRAG_REFACTORING_ROADMAP.md
+tests/test_logic_local_formal_logic_bridge.py
+docs/CONFIGURATION.md
+docs/ADVERSARIAL_IMPLEMENTATION_SUMMARY.md
+config.adversarial_autopatch_live_multibackend.json
+docs/SECURITY.md
+docs/IPFS_DATASETS_PY_BATCH1_SLICE3_TASKLIST.md
+docs/HACC_IPFS_HYBRID_USAGE.md
+docs/TAXONOMY_EXPANSION_SUMMARY.md
+docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md
+docs/IPFS_DATASETS_PY_INTEGRATION.md
+docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md
+docs/WEB_EVIDENCE_DISCOVERY.md
+docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md
+docs/archive/reorganization/MASTER_IMPROVEMENT_PLAN_2026_v39.md
+docs/HACC_VS_IPFS_DATASETS_QUICK.md
+docs/API_REFERENCE_COMMON.md
+docs/COMPLAINT_ANALYSIS_INTEGRATION.md
+docs/AGENT_SUPERVISOR_TASK_BOARD.md
+tests/test_intake_evidence_backlog_batch0_2.py
+tests/test_mediator_inquiry_payload.py
+tests/test_batch_264_api_type_contracts.py
+docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md
+docs/FEATURE_WIRING_MATRIX.md
+docs/IMPLEMENTATION_SUMMARY.md
+datasets/CCINDEX_WARC_CACHE_DIR/ranges/120cd4f5b5e33aaf77863e1199943e3245bc174a7ef393de54e9b34700ef7dea.bin
+docs/INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md
+logs/app.log
+docs/LEGAL_AUTHORITY_RESEARCH.md
+docs/THREE_PHASE_SYSTEM.md
+docs/PERFORMANCE_TUNING.md
+docs/REFINEMENT_STRATEGY_GUIDE.md
+docs/IPFS_DATASETS_INTEGRATION.md
+datasets/CCINDEX_WARC_CACHE_DIR/ranges/14ce88a48f01c45f629f7cf04ca8d8f0e496d33b94ad06b1e5ae8697c2384767.bin
+datasets/CCINDEX_WARC_CACHE_DIR/ranges/e913dc0afb1c39ca04b5be97e6f6cbcc43219df2d38cc17623f363d9fb6a1dc0.bin
+docs/API_REFERENCE.md
+docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md
+docs/IPFS_DATASETS_PY_NEXT_BATCH_PLAN.md
+docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md
+docs/VERIFICATION_SUMMARY.md
+EXTRACTION_PIPELINE_PROFILE_FINAL.md
+docs/tracing/OTEL_GUIDE.md
+docs/HACC_GROUNDING_REGRESSION.md
+docs/APPLICATIONS.md
+docs/LLM_ROUTER.md
+docs/metrics/PROMETHEUS_GUIDE.md
+docs/optimizers/TROUBLESHOOTING_DASHBOARDS.md
+docs/optimizers/BACKEND_RESILIENCE_POLICY_INVENTORY.md
+docs/optimizers/DISTRIBUTED_ONTOLOGY_REFINEMENT.md
+docs/optimizers/INTERACTIVE_REFINEMENT_ENDPOINT.md
+docs/optimizers/API_TYPE_CONTRACTS.md
+docs/optimizers/HOW_TO_ADD_NEW_OPTIMIZER.md
+docs/migration/LOGGING_MIGRATION_GUIDE.md
+docs/optimizers/ALERTING_EXAMPLES.md
+tests/test_ipfs_datasets_phase0_scaffold.py
+docs/optimizers/INTEGRATION_EXAMPLES.md
+docs/optimizers/STRUCTURED_JSON_LOG_SCHEMA.md
+tests/test_proof_report_and_pinning.py
+docs/optimizers/CONTEXT_CONFIG_CONSTRUCTOR_INVENTORY.md
+tests/test_cli_commands.py
+docs/optimizers/TROUBLESHOOTING_GUIDE.md
+docs/IPFS_DATASETS_PY_ENHANCEMENT_PLAN.md
+tests/test_batch_215_legal_pattern_extractor_methods.py
+integrations/ipfs_datasets/capabilities.py
+integrations/ipfs_datasets/vector_store.py
+integrations/ipfs_datasets/legal.py
+integrations/ipfs_datasets/legal_data.py
+integrations/ipfs_datasets/__init__.py
+integrations/ipfs_datasets/scraper_daemon.py
+integrations/ipfs_datasets/router_status.py
+integrations/ipfs_datasets/logic.py
+integrations/ipfs_datasets/mcp_gateway.py
+integrations/ipfs_datasets/types.py
+integrations/ipfs_datasets/llm.py
+integrations/ipfs_datasets/theorem_export.py
+integrations/ipfs_datasets/graphs.py
+integrations/ipfs_datasets/multimodal.py
+integrations/ipfs_datasets/graphrag.py
+integrations/ipfs_datasets/policy_rules.py
+integrations/ipfs_datasets/search.py
+integrations/ipfs_datasets/draft_logic_pipeline.py
+integrations/ipfs_datasets/storage.py
+integrations/ipfs_datasets/loader.py
+integrations/ipfs_datasets/provenance.py
+docs/optimizers/SANDBOXED_PROVER_POLICY.md
+tests/test_log.py
+integrations/ipfs_datasets/documents.py
+integrations/ipfs_datasets/quality.py
+docs/optimizers/PERFORMANCE_TUNING_GUIDE.md
+tests/test_lib_deontic_logic.py
+tests/test_m4_retrieval_sessions.py
+tests/test_intake_status.py
+tests/test_lib_cross_consumer_contracts.py
+ipfs_datasets_py/audit_docs_drift.py
+templates/chat.html
+tests/test_logic_integrations_import_quiet.py
+templates/claim_support_review.html
+tests/test_review_surface_site_playwright.py
+templates/index.html
+tests/test_batch_217_decision_tree_generator_methods.py
+templates/profile.html
+tests/README.md
+templates/document.html.bak
+tests/test_hacc_integration.py
+templates/optimization_trace.html
+tests/test_adversarial_harness.py
+tests/test_complaint_generator_packaging.py
+tests/test_run_package_install_smoke_cli.py
+templates/home.html
+templates/MLWYSIWYG.html
+tests/test_validate_intake_follow_up_worksheet.py
+templates/document.html
+tests/test_website_cohesion_playwright.py
+tests/test_legal_hooks.py
+templates/results.html
+tests/test_logic_integration_import_quiet.py
+templates/workspace.html
+tests/test_batch_238_time_series_metrics.py
+tests/test_complaint_generator_site_playwright.py
+templates/__init__.py
+tests/test_complaint_manager_interface_docs.py
+tests/test_ui_ux_optimizer_daemon_cli.py
+templates/chaticon.png
+tests/test_run_gmail_duckdb_pipeline_cli.py
+tests/test_llm_router_shim_copilot_sdk.py
+tests/test_intake_case_file.py
+tests/test_enhanced_denoising.py
+tests/test_vector_phase2_integration.py
+tests/test_score_improve_proof_history.py
+integrations/mike/__init__.py
+tests/test_ipfs_adapter_import_boundary.py
+tests/test_complaint_analysis_integration.py
+integrations/__init__.py
+tests/test_logic_docs_truth.py
+docs/systemd/complaint-ui-optimizer-daemon.service.example
+tests/test_logic_integrations_deprecated_shims_import_quiet.py
+tests/test_inquiries.py
+integrations/mike/llm_patch.py
+docs/IPFS_DATASETS_PY_COMPATIBILITY_MATRIX.md
+docs/PROBATE_INTEGRATION.md
+docs/IPFS_DATASETS_PY_BATCH1_SLICE1_TASKLIST.md
+profile_generate_10k.py
+ipfs_datasets_py/__init__.py
+docs/DOCUMENT_GENERATION_AGENTIC_OPTIMIZATION_PLAN.md
+ipfs_datasets_py/profile_10k_token_extraction.py
+tests/test_w94_authority_graph_integration.py
+tests/test_ui_review_router_fallback_regression.py
+tests/test_critic_intake_priority.py
+tests/test_batch_233_metrics.py
+tests/test_ipfs_logic_adapter.py
+tests/test_temporal_reasoning_extraction.py
+tests/test_master_case_email.py
+tests/test_response_validators_types.py
+tests/test_ui_ux_optimizer_bundle.py
+tests/test_batch_220_knowledge_graph_builder_methods.py
+tests/test_llm_router_p2p_task_queue_provider.py
+tests/test_claim_support_review_template.py
+tests/test_dei_analysis.py
+tests/test_batch_216_prompt_library_methods.py
+tests/test_mike_skills.py
+tests/test_adversarial_session_intake_prompts.py
+sdk/javascript/index.mjs
+sdk/javascript/index.js
+sdk/javascript/package.json
+tests/test_logic_api_import_quiet.py
+tests/test_gmail_duckdb_daemon_cli.py
+tests/test_task_board_contracts.py
+tests/test_m5_legal_proof_contradiction_engine.py
+tests/test_quality_scorer_and_new_mcp_tools.py
+tests/test_extraction_quality_metrics.py
+tests/test_llm_fallback_integration.py
+tests/test_synonym_handling_resolution.py
+tests/test_batch_243_critic_explainscor e.py
+tests/test_m3_graphrag_quality_scoring.py
+mediator/readme.md
+tests/test_integration.py
+tests/test_codex_rate_limit_parsing.py
+tests/test_codex_cli_jsonl_parsing.py
+mediator/exceptions.py
+tests/test_web_evidence_hooks.py
+tests/test_workspace_legacy_intake_sanitization.py
+mediator/claim_support_hooks.py
+tests/test_negation_handling_extraction.py
+tests/test_llm_router_circuit_breaker.py
+integrations/mike/skills/complaint-draft-logic-pipeline.json
+integrations/mike/skills/__init__.py
+integrations/mike/skills/complaint-grounding.json
+integrations/mike/skills/complaint-corpus-containment.json
+integrations/mike/skills/complaint-corpus-search.json
+integrations/mike/skills/complaint-mike-llm-patch.json
+integrations/mike/skills/complaint-policy-rules.json
+mediator/legal_corpus_hooks.py
+integrations/mike/skills/complaint-logic.json
+mediator/formal_document.py
+integrations/mike/skills/complaint-authority-graphs.json
+integrations/mike/skills/complaint-router.json
+mediator/web_evidence_hooks.py
+mediator/legal_authority_hooks.py
+mediator/complaint.py
+complaint_phases/knowledge_graph.py
+mediator/legal_hooks.py
+complaint_phases/__init__.py
+tests/test_batch_206_denoiser_methods.py
+complaint_phases/phase_manager.py
+complaint_phases/legal_document.py
+tests/test_batch_218_indexer_methods.py
+complaint_phases/support_map.py
+complaint_phases/intake_case_file.py
+mediator/evidence_hooks.py
+complaint_phases/neurosymbolic_matcher.py
+tests/test_claim_support_review_dashboard_flow.py
+complaint_phases/dependency_graph.py
+complaint_phases/intake_claim_registry.py
+mediator/mediator.py
+complaint_phases/README.md
+complaint_phases/legal_graph.py
+complaint_phases/deontic_logic.py
+complaint_phases/denoiser.py
+static/complaint_app_shell.js
+static/chat.js
+static/complaint_mcp_sdk.mjs
+static/profile_data.js
+static/__init__.py
+static/complaint_app_shell.css
+static/chat_entry_utils.js
+mediator/__init__.py
+mediator/strings.py
+mediator/inquiries.py
+static/complaint_mcp_sdk.js
+ipfs_datasets_py/logic/__init__.py
+tests/test_claim_support_regression_workflow_contract.py
+tests/test_document_pipeline_fallbacks.py
+mediator/state.py
+tests/test_batch_213_response_parser_factory.py
+tests/test_optimizer_intake_priority.py
+tests/test_batch_213_dei_risk_scorer_methods.py
+tests/test_ui_optimizer_daemon_cli.py
+tests/test_batch_208_knowledgegraph_methods.py
+tests/test_ontology_pipeline_integration.py
+tests/test_m3_predicate_templates.py
+tests/test_formal_diagnostics_export_structure.py
+tests/test_batch_234_metrics.py
+tests/test_run_hacc_preset_matrix.py
+tests/test_synthesize_hacc_complaint.py
+tests/test_performance_profiling_suite.py
+tests/test_ui_review_multimodal.py
+ipfs_datasets_py/logic/security/llm_circuit_breaker.py
+tests/test_docket_workspace_surface.py
+tests/test_check_contradictions_and_graphrag_local.py
+tests/test_attachment_text_extractor.py
+ipfs_datasets_py/logic/security/__init__.py
+tests/test_complaint_analysis.py
+tests/test_email_graphrag.py
+tests/test_surya_ocr_compat.py
+tests/test_llm_router_shim_gemini_cli.py
+tests/test_refinement_feedback_loops.py
+tests/test_batch_205_neurosymbolic_methods.py
+tests/test_batch_210_seed_generator_methods.py
+ipfs_datasets_py/logic/observability/__init__.py
+ipfs_datasets_py/logic/observability/otel_integration.py
+tests/test_workspace_data_migration.py
+ipfs_datasets_py/logic/observability/metrics_prometheus.py
+tests/test_complaint_mcp_sdk_contract.py
+ipfs_datasets_py/logic/observability/structured_logging.py
+tests/test_state.py
+tests/test_batch_210_deiriskscoring_methods.py
+tests/test_email_seed_planner.py
+mediator/integrations/graph_tools.py
+mediator/integrations/vector_tools.py
+mediator/integrations/settings.py
+mediator/integrations/caching.py
+mediator/integrations/contracts.py
+mediator/integrations/retrieval_orchestrator.py
+mediator/integrations/__init__.py
+mediator/integrations/adapter.py
+mediator/integrations/provenance.py
+tests/test_lib_formal_logic.py
+tests/test_complaint_generator_tools.py
+tests/test_no_duckdb_fallbacks.py
+tests/test_mediator_legal_support_context.py
+tests/test_batch_265_path_validation_security.py
+tests/test_review_health.py
+tests/test_logic_zkp_import_quiet.py
+tests/test_run_hacc_grounding_regression_cli.py
+tests/test_application_launcher.py
+tests/unittest_batch_235.py
+tests/test_phase_manager_temporal_registry.py
+tests/test_multimodal_router_backend.py
+tests/test_email_import.py
+tests/test_batch_219_denoiser_methods.py
+tests/test_logic_export_inventory_contract.py
+tests/test_relationship_inference_accuracy.py
+tests/test_batch_225_legal_pattern_extractor_methods.py
+tests/test_legal_authority_hooks.py
+tests/test_batch_222_legal_graph_methods.py
+tests/conftest.py
+tests/test_agentic_evidence_download.py
+tests/mcp/unit/test_mcplusplus_v39_session84_concurrency.py
+tests/mcp/unit/test_mcplusplus_v39_session84_recovery.py
+tests/mcp/unit/test_mcplusplus_v39_session84_properties.py
+tests/mcp/unit/test_mcplusplus_v38_session83.py
+tests/mcp/unit/test_observability_property_based.py
+tests/mcp/unit/conftest.py
+tests/mcp/unit/test_mcplusplus_v39_session84_observability.py
+tests/mcp/integration/test_integration_observability_core.py
+tests/test_email_agentic_search.py
+tests/test_import_local_eml_directory.py
+tests/test_batch_209_dependencygraph_methods.py
+tests/test_show_hacc_grounded_history_cli.py
+tests/test_lib_support_map.py
+tests/test_ui_ux_workflow.py
+tests/test_evidence_hooks.py
+tests/test_llm_router_shim_claude_code.py
+tests/test_batch_214_prompt_library_validation.py
+tests/test_document_workflow_targeting_summary.py
+tests/test_lib_formal_logic_frames.py
+tests/test_legal_document_parsing.py
+tests/test_batch_228_dependency_graph_methods.py
+tests/test_m4_operator_drilldown.py
+tests/test_local_evidence_import.py
+tests/test_batch_214_keyword_registry_methods.py
+tests/test_support_map.py
+tests/test_batch3_ambiguity_contradiction_workflow.py
+tests/test_llm_router_shim_codex_cli.py
+tests/test_batch_212_complaint_analyzer_methods.py
+tests/test_ontology_generator_tier4_types.py
+tests/test_batch_243_critic_explain_score.py
+tests/test_batch_230_features.py
+tests/test_p2p_workflow_scheduler_tools.py
+tests/test_email_authority_enrichment.py
+tests/test_mediator.py
+tests/test_complaint_generator_package.py
+tests/test_run_hacc_adversarial_report.py
+tests/test_logic_common_feature_detection_import_quiet.py
+tests/test_evidence_relevance.py
+tests/test_p2p_mcp_integration.py
+tests/test_mediator_three_phase.py
+tests/test_workspace_template_contract.py
+tests/test_sgd_cycle_integration.py
+tests/test_claim_support_hooks.py
+tests/test_email_timeline_handoff.py
+tests/test_workflow_phase_guidance.py
+tests/test_cache_invalidation.py
+tests/test_consistency_validation_suite.py
+tests/test_batch_224_dependency_graph_methods.py
+tests/unit/optimizers/graphrag/test_ontology_critic_hypothesis.py
+tests/unit/optimizers/graphrag/test_critic_score_distribution.py
+tests/unit/optimizers/graphrag/test_ontology_batch_processing.py
+tests/unit/optimizers/graphrag/test_ontology_serialization.py
+tests/unit/optimizers/graphrag/test_pipeline_json_logger.py
+tests/unit/optimizers/graphrag/test_query_graph_traversal_performance.py
+tests/unit/optimizers/graphrag/test_language_router.py
+tests/unit/optimizers/graphrag/test_refinement_playbook_system.py
+tests/unit/optimizers/graphrag/test_refinement_interactive_ui_endpoint.py
+tests/unit/optimizers/graphrag/test_batch_229_config_caching.py
+tests/unit/optimizers/graphrag/test_batch_apply_strategies.py
+tests/unit/optimizers/graphrag/test_ontology_comparator.py
+tests/unit/optimizers/graphrag/conftest.py
+tests/unit/optimizers/graphrag/test_score_analyzer.py
+tests/unit/optimizers/graphrag/test_batch_228_pattern_caching.py
+tests/unit/optimizers/graphrag/test_batch_241_batch_api_methods.py
+tests/test_domain_adaptation_learning.py
+tests/test_agentic_scraper_cli.py
+tests/test_mike_status_contract.py
+tests/test_llm_router_provider_priority.py
+tests/test_document_pipeline.py
+tests/test_lib_legal_document.py
+tests/test_ipfs_adapter_types.py
+tests/test_ontology_validator_types.py
+tests/test_graph_phase2_integration.py
+tests/test_pipeline_json_logger_types.py
+tests/test_run_hacc_grounded_pipeline_cli.py
+tests/test_batch_215_complaint_risk_scorer_methods.py
+tests/test_ipfs_llm_huggingface_router.py
+tests/test_generate_email_search_plan_cli.py
+tests/test_main_chat_payload.py
+tests/test_run_standard_regression_cli.py
+tests/test_error_boundary_comprehensive.py
+tests/test_batch_239_anomaly_metrics.py
+tests/test_m3_graph_snapshot_support_paths.py
+tests/__init__.py
+tests/test_hacc_grounded_history_docs.py
+tests/test_hacc_evidence_loader.py
+tests/test_review_api.py
+tests/test_t1_t3_temporal_next_steps.py
+tests/test_ipfs_llm_accelerate_diagnostics.py
+tests/test_property_based_extraction_testing.py
+tests/test_backfill_claim_testimony_links_cli.py
+tests/test_review_surface_config.py
+tests/test_llm_router_codex_quota_detection.py
+tests/test_logic_public_api_contract.py
+tests/test_temporal_rule_profiles.py
+tests/test_complaint_generator_package_surface.py
+tests/test_email_processor_window.py
+tests/test_ipfs_adapter_layer.py
+tests/test_batch_226_response_parser_factory_methods.py
+tests/test_draft_logic_pipeline.py
+tests/test_run_hacc_unit_regression_cli.py
+tests/test_merge_email_manifests.py
+tests/test_search_hooks.py
+tests/test_sweep_ranker.py
+tests/test_ontology_generator_tier3_types.py
+tests/test_lib_document_render.py
+tests/performance/optimizers/test_batch_257_optimization_benchmarking.py
+tests/performance/optimizers/test_batch_258_llm_agent_integration.py
+tests/test_complaint_support_context.py
+tests/test_formal_document_pipeline.py
+tests/test_batch_221_response_parser_factory_methods.py
+tests/unit_tests/optimizers/test_graphrag_ontology_optimizer_helpers.py
+tests/unit_tests/optimizers/test_lazy_backend_loader.py
+tests/unit_tests/optimizers/test_graphrag_ontology_schema_golden.py
+tests/unit_tests/optimizers/test_benchmark_utils.py
+tests/unit_tests/optimizers/test_merge_ontologies_benchmark.py
+tests/unit_tests/optimizers/test_circuit_breaker_integration.py
+tests/unit_tests/optimizers/test_llm_lazy_loader.py
+tests/unit_tests/optimizers/test_circuit_breaker.py
+tests/unit_tests/optimizers/conftest.py
+tests/unit_tests/optimizers/test_batch_entity_deduplication.py
+tests/unit_tests/optimizers/graphrag/test_parallel_relationship_inference.py
+tests/unit_tests/optimizers/graphrag/test_domain_aware_config.py
+
+exec
+/bin/bash -lc 'git status --short' in /tmp/ipfs-supervisor-worktrees/sup-contract-payloads-attempt-2-1784596699
+ succeeded in 474ms:
+codex
+The expected files already exist, so I’m treating this as a hardening task rather than a greenfield add. Next I’m reading the current validator, payload contract doc, and contract tests to identify gaps against the acceptance criteria.
+exec
+/bin/bash -lc "sed -n '1,260p' scripts/validate_task_boards.py" in /tmp/ipfs-supervisor-worktrees/sup-contract-payloads-attempt-2-1784596699
+ succeeded in 0ms:
+#!/usr/bin/env python3
+"""Validate supervisor task boards and backlog docs.
+
+The checks are intentionally lightweight so they can run in local dev,
+CI, or an external ipfs_accelerate_py worker before claiming implementation
+tasks from the board.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Iterable, Sequence
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+BOARD_PATH = REPO_ROOT / "docs/task_boards/ipfs_supervisor_task_board.json"
+BOARD_MARKDOWN_PATH = REPO_ROOT / "docs/task_boards/ipfs_supervisor_task_board.md"
+PAYLOAD_CONTRACTS = REPO_ROOT / "docs/PAYLOAD_CONTRACTS.md"
+DOCS_TO_LINT = [
+    REPO_ROOT / "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+    REPO_ROOT / "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+    REPO_ROOT / "docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md",
+    REPO_ROOT / "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md",
+    PAYLOAD_CONTRACTS,
+    REPO_ROOT / "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md",
+]
+VALID_STATUSES = {
+    "complete",
+    "validation_required",
+    "in_progress",
+    "planned",
+    "deferred",
+    "blocked",
+}
+VALID_PRIORITIES = {"P0", "P1", "P2"}
+STALE_ABSOLUTE_PREFIX = "/home/barberb/complaint-generator"
+TASK_ID_RE = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$")
+FENCED_CODE_RE = re.compile(
+    r"^(?P<fence>`{3,}|~{3,})(?P<info>[^\n]*)\n(?P<body>.*?)(?:\n(?P=fence)[ \t]*$)",
+    re.M | re.S,
+)
+REQUIRED_TASK_FIELDS = (
+    "task_id",
+    "title",
+    "source_doc",
+    "status",
+    "priority",
+    "target_files",
+    "acceptance_criteria",
+    "validation_commands",
+)
+
+
+@dataclass(frozen=True)
+class JsonFence:
+    path: Path
+    index: int
+    start_line: int
+    body: str
+
+
+def _display_path(path: Path, repo_root: Path = REPO_ROOT) -> str:
+    try:
+        return str(path.relative_to(repo_root))
+    except ValueError:
+        return str(path)
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path}: top-level JSON value must be an object")
+    return payload
+
+
+def _line_number(text: str, offset: int) -> int:
+    return text[:offset].count("\n") + 1
+
+
+def _iter_json_fences(path: Path) -> Iterable[JsonFence]:
+    text = path.read_text(encoding="utf-8")
+    index = 0
+    for match in FENCED_CODE_RE.finditer(text):
+        info = match.group("info").strip().lower()
+        language = info.split()[0] if info else ""
+        if language != "json":
+            continue
+        index += 1
+        yield JsonFence(
+            path=path,
+            index=index,
+            start_line=_line_number(text, match.start()),
+            body=match.group("body"),
+        )
+
+
+def _validate_json_fences(
+    path: Path,
+    *,
+    repo_root: Path = REPO_ROOT,
+    require_json_fence: bool = False,
+) -> list[str]:
+    errors: list[str] = []
+    if not path.exists():
+        return [f"{_display_path(path, repo_root)}: document does not exist"]
+
+    fences = list(_iter_json_fences(path))
+    if require_json_fence and not fences:
+        errors.append(f"{_display_path(path, repo_root)}: expected at least one json fence")
+
+    for fence in fences:
+        try:
+            json.loads(fence.body)
+        except json.JSONDecodeError as exc:
+            errors.append(
+                f"{_display_path(path, repo_root)}: json fence {fence.index} starting "
+                f"at line {fence.start_line} is invalid: {exc}"
+            )
+    return errors
+
+
+def _validate_no_stale_absolute_links(
+    paths: Iterable[Path],
+    *,
+    repo_root: Path = REPO_ROOT,
+) -> list[str]:
+    errors: list[str] = []
+    for path in paths:
+        if not path.exists():
+            errors.append(f"{_display_path(path, repo_root)}: document does not exist")
+            continue
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if STALE_ABSOLUTE_PREFIX in line:
+                errors.append(
+                    f"{_display_path(path, repo_root)}:{line_number}: stale absolute link "
+                    f"uses {STALE_ABSOLUTE_PREFIX}"
+                )
+    return errors
+
+
+def _section_status_conflicts(path: Path, *, repo_root: Path = REPO_ROOT) -> list[str]:
+    """Find sections marked planned even though every checklist item is checked."""
+
+    errors: list[str] = []
+    if not path.exists():
+        return [f"{_display_path(path, repo_root)}: document does not exist"]
+
+    current_heading = ""
+    current_status = ""
+    checked = 0
+    unchecked = 0
+    status_line = 0
+
+    def flush() -> None:
+        nonlocal checked, unchecked, current_heading, current_status, status_line
+        if current_status == "Planned" and checked > 0 and unchecked == 0:
+            errors.append(
+                f"{_display_path(path, repo_root)}:{status_line}: section "
+                f"{current_heading!r} is Planned but all checklist items are checked"
+            )
+
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if line.startswith("## "):
+            flush()
+            current_heading = line.removeprefix("## ").strip()
+            current_status = ""
+            checked = 0
+            unchecked = 0
+            status_line = 0
+        elif line.startswith("Status: "):
+            current_status = line.removeprefix("Status: ").strip()
+            status_line = line_number
+        elif line.startswith("- [x] "):
+            checked += 1
+        elif line.startswith("- [ ] "):
+            unchecked += 1
+    flush()
+    return errors
+
+
+def _duplicates(values: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for value in values:
+        if value in seen and value not in duplicates:
+            duplicates.append(value)
+        seen.add(value)
+    return duplicates
+
+
+def _is_repo_relative_path(value: str) -> bool:
+    path = Path(value)
+    if not value.strip() or path.is_absolute():
+        return False
+    return ".." not in path.parts
+
+
+def _validate_non_empty_string_list(
+    task_id: str,
+    field_name: str,
+    value: Any,
+    *,
+    repo_relative_paths: bool = False,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(value, list) or not value:
+        return [f"{task_id}: {field_name} must be a non-empty list"]
+
+    strings: list[str] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            errors.append(f"{task_id}: {field_name}[{index}] must be a non-empty string")
+            continue
+        strings.append(item)
+        if repo_relative_paths and not _is_repo_relative_path(item):
+            errors.append(f"{task_id}: {field_name}[{index}] must be a repo-relative path: {item}")
+
+    for duplicate in _duplicates(strings):
+        errors.append(f"{task_id}: {field_name} contains duplicate entry {duplicate!r}")
+    return errors
+
+
+def _validate_board(board: dict[str, Any], *, repo_root: Path = REPO_ROOT) -> list[str]:
+    errors: list[str] = []
+    if board.get("schema_version") != "complaint-generator.supervisor_task_board.v1":
+        errors.append("task board schema_version must be complaint-generator.supervisor_task_board.v1")
+
+    source_documents = board.get("source_documents")
+    if not isinstance(source_documents, list) or not source_documents:
+        errors.append("task board must contain a non-empty source_documents array")
+        source_documents = []
+    else:
+        source_document_strings: list[str] = []
+        for index, source_doc in enumerate(source_documents):
+            if not isinstance(source_doc, str) or not source_doc.strip():
+                errors.append(f"source_documents[{index}] must be a non-empty string")
+                continue
+            source_document_strings.append(source_doc)
+            if not _is_repo_relative_path(source_doc):
+                errors.append(f"source_documents[{index}] must be repo-relative: {source_doc}")
+            elif not (repo_root / source_doc).exists():
+                errors.append(f"source_documents[{index}] does not exist: {source_doc}")
+        for duplicate in _duplicates(source_document_strings):
+            errors.append(f"source_documents contains duplicate entry {duplicate!r}")
+
+    if set(board.get("status_values", [])) != VALID_STATUSES:
+        errors.append("task board status_values must match validator status contract")
+    if set(board.get("priority_values", [])) != VALID_PRIORITIES:
+        errors.append("task board priority_values must match validator priority contract")
+
+    supervisor = board.get("supervisor")
+    if not isinstance(supervisor, dict):
+        errors.append("task board supervisor must be an object")
+        supervisor = {}
+
+exec
+/bin/bash -lc "sed -n '1,260p' docs/PAYLOAD_CONTRACTS.md" in /tmp/ipfs-supervisor-worktrees/sup-contract-payloads-attempt-2-1784596699
+ succeeded in 0ms:
+# Payload Contracts
+
+This document centralizes the response payloads returned by the complaint generator's evidence, web-discovery, legal-authority, and graph-projection flows.
+
+Use this page when you need the current response contract without stitching it together from multiple feature guides.
+
+## Payload Fixture Hygiene
+
+Every `json` fenced block in this document is a machine-readable fixture. The supervisor task-board validator parses those blocks with Python's standard `json.loads(...)` before tasks are claimed, so examples must remain strict JSON rather than JavaScript object literals.
+
+Machine-readable validator contract:
+
+```json
+{
+  "schema_version": "complaint-generator.payload_fixture_hygiene.v1",
+  "validated_by": "scripts/validate_task_boards.py",
+  "payload_contract_doc": "docs/PAYLOAD_CONTRACTS.md",
+  "supervisor_task_board_json": "docs/task_boards/ipfs_supervisor_task_board.json",
+  "supervisor_task_board_markdown": "docs/task_boards/ipfs_supervisor_task_board.md",
+  "json_fence_contract": {
+    "language": "json",
+    "parser": "json.loads",
+    "allow_comments": false,
+    "allow_trailing_commas": false,
+    "require_complete_json_value": true
+  },
+  "task_payload_required_fields": [
+    "task_id",
+    "title",
+    "source_doc",
+    "status",
+    "priority",
+    "target_files",
+    "acceptance_criteria",
+    "validation_commands"
+  ],
+  "task_output_path_contract": {
+    "repo_relative": true,
+    "may_be_future_expected_output": true,
+    "absolute_paths_allowed": false,
+    "parent_directory_escape_allowed": false
+  }
+}
+```
+
+Contract hygiene rules:
+
+- Keep `json` fences as complete JSON values with quoted keys and no trailing commas.
+- Keep task-board JSON as the canonical machine-readable source; the markdown task board is a projection for human and daemon queue review.
+- Treat `target_files` as expected output paths. They must be repo-relative and non-empty, but they do not have to exist before the assigned task runs.
+- Add new externally visible payload examples here before relying on them from task-board acceptance criteria or supervisor execution packets.
+
+## Adapter Operation Metadata
+
+Adapter-facing payloads under `integrations/ipfs_datasets/` now share one metadata family even when the top-level `status` differs by operation.
+
+Representative metadata shape:
+
+```json
+{
+  "status": "not_implemented",
+  "metadata": {
+    "operation": "text_to_fol",
+    "backend_available": true,
+    "implementation_status": "not_implemented"
+  }
+}
+```
+
+When an adapter is degraded or unavailable, payloads may also include:
+
+```json
+{
+  "status": "unavailable",
+  "degraded_reason": "No module named 'ipfs_datasets_py.logic'",
+  "metadata": {
+    "operation": "text_to_fol",
+    "backend_available": false,
+    "implementation_status": "unavailable",
+    "degraded_reason": "No module named 'ipfs_datasets_py.logic'"
+  }
+}
+```
+
+Metadata semantics:
+
+- `operation`: Canonical adapter operation name.
+- `backend_available`: Whether the underlying `ipfs_datasets_py` capability imported successfully.
+- `implementation_status`: Normalized implementation state for the adapter surface, such as `implemented`, `fallback`, `not_implemented`, `pending`, `noop`, `empty`, `error`, or `unavailable`.
+- `degraded_reason`: Import or availability reason when the adapter is running degraded.
+
+## Temporal Registry Contract
+
+Intake and review payloads now preserve a canonical temporal registry alongside the legacy timeline summaries. The summaries remain for compatibility, but downstream reasoning should prefer the registries when available.
+
+Representative shape:
+
+```json
+{
+  "temporal_fact_registry_summary": {
+    "count": 2,
+    "facts": [
+      {
+        "registry_version": "temporal_fact_registry.v1",
+        "temporal_fact_id": "fact_1",
+        "fact_id": "fact_1",
+        "text": "Employee complained to HR.",
+        "event_label": "Employee complained to HR.",
+        "fact_type": "timeline",
+        "predicate_family": "timeline",
+        "claim_types": ["retaliation"],
+        "element_tags": ["protected_activity"],
+        "actor_ids": [],
+        "target_ids": [],
+        "start_time": "2025-03-01",
+        "end_time": "2025-03-01",
+        "granularity": "day",
+        "is_approximate": false,
+        "is_range": false,
+        "relative_markers": [],
+        "timeline_anchor_ids": ["timeline_anchor_001"],
+        "temporal_status": "anchored",
+        "source_artifact_ids": [],
+        "testimony_record_ids": [],
+        "source_span_refs": [],
+        "confidence": 0.91,
+        "validation_status": "accepted",
+        "temporal_context": {
+          "start_date": "2025-03-01",
+          "end_date": "2025-03-01",
+          "granularity": "day",
+          "is_approximate": false,
+          "is_range": false,
+          "relative_markers": []
+        }
+      }
+    ]
+  },
+  "temporal_relation_registry_summary": {
+    "count": 1,
+    "relations": [
+      {
+        "registry_version": "temporal_relation_registry.v1",
+        "relation_id": "timeline_relation_001",
+        "source_fact_id": "fact_1",
+        "target_fact_id": "fact_2",
+        "source_temporal_fact_id": "fact_1",
+        "target_temporal_fact_id": "fact_2",
+        "relation_type": "before",
+        "claim_types": ["retaliation"],
+        "element_tags": ["protected_activity", "adverse_action"],
+        "source_artifact_ids": [],
+        "testimony_record_ids": [],
+        "source_span_refs": [],
+        "inference_mode": "derived_from_temporal_context",
+        "inference_basis": "normalized_temporal_context"
+        ,"explanation": "fact_1 before fact_2 based on normalized temporal context."
+      }
+    ]
+  },
+  "temporal_issue_registry_summary": {
+    "count": 1,
+    "issues": [
+      {
+        "registry_version": "temporal_issue_registry.v1",
+        "issue_id": "temporal_issue:relative_only_ordering:fact_3",
+        "issue_type": "relative_only_ordering",
+        "summary": "Timeline fact fact_3 only has relative ordering and still needs anchoring.",
+        "severity": "blocking",
+        "blocking": true,
+        "claim_types": ["retaliation"],
+        "element_tags": ["causation"],
+        "fact_ids": ["fact_3"],
+        "recommended_resolution_lane": "clarify_with_complainant",
+        "source_kind": "temporal_fact_registry",
+        "source_ref": "fact_3",
+        "inference_mode": "derived_from_temporal_context"
+      }
+    ]
+  }
+}
+```
+
+Field semantics:
+
+- `temporal_status`: High-level anchoring state for the fact, currently `anchored`, `relative_only`, or `missing_anchor`.
+- `registry_version`: Canonical schema version for the temporal registry record family.
+- `event_label` and `predicate_family`: Stable theorem-facing labels for fact-to-rule mapping.
+- `start_time`, `end_time`, `granularity`, `is_approximate`, `is_range`, and `relative_markers`: First-class temporal fields duplicated from `temporal_context` for direct consumers.
+- `source_artifact_ids`, `testimony_record_ids`, and `source_span_refs`: Provenance fields for linking theorem inputs and review explanations back to concrete evidence sources.
+- `inference_mode`: Whether a relation or issue was derived from normalized temporal context or imported from an upstream contradiction workflow.
+- `claim_types` and `element_tags`: Stable claim and element linkage so claim-scoped reasoning does not need to reconstruct timing relevance from raw summaries.
+- `inference_basis`: How a relation was derived. Current intake relations are inferred from normalized temporal context.
+- `issue_type`: Canonical temporal issue category, including registry-native categories such as `missing_anchor` and `relative_only_ordering` plus contradiction-derived temporal categories.
+
+## Claim-Support Temporal Rule Profile
+
+Claim-support reasoning diagnostics may now include a claim-type-specific `temporal_rule_profile` when the system can evaluate chronology against an explicit legal timing frame.
+
+Representative shape:
+
+```json
+{
+  "reasoning_diagnostics": {
+    "temporal_rule_profile": {
+      "available": true,
+      "evaluated": true,
+      "profile_id": "retaliation_temporal_profile_v1",
+      "rule_frame_id": "retaliation_temporal_frame",
+      "claim_type": "retaliation",
+      "element_role": "causal_connection",
+      "status": "partial",
+      "matched_fact_ids": ["fact_1", "fact_2"],
+      "matched_relation_ids": [],
+      "blocking_reasons": [
+        "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+      ],
+      "warnings": [
+        "Protected activity and adverse action are both present but lack an ordering relation."
+      ],
+      "recommended_follow_ups": [
+        {
+          "lane": "clarify_with_complainant",
+          "reason": "Clarify whether the protected activity occurred before the adverse action."
+        }
+      ]
+    }
+  },
+  "proof_decision_trace": {
+    "decision_source": "temporal_rule_partial",
+    "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
+    "temporal_rule_status": "partial"
+  },
+  "proof_gaps": [
+    {
+      "gap_type": "temporal_rule_partial",
+      "profile_id": "retaliation_temporal_profile_v1",
+      "message": "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action.",
+      "follow_ups": [
+        {
+          "lane": "clarify_with_complainant",
+          "reason": "Clarify whether the protected activity occurred before the adverse action."
+        }
+      ]
+    }
+  ]
+}
+```
+
+Semantics:
+
+- `profile_id`: Canonical legal timing profile identifier.
+- `rule_frame_id`: Stable rule-frame identifier for downstream proof or review explanations.
+- `element_role`: The legal timing role being evaluated, such as `protected_activity`, `adverse_action`, or `causal_connection`.
+- `status`: Timing sufficiency result for the profile, currently `satisfied`, `partial`, `failed`, `missing`, `not_targeted`, or `not_applicable`.
+- `decision_source`: Claim-support validation now distinguishes temporal-rule failures from generic support gaps via `temporal_rule_partial` and `temporal_rule_failed`.
+
+## Temporal Proof Bundle Contract
+
+When a temporal rule profile is available, element reasoning diagnostics may also expose a `temporal_proof_bundle` that packages the chronology, legal frame, and theorem exports into one durable review and proof artifact.
+
+exec
+/bin/bash -lc "sed -n '1,260p' tests/test_task_board_contracts.py" in /tmp/ipfs-supervisor-worktrees/sup-contract-payloads-attempt-2-1784596699
+ succeeded in 0ms:
+from pathlib import Path
+
+from scripts import validate_task_boards
+
+
+def test_supervisor_task_board_and_backlog_docs_are_machine_readable() -> None:
+    assert validate_task_boards.main() == 0
+
+
+def test_payload_contract_json_fences_are_parseable() -> None:
+    fences = list(validate_task_boards._iter_json_fences(validate_task_boards.PAYLOAD_CONTRACTS))
+
+    assert fences
+    assert (
+        validate_task_boards._validate_json_fences(
+            validate_task_boards.PAYLOAD_CONTRACTS,
+            require_json_fence=True,
+        )
+        == []
+    )
+
+
+def test_json_fence_validation_rejects_malformed_payload_example(tmp_path: Path) -> None:
+    contract_doc = tmp_path / "PAYLOAD_CONTRACTS.md"
+    contract_doc.write_text(
+        "# Payload Contracts\n\n```json\n{\"status\": \"ok\",}\n```\n",
+        encoding="utf-8",
+    )
+
+    errors = validate_task_boards._validate_json_fences(
+        contract_doc,
+        repo_root=tmp_path,
+        require_json_fence=True,
+    )
+
+    assert len(errors) == 1
+    assert "json fence 1" in errors[0]
+    assert "line 3" in errors[0]
+
+
+def test_board_validation_allows_future_expected_outputs(tmp_path: Path) -> None:
+    source_doc = tmp_path / "docs" / "PAYLOAD_CONTRACTS.md"
+    source_doc.parent.mkdir()
+    source_doc.write_text("# Payload Contracts\n\n```json\n{\"status\": \"ok\"}\n```\n", encoding="utf-8")
+    board = {
+        "schema_version": "complaint-generator.supervisor_task_board.v1",
+        "source_documents": ["docs/PAYLOAD_CONTRACTS.md"],
+        "status_values": sorted(validate_task_boards.VALID_STATUSES),
+        "priority_values": sorted(validate_task_boards.VALID_PRIORITIES),
+        "supervisor": {
+            "task_payload_requirements": list(validate_task_boards.REQUIRED_TASK_FIELDS)
+        },
+        "tasks": [
+            {
+                "task_id": "CONTRACT-PAYLOADS",
+                "title": "Payload contract validation",
+                "source_doc": "docs/PAYLOAD_CONTRACTS.md",
+                "status": "validation_required",
+                "priority": "P0",
+                "target_files": ["tests/test_future_contract_output.py"],
+                "acceptance_criteria": ["Future output paths are valid task intent."],
+                "validation_commands": ["python -m pytest tests/test_future_contract_output.py -q"],
+            }
+        ],
+    }
+
+    assert validate_task_boards._validate_board(board, repo_root=tmp_path) == []
+
+
+def test_board_validation_rejects_malformed_task_payload(tmp_path: Path) -> None:
+    source_doc = tmp_path / "docs" / "PAYLOAD_CONTRACTS.md"
+    source_doc.parent.mkdir()
+    source_doc.write_text("# Payload Contracts\n\n```json\n{\"status\": \"ok\"}\n```\n", encoding="utf-8")
+    board = {
+        "schema_version": "complaint-generator.supervisor_task_board.v1",
+        "source_documents": ["docs/PAYLOAD_CONTRACTS.md"],
+        "status_values": sorted(validate_task_boards.VALID_STATUSES),
+        "priority_values": sorted(validate_task_boards.VALID_PRIORITIES),
+        "supervisor": {
+            "task_payload_requirements": list(validate_task_boards.REQUIRED_TASK_FIELDS)
+        },
+        "tasks": [
+            {
+                "task_id": "bad task id",
+                "title": "",
+                "source_doc": "/tmp/PAYLOAD_CONTRACTS.md",
+                "status": "finished",
+                "priority": "P9",
+                "target_files": ["/tmp/output.py", "../escape.py", ""],
+                "acceptance_criteria": [],
+                "validation_commands": ["python -m pytest -q", "python -m pytest -q"],
+                "depends_on": ["UNKNOWN"],
+            }
+        ],
+    }
+
+    errors = validate_task_boards._validate_board(board, repo_root=tmp_path)
+
+    assert any("task_id must be uppercase hyphen-delimited" in error for error in errors)
+    assert any("title must be a non-empty string" in error for error in errors)
+    assert any("invalid status" in error for error in errors)
+    assert any("invalid priority" in error for error in errors)
+    assert any("source_doc must be repo-relative" in error for error in errors)
+    assert any("target_files[0] must be a repo-relative path" in error for error in errors)
+    assert any("acceptance_criteria must be a non-empty list" in error for error in errors)
+    assert any("validation_commands contains duplicate entry" in error for error in errors)
+    assert any("unknown dependency UNKNOWN" in error for error in errors)
+
+
+def test_markdown_projection_rejects_duplicate_outputs(tmp_path: Path) -> None:
+    markdown_path = tmp_path / "ipfs_supervisor_task_board.md"
+    markdown_path.write_text(
+        "\n".join(
+            [
+                "# IPFS Supervisor Daemon Task Board",
+                "",
+                "## SUP-CONTRACT-PAYLOADS Payload contract validation",
+                "",
+                "- Outputs: docs/PAYLOAD_CONTRACTS.md, docs/PAYLOAD_CONTRACTS.md",
+                "- Source doc: docs/PAYLOAD_CONTRACTS.md",
+                "- Canonical task id: CONTRACT-PAYLOADS",
+                "- Canonical status: validation_required",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    board = {
+        "tasks": [
+            {
+                "task_id": "CONTRACT-PAYLOADS",
+                "status": "validation_required",
+                "source_doc": "docs/PAYLOAD_CONTRACTS.md",
+            }
+        ]
+    }
+
+    errors = validate_task_boards._validate_markdown_projection(
+        board,
+        markdown_path=markdown_path,
+        repo_root=tmp_path,
+    )
+
+    assert errors == [
+        "ipfs_supervisor_task_board.md:5: Outputs contains duplicate entry "
+        "'docs/PAYLOAD_CONTRACTS.md'"
+    ]
+
+exec
+/bin/bash -lc "sed -n '1,220p' docs/task_boards/ipfs_supervisor_task_board.json" in /tmp/ipfs-supervisor-worktrees/sup-contract-payloads-attempt-2-1784596699
+ succeeded in 0ms:
+{
+  "schema_version": "complaint-generator.supervisor_task_board.v1",
+  "generated_for": "ipfs_accelerate_py_agent_supervisor",
+  "updated_at": "2026-07-20",
+  "purpose": "Canonical machine-readable board for coordinating the complaint-generator IPFS datasets, claim-support review, intake/evidence, payload-contract, and temporal-proof backlogs with an external agent supervisor or daemon.",
+  "source_documents": [
+    "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+    "docs/INTAKE_EVIDENCE_EXECUTION_BACKLOG.md",
+    "docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md",
+    "docs/IPFS_DATASETS_PY_MILESTONE_CHECKLIST.md",
+    "docs/PAYLOAD_CONTRACTS.md",
+    "docs/TEMPORAL_TIMELINE_PROOF_EXECUTION_BACKLOG.md"
+  ],
+  "status_values": [
+    "complete",
+    "validation_required",
+    "in_progress",
+    "planned",
+    "deferred",
+    "blocked"
+  ],
+  "priority_values": [
+    "P0",
+    "P1",
+    "P2"
+  ],
+  "supervisor": {
+    "repository": "endomorphosis/ipfs_accelerate_py",
+    "compatible_entrypoints": [
+      "ipfs-accelerate mcp start",
+      "python -m ipfs_accelerate_py.mcp.cli --p2p-task-worker --p2p-service --p2p-queue ~/.cache/ipfs_datasets_py/task_queue.duckdb",
+      "python -m ipfs_accelerate_py.mcp_server.fastapi_service"
+    ],
+    "queue_contract": {
+      "claim_strategy": "claim_before_execute",
+      "completion_strategy": "complete_only_after_validation",
+      "failure_strategy": "store_failure_with_validation_output",
+      "idempotency_key_fields": [
+        "task_id",
+        "source_doc",
+        "validation_commands"
+      ]
+    },
+    "task_payload_requirements": [
+      "task_id",
+      "title",
+      "source_doc",
+      "status",
+      "priority",
+      "target_files",
+      "acceptance_criteria",
+      "validation_commands"
+    ]
+  },
+  "execution_rules": [
+    "Do not bypass integrations/ipfs_datasets/ for production ipfs_datasets_py usage.",
+    "Treat PAYLOAD_CONTRACTS.md as the public payload source of truth and keep json fences parseable.",
+    "Do not mark a task complete until its validation_commands pass or an explicit degraded-mode rationale is recorded.",
+    "Prefer queue-backed execution for long-running acquisition, parsing, graph, retrieval, proof, and review-enrichment work.",
+    "Preserve degraded-mode behavior when optional graph, vector, logic, OCR, archive, or P2P features are unavailable."
+  ],
+  "tasks": [
+    {
+      "task_id": "CSR-M0",
+      "title": "Question and testimony foundation",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "templates/claim_support_review.html",
+        "mediator/claim_support_hooks.py",
+        "complaint_phases/denoiser.py",
+        "complaint_phases/knowledge_graph.py",
+        "complaint_phases/dependency_graph.py",
+        "docs/PAYLOAD_CONTRACTS.md",
+        "docs/APPLICATIONS.md"
+      ],
+      "acceptance_criteria": [
+        "Recommended questions map to unresolved elements, contradictions, or gaps.",
+        "Testimony persists as raw narrative plus structured facts.",
+        "Review payloads show testimony-to-element support.",
+        "Dashboard explains why each question is being asked."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py -q",
+        "python -m pytest tests/test_review_api.py -q"
+      ]
+    },
+    {
+      "task_id": "CSR-M1",
+      "title": "Document intake and decomposition plane",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "templates/claim_support_review.html",
+        "integrations/ipfs_datasets/documents.py",
+        "mediator/evidence_hooks.py",
+        "mediator/web_evidence_hooks.py",
+        "mediator/claim_support_hooks.py",
+        "docs/PAYLOAD_CONTRACTS.md"
+      ],
+      "acceptance_criteria": [
+        "Dashboard-ingested materials produce normalized parse records and chunk references.",
+        "Chunks trace to artifact and page or span provenance.",
+        "Low-quality parses are visible and remediable."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_evidence_hooks.py -q",
+        "python -m pytest tests/test_web_evidence_hooks.py -q",
+        "python -m pytest tests/test_review_api.py -q"
+      ]
+    },
+    {
+      "task_id": "CSR-M2",
+      "title": "Fact registry and element support ledger",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "target_files": [
+        "mediator/claim_support_hooks.py",
+        "integrations/ipfs_datasets/types.py",
+        "integrations/ipfs_datasets/provenance.py",
+        "docs/PAYLOAD_CONTRACTS.md",
+        "templates/claim_support_review.html"
+      ],
+      "acceptance_criteria": [
+        "Element status can be explained by concrete fact IDs.",
+        "Facts trace to testimony, document chunks, or authorities.",
+        "Support ledgers can feed replay and document handoff."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py -q"
+      ]
+    },
+    {
+      "task_id": "CSR-M3",
+      "title": "Graph snapshot persistence and support paths",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P1",
+      "depends_on": [
+        "CSR-M2"
+      ],
+      "target_files": [
+        "integrations/ipfs_datasets/graphs.py",
+        "complaint_phases/knowledge_graph.py",
+        "complaint_phases/dependency_graph.py",
+        "mediator/claim_support_hooks.py",
+        "templates/claim_support_review.html"
+      ],
+      "acceptance_criteria": [
+        "Each claim element can show a graph-backed support path.",
+        "Review flows reuse persisted graph snapshots.",
+        "Entity resolution reduces duplicate source nodes."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py -q",
+        "python -m pytest tests/test_review_api.py -q"
+      ]
+    },
+    {
+      "task_id": "CSR-M4",
+      "title": "Retrieval sessions and evidence ranking",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P1",
+      "depends_on": [
+        "CSR-M2"
+      ],
+      "target_files": [
+        "integrations/ipfs_datasets/vector_store.py",
+        "integrations/ipfs_datasets/documents.py",
+        "mediator/claim_support_hooks.py",
+        "templates/claim_support_review.html",
+        "docs/PAYLOAD_CONTRACTS.md"
+      ],
+      "acceptance_criteria": [
+        "Operators can inspect ranked chunks for a claim element.",
+        "Retrieval sessions are replayable.",
+        "Questions can cite retrieval context."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_m4_retrieval_sessions.py -q",
+        "python -m pytest tests/test_claim_support_hooks.py -q"
+      ]
+    },
+    {
+      "task_id": "CSR-M5",
+      "title": "Legal proof and contradiction engine",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "complete",
+      "priority": "P0",
+      "depends_on": [
+        "CSR-M2"
+      ],
+      "target_files": [
+        "integrations/ipfs_datasets/logic.py",
+        "integrations/ipfs_datasets/graphrag.py",
+        "mediator/claim_support_hooks.py",
+        "complaint_phases/legal_graph.py",
+        "complaint_phases/neurosymbolic_matcher.py",
+        "templates/claim_support_review.html",
+        "docs/PAYLOAD_CONTRACTS.md"
+      ],
+      "acceptance_criteria": [
+        "Review payloads distinguish supported, missing, contradicted, uncertain, and exception-barred elements.",
+        "Proof results include concise explanations tied to facts, authorities, or failed predicates.",
+        "Dashboard shows facts applied to law."
+      ],
+      "validation_commands": [
+        "python -m pytest tests/test_claim_support_hooks.py -q",
+        "python -m pytest tests/test_probate_integration.py -q"
+      ]
+    },
+    {
+      "task_id": "CSR-M6",
+      "title": "Operator productization and document handoff",
+      "source_doc": "docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md",
+      "status": "validation_required",
+
+turn interrupted
+tokens used
+12,843
+codex exec failed with exit 1; falling back to copilot
+
+You've reached your additional usage limit for your plan. Go to https://github.com/settings/copilot/features for more details. (Request ID: ED50:169986:361615:3E5303:6A5EC911)

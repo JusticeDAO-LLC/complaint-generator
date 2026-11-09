@@ -1,0 +1,225 @@
+# Objective Bundle: refactor/g11
+
+Source todo: data/refactor_supervisor/refactor_todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## REF-325 Close objective gap: Make agent-supervisor proof-aware and context-efficient
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Depends on:
+- Outputs: data/refactor_supervisor/discovery, data/refactor_supervisor/refactor_objective_heap.md
+- Validation: PYTHONPATH=ipfs_datasets_py/ipfs_accelerate_py python -m pytest ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_capabilities.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_contracts.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_provider.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_policy.py -q
+- Bundle: refactor/g11
+- Bundle shard: data/refactor_supervisor/objective_bundles/refactor-g11.todo.md
+- Bundle strategy: explicit
+- Graph parents: none
+- Graph depth: 0
+- Parallel lane: refactor/g11
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files:
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_accelerate_py/docs/architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_contracts.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_cache.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/proof_scheduler.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/goal_completion.py, data/refactor_supervisor/discovery/2026-07-23-ref-307-objective-validation-repair.md, objective validation repair
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: G11
+- Canonical task key: task/v1/f0741306f1fb7ccac57002d06d9361ced2b125775cf1f30b06ba7bc56017354a
+- Canonical task CID: baguqeera6b2bgbxr7n6mvrlqalig3e3bz3jlcjlxlty7gcygxj54kyaxgvfa
+- Missing evidence: objective validation repair
+- Embedding query: Make agent-supervisor proof-aware and context-efficient
+- AST query: ipfs_datasets_py/ipfs_accelerate_py/docs/architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_contracts.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_cache.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/proof_scheduler.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/goal_completion.py, data/refactor_supervisor/discovery/2026-07-23-ref-307-objective-validation-repair.md, objective validation repair
+- Surplus group: objective/G11
+- Merge key: af49c55a500a854e
+- Merge family: goal_packet/ops/ipfs_datasets_py/025bf9ec4a21
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair; goal_subgoal_packet
+- Goal packet: goal_packet/ops/ipfs_datasets_py/025bf9ec4a21
+- Goal packet role: packet_anchor
+- Goal packet goals: G11, G11.S1, G11.S2, G11.S3, G11.S4, G11.S7
+- Goal packet task count: 6
+- Goal packet work item count: 6
+- Candidate kind: validation_gate
+- Todo vector key: 2186fdd8e8874734
+- Acceptance: Objective scan filed this gap for G11. Use evidence in /home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-23-ref-325-objective-gap-c09345b22819.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/ops/ipfs_datasets_py/025bf9ec4a21; implement a complete, cohesive change that fully advances the packet goals (G11, G11.S1, G11.S2, G11.S3, G11.S4, G11.S7) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## REF-337 Close objective gap: Make agent-supervisor proof-aware and context-efficient
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Depends on:
+- Outputs: data/refactor_supervisor/discovery, data/refactor_supervisor/refactor_objective_heap.md
+- Validation: PYTHONPATH=ipfs_datasets_py/ipfs_accelerate_py python -m pytest ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_capabilities.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_contracts.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_provider.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_policy.py -q
+- Bundle: refactor/g11
+- Bundle shard: data/refactor_supervisor/objective_bundles/refactor-g11.todo.md
+- Bundle strategy: explicit
+- Graph parents: none
+- Graph depth: 0
+- Parallel lane: refactor/g11
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files:
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_accelerate_py/docs/architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_contracts.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_cache.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/proof_scheduler.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/goal_completion.py, data/refactor_supervisor/discovery/2026-07-23-ref-325-objective-validation-repair.md, objective validation repair
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: G11
+- Canonical task key: task/v1/f0741306f1fb7ccac57002d06d9361ced2b125775cf1f30b06ba7bc56017354a
+- Canonical task CID: baguqeera6b2bgbxr7n6mvrlqalig3e3bz3jlcjlxlty7gcygxj54kyaxgvfa
+- Missing evidence: objective validation repair
+- Embedding query: Make agent-supervisor proof-aware and context-efficient
+- AST query: ipfs_datasets_py/ipfs_accelerate_py/docs/architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_contracts.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_cache.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/proof_scheduler.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/goal_completion.py, data/refactor_supervisor/discovery/2026-07-23-ref-325-objective-validation-repair.md, objective validation repair
+- Surplus group: objective/G11
+- Merge key: af49c55a500a854e
+- Merge family: goal_packet/ops/ipfs_datasets_py/c4bb9eba851b
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair; goal_subgoal_packet
+- Goal packet: goal_packet/ops/ipfs_datasets_py/c4bb9eba851b
+- Goal packet role: packet_anchor
+- Goal packet goals: G11, G11.S1, G11.S2, G11.S3, G11.S4, G11.S7
+- Goal packet task count: 6
+- Goal packet work item count: 6
+- Candidate kind: validation_gate
+- Todo vector key: 2186fdd8e8874734
+- Acceptance: Objective scan filed this gap for G11. Use evidence in /home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-23-ref-337-objective-gap-c09345b22819.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/ops/ipfs_datasets_py/c4bb9eba851b; implement a complete, cohesive change that fully advances the packet goals (G11, G11.S1, G11.S2, G11.S3, G11.S4, G11.S7) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## REF-343 Close objective gap: Make agent-supervisor proof-aware and context-efficient
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Depends on:
+- Outputs: data/refactor_supervisor/discovery, data/refactor_supervisor/refactor_objective_heap.md
+- Validation: PYTHONPATH=ipfs_datasets_py/ipfs_accelerate_py python -m pytest ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_capabilities.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_contracts.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_provider.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_policy.py -q
+- Bundle: refactor/g11
+- Bundle shard: data/refactor_supervisor/objective_bundles/refactor-g11.todo.md
+- Bundle strategy: explicit
+- Graph parents: none
+- Graph depth: 0
+- Parallel lane: refactor/g11
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files:
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_accelerate_py/docs/architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_contracts.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_cache.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/proof_scheduler.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/goal_completion.py, data/refactor_supervisor/discovery/2026-07-23-ref-325-objective-validation-repair.md, objective validation repair
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: G11
+- Canonical task key: task/v1/f0741306f1fb7ccac57002d06d9361ced2b125775cf1f30b06ba7bc56017354a
+- Canonical task CID: baguqeera6b2bgbxr7n6mvrlqalig3e3bz3jlcjlxlty7gcygxj54kyaxgvfa
+- Missing evidence: objective validation repair
+- Embedding query: Make agent-supervisor proof-aware and context-efficient
+- AST query: ipfs_datasets_py/ipfs_accelerate_py/docs/architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_contracts.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_cache.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/proof_scheduler.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/goal_completion.py, data/refactor_supervisor/discovery/2026-07-23-ref-325-objective-validation-repair.md, objective validation repair
+- Surplus group: objective/G11
+- Merge key: af49c55a500a854e
+- Merge family: goal_packet/ops/ipfs_datasets_py/c4bb9eba851b
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair; goal_subgoal_packet
+- Goal packet: goal_packet/ops/ipfs_datasets_py/c4bb9eba851b
+- Goal packet role: packet_anchor
+- Goal packet goals: G11, G11.S1, G11.S2, G11.S3, G11.S4, G11.S7
+- Goal packet task count: 6
+- Goal packet work item count: 6
+- Candidate kind: validation_gate
+- Todo vector key: 2186fdd8e8874734
+- Acceptance: Objective scan filed this gap for G11. Use evidence in /home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-23-ref-343-objective-gap-c09345b22819.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/ops/ipfs_datasets_py/c4bb9eba851b; implement a complete, cohesive change that fully advances the packet goals (G11, G11.S1, G11.S2, G11.S3, G11.S4, G11.S7) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## REF-349 Close objective gap: Make agent-supervisor proof-aware and context-efficient
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Depends on:
+- Outputs: data/refactor_supervisor/discovery, data/refactor_supervisor/refactor_objective_heap.md
+- Validation: PYTHONPATH=ipfs_datasets_py/ipfs_accelerate_py python -m pytest ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_capabilities.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_contracts.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_provider.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_policy.py -q
+- Bundle: refactor/g11
+- Bundle shard: data/refactor_supervisor/objective_bundles/refactor-g11.todo.md
+- Bundle strategy: explicit
+- Graph parents: none
+- Graph depth: 0
+- Parallel lane: refactor/g11
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files:
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_accelerate_py/docs/architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_contracts.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_cache.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/proof_scheduler.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/goal_completion.py, data/refactor_supervisor/discovery/2026-07-23-ref-325-objective-validation-repair.md, objective validation repair
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: G11
+- Canonical task key: task/v1/f0741306f1fb7ccac57002d06d9361ced2b125775cf1f30b06ba7bc56017354a
+- Canonical task CID: baguqeera6b2bgbxr7n6mvrlqalig3e3bz3jlcjlxlty7gcygxj54kyaxgvfa
+- Missing evidence: objective validation repair
+- Embedding query: Make agent-supervisor proof-aware and context-efficient
+- AST query: ipfs_datasets_py/ipfs_accelerate_py/docs/architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_contracts.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_cache.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/proof_scheduler.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/goal_completion.py, data/refactor_supervisor/discovery/2026-07-23-ref-325-objective-validation-repair.md, objective validation repair
+- Surplus group: objective/G11
+- Merge key: af49c55a500a854e
+- Merge family: goal_packet/ops/ipfs_datasets_py/c4bb9eba851b
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair; goal_subgoal_packet
+- Goal packet: goal_packet/ops/ipfs_datasets_py/c4bb9eba851b
+- Goal packet role: packet_anchor
+- Goal packet goals: G11, G11.S1, G11.S2, G11.S3, G11.S4, G11.S7
+- Goal packet task count: 6
+- Goal packet work item count: 6
+- Candidate kind: validation_gate
+- Todo vector key: 2186fdd8e8874734
+- Acceptance: Objective scan filed this gap for G11. Use evidence in /home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-23-ref-349-objective-gap-c09345b22819.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/ops/ipfs_datasets_py/c4bb9eba851b; implement a complete, cohesive change that fully advances the packet goals (G11, G11.S1, G11.S2, G11.S3, G11.S4, G11.S7) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## REF-355 Close objective gap: Make agent-supervisor proof-aware and context-efficient
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Depends on:
+- Outputs: data/refactor_supervisor/discovery, data/refactor_supervisor/refactor_objective_heap.md
+- Validation: PYTHONPATH=ipfs_datasets_py/ipfs_accelerate_py python -m pytest ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_capabilities.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_contracts.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_provider.py ipfs_datasets_py/ipfs_accelerate_py/test/api/test_agent_supervisor_formal_verification_policy.py -q
+- Bundle: refactor/g11
+- Bundle shard: data/refactor_supervisor/objective_bundles/refactor-g11.todo.md
+- Bundle strategy: explicit
+- Graph parents: none
+- Graph depth: 0
+- Parallel lane: refactor/g11
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files:
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_accelerate_py/docs/architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_contracts.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_cache.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/proof_scheduler.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/goal_completion.py, data/refactor_supervisor/discovery/2026-07-23-ref-325-objective-validation-repair.md, objective validation repair
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: G11
+- Canonical task key: task/v1/f0741306f1fb7ccac57002d06d9361ced2b125775cf1f30b06ba7bc56017354a
+- Canonical task CID: baguqeera6b2bgbxr7n6mvrlqalig3e3bz3jlcjlxlty7gcygxj54kyaxgvfa
+- Missing evidence: objective validation repair
+- Embedding query: Make agent-supervisor proof-aware and context-efficient
+- AST query: ipfs_datasets_py/ipfs_accelerate_py/docs/architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_contracts.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/formal_verification_cache.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/proof_scheduler.py, ipfs_datasets_py/ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/goal_completion.py, data/refactor_supervisor/discovery/2026-07-23-ref-325-objective-validation-repair.md, objective validation repair
+- Surplus group: objective/G11
+- Merge key: af49c55a500a854e
+- Merge family: goal_packet/ops/ipfs_datasets_py/c4bb9eba851b
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair; goal_subgoal_packet
+- Goal packet: goal_packet/ops/ipfs_datasets_py/c4bb9eba851b
+- Goal packet role: packet_anchor
+- Goal packet goals: G11, G11.S1, G11.S2, G11.S3, G11.S4, G11.S7
+- Goal packet task count: 6
+- Goal packet work item count: 6
+- Candidate kind: validation_gate
+- Todo vector key: 2186fdd8e8874734
+- Acceptance: Objective scan filed this gap for G11. Use evidence in /home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-23-ref-355-objective-gap-c09345b22819.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/ops/ipfs_datasets_py/c4bb9eba851b; implement a complete, cohesive change that fully advances the packet goals (G11, G11.S1, G11.S2, G11.S3, G11.S4, G11.S7) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.

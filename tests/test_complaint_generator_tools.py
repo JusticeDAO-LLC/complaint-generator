@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
 from typer.testing import CliRunner
-from ipfs_datasets_py.processors.legal_data import DocketDatasetBuilder
+from integrations.ipfs_datasets.legal_data import DocketDatasetBuilder
 
 from applications import complaint_cli as complaint_cli_impl
 from applications.complaint_workspace_api import attach_complaint_workspace_routes
@@ -94,6 +94,109 @@ def _build_packaged_docket_manifest(tmp_path, *, routing_reason: str = "Workspac
     return str(package["manifest_json_path"])
 
 
+def _build_single_docket_parquet(tmp_path) -> str:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    output_path = tmp_path / "single_parquet_docket.dataset.parquet"
+    rows = [
+        {
+            "dataset_id": "docket_dataset_single-parquet-docket-1",
+            "docket_id": "single-parquet-docket-1",
+            "case_name": "Single Parquet Docket",
+            "court": "D. Example",
+            "section": "dataset_core",
+            "row_index": 1,
+            "row_id": "dataset_core_1",
+            "title": "Single Parquet Docket",
+            "document_number": "",
+            "source_url": "",
+            "text": "",
+            "payload_json": json.dumps(
+                {
+                    "dataset_id": "docket_dataset_single-parquet-docket-1",
+                    "docket_id": "single-parquet-docket-1",
+                    "case_name": "Single Parquet Docket",
+                    "court": "D. Example",
+                    "metadata": {"fixture": "single-parquet"},
+                },
+                sort_keys=True,
+            ),
+        },
+        {
+            "dataset_id": "docket_dataset_single-parquet-docket-1",
+            "docket_id": "single-parquet-docket-1",
+            "case_name": "Single Parquet Docket",
+            "court": "D. Example",
+            "section": "documents",
+            "row_index": 1,
+            "row_id": "doc_1",
+            "title": "Motion to Compel",
+            "document_number": "21",
+            "source_url": "",
+            "text": "Plaintiff moves to compel production of the housing file.",
+            "payload_json": json.dumps(
+                {
+                    "id": "doc_1",
+                    "title": "Motion to Compel",
+                    "document_number": "21",
+                    "text": "Plaintiff moves to compel production of the housing file.",
+                },
+                sort_keys=True,
+            ),
+        },
+        {
+            "dataset_id": "docket_dataset_single-parquet-docket-1",
+            "docket_id": "single-parquet-docket-1",
+            "case_name": "Single Parquet Docket",
+            "court": "D. Example",
+            "section": "documents",
+            "row_index": 2,
+            "row_id": "doc_2",
+            "title": "Notice of Hearing",
+            "document_number": "22",
+            "source_url": "",
+            "text": "The court sets a hearing for April 21, 2026.",
+            "payload_json": json.dumps(
+                {
+                    "id": "doc_2",
+                    "title": "Notice of Hearing",
+                    "date_filed": "2026-04-01",
+                    "document_number": "22",
+                    "text": "The court sets a hearing for April 21, 2026.",
+                },
+                sort_keys=True,
+            ),
+        },
+        {
+            "dataset_id": "docket_dataset_single-parquet-docket-1",
+            "docket_id": "single-parquet-docket-1",
+            "case_name": "Single Parquet Docket",
+            "court": "D. Example",
+            "section": "bm25_documents",
+            "row_index": 1,
+            "row_id": "doc_2",
+            "title": "Notice of Hearing",
+            "document_number": "22",
+            "source_url": "",
+            "text": "Notice of Hearing The court sets a hearing for April 21, 2026.",
+            "payload_json": json.dumps(
+                {
+                    "document_id": "doc_2",
+                    "title": "Notice of Hearing",
+                    "text": "Notice of Hearing The court sets a hearing for April 21, 2026.",
+                    "tokens": ["notice", "hearing", "court", "sets", "hearing", "april"],
+                    "metadata": {"document_number": "22"},
+                },
+                sort_keys=True,
+            ),
+        },
+    ]
+    pq.write_table(pa.Table.from_pylist(rows), output_path)
+    return str(output_path)
+
+
+@pytest.mark.no_auto_llm
 def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
     service = ComplaintWorkspaceService(root_dir=tmp_path / "tool-list-sessions")
     payload = tool_list_payload(service)
@@ -108,6 +211,10 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.submit_intake",
         "complaint.run_intake_chat_turn",
         "complaint.save_evidence",
+        "complaint.tag_document_annotation",
+        "complaint.get_document_annotation_graph",
+        "complaint.tag_workspace_dataset_document",
+        "complaint.get_workspace_dataset_annotation_index",
         "complaint.import_gmail_evidence",
         "complaint.run_gmail_duckdb_pipeline",
         "complaint.import_local_evidence",
@@ -119,6 +226,24 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.get_client_release_gate",
         "complaint.get_workflow_capabilities",
         "complaint.get_tooling_contract",
+        "complaint.get_workspace_data_schema",
+        "complaint.migrate_legacy_workspace_data",
+        "complaint.view_workspace_dataset",
+        "complaint.search_workspace_dataset",
+        "complaint.get_workspace_dataset_graph",
+        "complaint.build_mike_handoff",
+        "complaint.get_mike_integration_status",
+        "complaint.sync_mike_final_draft",
+        "complaint.generate_grounded_text",
+        "complaint.search_corpus",
+        "complaint.get_handoff",
+        "complaint.sync_draft",
+        "complaint.get_draft_proof_report",
+        "complaint.render_draft_proof_report",
+        "complaint.pin_draft_proof_report",
+        "complaint.score_draft_quality",
+        "complaint.improve_draft",
+        "complaint.get_proof_history",
         "complaint.generate_complaint",
         "complaint.update_draft",
         "complaint.export_complaint_packet",
@@ -129,9 +254,15 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
         "complaint.get_formal_diagnostics",
         "complaint.get_filing_provenance",
         "complaint.get_provider_diagnostics",
+        "complaint.view_docket_dataset",
+        "complaint.search_docket_dataset",
+        "complaint.get_docket_dataset_metadata",
+        "complaint.get_docket_dataset_graph",
+        "complaint.review_generated_exports",
         "complaint.get_packaged_docket_operator_dashboard",
         "complaint.load_packaged_docket_operator_dashboard_report",
-        "complaint.review_generated_exports",
+        "complaint.execute_packaged_docket_proof_revalidation_queue",
+        "complaint.persist_packaged_docket_proof_revalidation_queue",
         "complaint.update_claim_type",
         "complaint.update_case_synopsis",
         "complaint.reset_session",
@@ -144,6 +275,14 @@ def test_tool_list_exposes_all_complaint_cli_and_mcp_tools(tmp_path):
     assert all("inputSchema" in tool for tool in payload["tools"])
     assert tools_by_name["complaint.get_tooling_contract"]["inputSchema"]["properties"] == {"user_id": {"type": "string"}}
     assert tools_by_name["complaint.get_filing_provenance"]["inputSchema"]["properties"] == {"user_id": {"type": "string"}}
+    assert tools_by_name["complaint.build_mike_handoff"]["inputSchema"]["properties"]["generate_draft_if_missing"]["type"] == "boolean"
+    assert tools_by_name["complaint.build_mike_handoff"]["inputSchema"]["properties"]["grounding_mode"]["type"] == "string"
+    assert tools_by_name["complaint.get_mike_integration_status"]["inputSchema"]["properties"] == {"user_id": {"type": "string"}}
+    assert tools_by_name["complaint.sync_mike_final_draft"]["inputSchema"]["required"] == ["body"]
+    assert tools_by_name["complaint.sync_mike_final_draft"]["inputSchema"]["properties"]["assertion_annotations"]["type"] == "array"
+    assert tools_by_name["complaint.sync_mike_final_draft"]["inputSchema"]["properties"]["authority_links"]["type"] == "array"
+    assert tools_by_name["complaint.tag_document_annotation"]["inputSchema"]["required"] == ["document_id", "note"]
+    assert tools_by_name["complaint.tag_workspace_dataset_document"]["inputSchema"]["required"] == ["document_id", "note"]
     assert tools_by_name["complaint.get_packaged_docket_operator_dashboard"]["inputSchema"]["required"] == ["manifest_path"]
     assert tools_by_name["complaint.load_packaged_docket_operator_dashboard_report"]["inputSchema"]["required"] == ["manifest_path"]
 
@@ -195,6 +334,50 @@ def test_client_release_gate_is_exposed_across_package_cli_and_mcp(monkeypatch, 
     assert package_payload["complaint_readiness"]["has_draft"] is True
 
 
+@pytest.mark.no_auto_llm
+def test_document_annotation_tags_update_workspace_knowledge_graph(tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "annotation-tag-sessions")
+
+    payload = service.tag_workspace_dataset_document(
+        "reviewer-user",
+        document_id="workspace-doc-1",
+        tags=["accommodation", "causation", "accommodation"],
+        note="This email ties the accommodation request to the later adverse action.",
+        claim_element_id="causation",
+        title="Accommodation Request Email annotation",
+        document_title="Accommodation Request Email",
+        document_text_preview="Tenant requested a reasonable accommodation before the adverse notice.",
+        collection_id="housing-case",
+        document_type="email",
+        claim_type="housing_discrimination",
+        source_type="workspace_dataset",
+        user_metadata={"display_name": "Alex Reviewer", "role": "legal reviewer"},
+    )
+
+    assert payload["saved"]["kind"] == "document"
+    assert payload["source"] == "complaint_workspace_dataset_document_annotation"
+    assert payload["annotation_tags"] == ["accommodation", "causation"]
+    assert payload["annotation"]["user_metadata"]["display_name"] == "Alex Reviewer"
+    assert payload["workspace_annotation_index"]["by_collection"]["housing-case"][0]["document_id"] == "workspace-doc-1"
+    assert payload["workspace_annotation_index"]["by_document_type"]["email"][0]["annotation_id"] == payload["annotation"]["id"]
+    graph = payload["annotation_knowledge_graph"]
+    entity_ids = {entity["id"] for entity in graph["entities"]}
+    relationship_types = {relationship["type"] for relationship in graph["relationships"]}
+    assert "document:workspace-doc-1" in entity_ids
+    assert "tag:accommodation" in entity_ids
+    assert "user:reviewer-user" in entity_ids
+    assert {"annotates", "tagged_with", "tag_applied_by", "created_by", "supports_claim_element"} <= relationship_types
+
+    mcp_payload = _call_mcp_tool(
+        service,
+        92,
+        "complaint.get_workspace_dataset_annotation_index",
+        {"user_id": "reviewer-user"},
+    )
+    assert mcp_payload["workspace_annotation_index"]["workspace_annotation_count"] == 1
+    assert mcp_payload["workspace_annotations"][0]["user_metadata"]["role"] == "legal reviewer"
+
+
 def test_tooling_contract_is_exposed_across_package_cli_and_mcp(monkeypatch, tmp_path):
     runner = CliRunner()
     service = ComplaintWorkspaceService(root_dir=tmp_path / "tooling-contract-sessions")
@@ -211,6 +394,9 @@ def test_tooling_contract_is_exposed_across_package_cli_and_mcp(monkeypatch, tmp
     assert "tooling-contract" in cli_payload["cli_commands"]
     assert "workspace-data-schema" in cli_payload["cli_commands"]
     assert "migrate-legacy-workspace-data" in cli_payload["cli_commands"]
+    assert "build-mike-handoff" in cli_payload["cli_commands"]
+    assert "mike-status" in cli_payload["cli_commands"]
+    assert "sync-mike-draft" in cli_payload["cli_commands"]
     assert "set-claim-type" in cli_payload["cli_commands"]
     assert "update-synopsis" in cli_payload["cli_commands"]
 
@@ -222,6 +408,9 @@ def test_tooling_contract_is_exposed_across_package_cli_and_mcp(monkeypatch, tmp
     assert any(step["id"] == "tooling_contract" for step in mcp_payload["core_flow_steps"])
     assert any(step["id"] == "workspace_data_schema" for step in mcp_payload["core_flow_steps"])
     assert any(step["id"] == "workspace_data_migration" for step in mcp_payload["core_flow_steps"])
+    assert any(step["id"] == "mike_editor_handoff" for step in mcp_payload["core_flow_steps"])
+    assert any(step["id"] == "mike_editor_status" for step in mcp_payload["core_flow_steps"])
+    assert any(step["id"] == "mike_editor_sync" for step in mcp_payload["core_flow_steps"])
 
     package_payload = get_tooling_contract("contract-user", service=service)
     assert package_payload["all_core_flow_steps_exposed"] is True
@@ -235,6 +424,9 @@ def test_tooling_contract_is_exposed_across_package_cli_and_mcp(monkeypatch, tmp
     assert "update_case_synopsis" in package_payload["package_exports"]
     assert "get_workspace_data_schema" in package_payload["package_exports"]
     assert "migrate_legacy_workspace_data" in package_payload["package_exports"]
+    assert "build_mike_handoff" in package_payload["package_exports"]
+    assert "get_mike_integration_status" in package_payload["package_exports"]
+    assert "sync_mike_final_draft" in package_payload["package_exports"]
     assert "importGmailEvidence" in package_payload["browser_sdk_methods"]
     assert "importLocalEvidence" in package_payload["browser_sdk_methods"]
     assert "runGmailDuckdbPipeline" in package_payload["browser_sdk_methods"]
@@ -245,19 +437,48 @@ def test_tooling_contract_is_exposed_across_package_cli_and_mcp(monkeypatch, tmp
     assert "getToolingContract" in package_payload["browser_sdk_methods"]
     assert "getWorkspaceDataSchema" in package_payload["browser_sdk_methods"]
     assert "migrateLegacyWorkspaceData" in package_payload["browser_sdk_methods"]
+    assert "buildMikeHandoff" in package_payload["browser_sdk_methods"]
+    assert "getMikeIntegrationStatus" in package_payload["browser_sdk_methods"]
+    assert "syncMikeFinalDraft" in package_payload["browser_sdk_methods"]
     assert any(step["id"] == "gmail_duckdb_pipeline" for step in package_payload["core_flow_steps"])
     assert any(step["id"] == "email_duckdb_search" for step in package_payload["core_flow_steps"])
     assert any(step["id"] == "intake_chat" for step in package_payload["core_flow_steps"])
     assert any(item["id"] == "workspace_schema_refresh" for item in package_payload["schema_guided_recommendations"])
 
 
+def test_mcp_and_cli_interview_transitions_match_package_graph_revision(monkeypatch, tmp_path):
+    """MCP and terminal chat turns keep the package inquiry id and graph revision."""
+
+    from tests.test_tui_interview_acceptance import (
+        COHERENT,
+        _graph_revision_fingerprint,
+        _mcp_turn,
+        _service,
+        _terminal_turn,
+    )
+    from complaint_generator.workspace import run_intake_chat_turn
+
+    package = _service(tmp_path / "package", "tools-package-user")
+    mcp = _service(tmp_path / "mcp", "tools-mcp-user")
+    terminal = _service(tmp_path / "terminal", "tools-terminal-user")
+    package_payload = run_intake_chat_turn("tools-package-user", message=COHERENT, service=package)
+    mcp_payload = _mcp_turn(mcp, "tools-mcp-user", COHERENT)
+    terminal_payload = _terminal_turn(terminal, "tools-terminal-user", COHERENT, monkeypatch)
+    assert _graph_revision_fingerprint(package_payload) == _graph_revision_fingerprint(mcp_payload)
+    assert _graph_revision_fingerprint(package_payload) == _graph_revision_fingerprint(terminal_payload)
+    assert package_payload["stopping_policy"]["outcome"] == "awaiting_user"
+    assert package_payload["interview"]["legal_sufficiency"] is False
+
+
 def test_intake_chat_turn_is_exposed_across_cli_mcp_and_api(monkeypatch, tmp_path):
     runner = CliRunner()
     service = ComplaintWorkspaceService(root_dir=tmp_path / "intake-chat-sessions")
+    service.initialize_private_keys(protection="passphrase", passphrase="synthetic-wrapper-fixture-passphrase")
+    service.ensure_private_case_key("chat-user", "chat-user")
     monkeypatch.setattr(complaint_cli_impl, "service", service)
 
     first_turn = _invoke_cli(runner, "chat-turn", "--user-id", "chat-user")
-    assert first_turn["inquiry"]["question_id"] == "party_name"
+    assert first_turn["inquiry"]["question_id"] == "original_complaint"
     assert first_turn["accepted_answer"] is None
 
     cli_turn = _invoke_cli(
@@ -266,8 +487,13 @@ def test_intake_chat_turn_is_exposed_across_cli_mcp_and_api(monkeypatch, tmp_pat
         "--user-id",
         "chat-user",
         "--message",
-        "Jordan Example",
+        "My employer retaliated after I reported discrimination.",
     )
+    assert cli_turn["accepted_answer"]["question_id"] == "original_complaint"
+    assert cli_turn["next_question"]["id"] == "party_name"
+    assert cli_turn["session"]["intake_answers"].get("party_name") in {None, ""}
+    cli_turn = _invoke_cli(runner, "chat-turn", "--user-id", "chat-user",
+        "--message", "Jordan Example", "--question-id", "party_name")
     assert cli_turn["accepted_answer"]["question_id"] == "party_name"
     assert cli_turn["next_question"]["id"] == "opposing_party"
 
@@ -284,13 +510,18 @@ def test_intake_chat_turn_is_exposed_across_cli_mcp_and_api(monkeypatch, tmp_pat
     assert mcp_turn["accepted_answer"]["question_id"] == "opposing_party"
     assert mcp_turn["next_question"]["id"] == "protected_activity"
 
+    from applications.complaint_workspace import PrincipalRegistry
+
+    registry = PrincipalRegistry()
+    registry.register("synthetic-chat-token", "chat-user", case_id="chat-user")
     app = FastAPI()
-    attach_complaint_workspace_routes(app, service)
+    attach_complaint_workspace_routes(app, service, principal_registry=registry)
     from fastapi.testclient import TestClient
 
     client = TestClient(app)
     response = client.post(
         "/api/complaint-workspace/intake-chat",
+        headers={"Authorization": "Bearer synthetic-chat-token"},
         json={
             "user_id": "chat-user",
             "message": "Reported discrimination to HR",
@@ -413,6 +644,64 @@ def test_upload_local_evidence_api_route_imports_files_and_note(tmp_path):
     testimony = payload["session"]["evidence"]["testimony"]
     assert any("timeline.txt" in str(record["title"]) for record in documents)
     assert any(record["title"] == "Dashboard upload note" for record in testimony)
+
+
+@pytest.mark.no_auto_llm
+def test_workspace_session_reset_clears_uploaded_dashboard_state(tmp_path):
+    if not HAS_MULTIPART:
+        pytest.skip("python-multipart is not installed")
+
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "dashboard-reset-sessions")
+    app = FastAPI()
+    attach_complaint_workspace_routes(app, service)
+    client = TestClient(app)
+
+    upload_response = client.post(
+        "/api/complaint-workspace/upload-local-evidence",
+        data={
+            "user_id": "dashboard-reset-user",
+            "claim_element_id": "causation",
+            "kind": "document",
+            "note_title": "Reset verification note",
+            "note": "This upload should disappear after reset.",
+            "source": "dashboard-chat-upload",
+        },
+        files=[
+            (
+                "files",
+                ("timeline.txt", b"The timeline changed after the hearing notice arrived.", "text/plain"),
+            ),
+        ],
+    )
+    assert upload_response.status_code == 200
+    uploaded_payload = upload_response.json()
+    assert uploaded_payload["session"]["evidence"]["documents"]
+    assert uploaded_payload["session"]["evidence"]["testimony"]
+
+    session_response = client.get(
+        "/api/complaint-workspace/session",
+        params={"user_id": "dashboard-reset-user"},
+    )
+    assert session_response.status_code == 200
+    session_payload = session_response.json()
+    assert len(session_payload["session"]["evidence"]["documents"]) == 1
+    assert len(session_payload["session"]["evidence"]["testimony"]) == 1
+
+    reset_response = client.post(
+        "/api/complaint-workspace/reset",
+        json={"user_id": "dashboard-reset-user"},
+    )
+    assert reset_response.status_code == 200
+
+    refreshed_session_response = client.get(
+        "/api/complaint-workspace/session",
+        params={"user_id": "dashboard-reset-user"},
+    )
+    assert refreshed_session_response.status_code == 200
+    refreshed_session_payload = refreshed_session_response.json()
+    assert refreshed_session_payload["session"]["user_id"] == "dashboard-reset-user"
+    assert refreshed_session_payload["session"]["evidence"]["documents"] == []
+    assert refreshed_session_payload["session"]["evidence"]["testimony"] == []
 
 
 def test_import_gmail_evidence_cli_command(monkeypatch, tmp_path):
@@ -1585,6 +1874,7 @@ def test_filing_provenance_is_exposed_across_package_cli_and_mcp(monkeypatch, tm
     assert package_payload["ui_workflow_type"] == "ui_ux_closed_loop"
 
 
+@pytest.mark.no_auto_llm
 def test_packaged_docket_operator_dashboard_is_exposed_across_package_mcp_and_api(tmp_path):
     service = ComplaintWorkspaceService(root_dir=tmp_path / "workspace-packaged-docket-tools")
     manifest_path = _build_packaged_docket_manifest(
@@ -1654,6 +1944,70 @@ def test_packaged_docket_operator_dashboard_is_exposed_across_package_mcp_and_ap
     assert view_response.json()["case_calendar"][0]["kind"] == "hearing"
     assert view_response.json()["case_calendar"][0]["title"] == "Notice of Hearing"
     assert view_response.json()["case_calendar"][0]["date"] == "May 1, 2024"
+
+
+@pytest.mark.no_auto_llm
+def test_single_parquet_docket_dataset_dashboard_routes_use_ipfs_dataset_loader(tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "single-parquet-docket-dashboard")
+    parquet_path = _build_single_docket_parquet(tmp_path)
+
+    view_payload = service.view_docket_dataset(
+        parquet_path,
+        input_type="single",
+        include_document_text=True,
+        document_limit=10,
+    )
+    assert view_payload["input_type"] == "single"
+    assert view_payload["summary"]["case_name"] == "Single Parquet Docket"
+    assert view_payload["summary"]["document_count"] == 2
+    assert any(document["title"] == "Notice of Hearing" for document in view_payload["documents"])
+
+    search_payload = service.search_docket_dataset(
+        parquet_path,
+        input_type="single",
+        query="hearing",
+        search_backend="bm25",
+        top_k=5,
+    )
+    assert search_payload["source"] == "complaint_workspace_docket_search"
+    assert search_payload["search_results"]["result_count"] >= 1
+
+    app = FastAPI()
+    attach_complaint_workspace_routes(app, service)
+    client = TestClient(app)
+
+    view_response = client.get(
+        "/api/complaint-workspace/docket-dataset/view",
+        params={
+            "input_path": parquet_path,
+            "input_type": "single",
+            "include_document_text": True,
+            "document_limit": 10,
+        },
+    )
+    assert view_response.status_code == 200
+    assert view_response.json()["summary"]["case_name"] == "Single Parquet Docket"
+    assert view_response.json()["case_calendar_summary"]["count"] == 1
+    assert view_response.json()["case_calendar"][0]["date"] == "April 21, 2026"
+
+    search_response = client.get(
+        "/api/complaint-workspace/docket-dataset/search",
+        params={
+            "input_path": parquet_path,
+            "input_type": "single",
+            "query": "hearing",
+            "search_backend": "bm25",
+        },
+    )
+    assert search_response.status_code == 200
+    assert search_response.json()["search_results"]["result_count"] >= 1
+
+    graph_response = client.get(
+        "/api/complaint-workspace/docket-dataset/graph",
+        params={"input_path": parquet_path, "input_type": "single"},
+    )
+    assert graph_response.status_code == 200
+    assert graph_response.json()["source"] == "complaint_workspace_docket_graph"
 
 
 def test_successful_llm_draft_persists_effective_router_backend_metadata(monkeypatch, tmp_path):

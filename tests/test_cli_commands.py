@@ -17,6 +17,20 @@ def _make_cli(mediator=None):
     return cli
 
 
+def test_resolve_prompt_logs_payload_failure_and_uses_fallback(caplog):
+    mediator = Mock()
+    mediator.state.last_question = None
+    mediator.get_current_inquiry_payload.side_effect = RuntimeError('inquiry payload unavailable')
+    cli = _make_cli(mediator)
+
+    with caplog.at_level('WARNING', logger='cli'):
+        prompt = cli._resolve_prompt_text()
+
+    assert prompt == 'Response'
+    assert 'Could not resolve the current inquiry prompt; using the fallback prompt' in caplog.text
+    assert 'inquiry payload unavailable' in caplog.text
+
+
 def test_parse_command_options_supports_key_value_and_bools():
     cli = _make_cli()
 
@@ -190,6 +204,9 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
                 'selected_authority_program_rule_bias_counts': {
                     'exception': 1,
                 },
+                'selected_authority_graph_gap_bias_counts': {
+                    'graph_backed_authority_gap': 1,
+                },
                 'source_family_counts': {
                     'legal_authority': 1,
                 },
@@ -331,6 +348,7 @@ def test_claim_review_command_prints_parse_quality_summary_before_json():
     assert 'selected_programs: Adverse Authority Search=1' in rendered
     assert 'selected_biases: Adverse=1' in rendered
     assert 'selected_rule_biases: Exception=1' in rendered
+    assert 'selected_graph_gap_biases: Graph Backed Authority Gap=1' in rendered
     assert 'source_context: family Legal Authority=1; artifact Legal Authority Reference=1' in rendered
     assert 'follow-up history chronology summary:' in rendered
     assert '- retaliation: chronology_tasks=1 chronology_targeted=1' in rendered
@@ -539,6 +557,9 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
                     'selected_authority_program_rule_bias_counts': {
                         'procedural_prerequisite': 1,
                     },
+                    'selected_authority_graph_gap_bias_counts': {
+                        'graph_backed_authority_gap': 1,
+                    },
                     'source_family_counts': {
                         'legal_authority': 1,
                     },
@@ -615,6 +636,7 @@ def test_execute_follow_up_command_prints_execution_quality_summary_before_json(
     assert 'selected_programs: Element Definition Search=1' in rendered
     assert 'selected_biases: Uncertain=1' in rendered
     assert 'selected_rule_biases: Procedural Prerequisite=1' in rendered
+    assert 'selected_graph_gap_biases: Graph Backed Authority Gap=1' in rendered
     assert 'source_context: family Legal Authority=1; artifact Legal Authority Reference=1' in rendered
     assert 'follow-up history legal retrieval warnings:' in rendered
     assert 'latest_warning: State Statutes [hf_dataset_files_missing] Dataset missing Oregon parquet coverage.' in rendered

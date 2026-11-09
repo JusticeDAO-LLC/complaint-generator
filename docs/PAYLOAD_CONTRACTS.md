@@ -4,6 +4,52 @@ This document centralizes the response payloads returned by the complaint genera
 
 Use this page when you need the current response contract without stitching it together from multiple feature guides.
 
+## Payload Fixture Hygiene
+
+Every `json` fenced block in this document is a machine-readable fixture. The supervisor task-board validator parses those blocks with Python's standard `json.loads(...)` before tasks are claimed, so examples must remain strict JSON rather than JavaScript object literals.
+
+Machine-readable validator contract:
+
+```json
+{
+  "schema_version": "complaint-generator.payload_fixture_hygiene.v1",
+  "validated_by": "scripts/validate_task_boards.py",
+  "payload_contract_doc": "docs/PAYLOAD_CONTRACTS.md",
+  "supervisor_task_board_json": "docs/task_boards/ipfs_supervisor_task_board.json",
+  "supervisor_task_board_markdown": "docs/task_boards/ipfs_supervisor_task_board.md",
+  "json_fence_contract": {
+    "language": "json",
+    "parser": "json.loads",
+    "allow_comments": false,
+    "allow_trailing_commas": false,
+    "require_complete_json_value": true
+  },
+  "task_payload_required_fields": [
+    "task_id",
+    "title",
+    "source_doc",
+    "status",
+    "priority",
+    "target_files",
+    "acceptance_criteria",
+    "validation_commands"
+  ],
+  "task_output_path_contract": {
+    "repo_relative": true,
+    "may_be_future_expected_output": true,
+    "absolute_paths_allowed": false,
+    "parent_directory_escape_allowed": false
+  }
+}
+```
+
+Contract hygiene rules:
+
+- Keep `json` fences as complete JSON values with quoted keys and no trailing commas.
+- Keep task-board JSON as the canonical machine-readable source; the markdown task board is a projection for human and daemon queue review.
+- Treat `target_files` as expected output paths. They must be repo-relative and non-empty, but they do not have to exist before the assigned task runs.
+- Add new externally visible payload examples here before relying on them from task-board acceptance criteria or supervisor execution packets.
+
 ## Adapter Operation Metadata
 
 Adapter-facing payloads under `integrations/ipfs_datasets/` now share one metadata family even when the top-level `status` differs by operation.
@@ -331,7 +377,6 @@ Representative optimization router metadata fragment:
         }
       }
     ]
-    }
   }
 }
 ```
@@ -356,6 +401,34 @@ Representative shape:
     "status": "fallback",
     "source": "web_document",
     "chunk_count": 2,
+    "chunks": [
+      {
+        "chunk_id": "chunk-0",
+        "index": 0,
+        "start": 0,
+        "end": 420,
+        "text": "Title: Example...",
+        "length": 420,
+        "metadata": {
+          "source": "web_document",
+          "input_format": "text",
+          "parser_version": "documents-adapter:1",
+          "extraction_method": "text_normalization",
+          "quality_tier": "high",
+          "page_start": 1,
+          "page_end": 1,
+          "section_label": "",
+          "source_span": {
+            "char_start": 0,
+            "char_end": 420,
+            "text_length": 900,
+            "page_start": 1,
+            "page_end": 1,
+            "page_count": 1
+          }
+        }
+      }
+    ],
     "text": "Title: Example\n\nContent: ...",
     "text_preview": "Title: Example\n\nContent: ...",
     "summary": {
@@ -417,9 +490,12 @@ Compatibility notes:
 - `metadata.provenance.metadata` is the canonical place for normalized source-context fields that do not fit the core provenance columns, such as archive capture context or authority full-text versus fallback semantics.
 - Stored DuckDB parse columns still use `parse_status`, `chunk_count`, `parsed_text_preview`, and `parse_metadata`.
 - `document_parse_contract` is the canonical bundle those compatibility fields are now derived from.
-- `summary.input_format` and `lineage.input_format` may now be `text`, `html`, `email`, `rtf`, `docx`, or `pdf`, depending on the adapter-owned normalization path.
+- `document_parse_contract.chunks` carries the same normalized chunk rows emitted by the adapter, including stable IDs, offsets, per-chunk source/page spans, parser version, input format, extraction method, quality tier, and optional section labels.
+- `summary.input_format` and `lineage.input_format` may now be `text`, `html`, `email`, `rtf`, `docx`, `xlsx`, `pptx`, `odt`, `ods`, `odp`, `csv`, `doc`, or `pdf`, depending on the adapter-owned normalization path.
 - `summary.extraction_method`, `summary.quality_tier`, `summary.quality_score`, and `summary.page_count` expose adapter-level extraction diagnostics without requiring callers to inspect raw metadata.
+- `summarize_document_parse(...)` preserves those same diagnostics, plus `source` when available, for full parse results and metadata-only fallback records; the root `integrations.ipfs_datasets` package exports the canonical parse entrypoints and summary helper for callers that use the adapter package surface.
 - `document_parse_contract.parse_quality` and `document_parse_contract.source_span` expose extraction quality flags, OCR status, and character/page span metadata for downstream provenance consumers.
+- Office-family inputs use degraded local extractors when the upstream document stack is unavailable: DOCX/XLSX/PPTX and OpenDocument files read XML text from their package archives, CSV normalizes tabular text into the same chunk contract, and legacy `.doc` emits a low-quality office-binary fallback or empty contract with quality flags rather than escaping the shared parse shape.
 
 ## Evidence Submission
 
@@ -546,11 +622,19 @@ Count semantics:
 - `total_reused`: Aggregate reused evidence rows.
 - `support_links_added`: New support links created during the request.
 - `support_links_reused`: Support links that already existed.
+- `archive_attempted`, `archive_captured`, `archive_skipped`, and `archive_failed`: W7.2 archive-first acquisition counters for live web results. Archive capture is attempted only for high-relevance live URLs when archive-on-acquire is enabled or the archive helper is injected by the caller/test harness.
+- `archive_results`: Per-URL archive acquisition summaries with `url`, `archived`, `archive_url`, `captured_at`, `status`, and `capture_source`.
 - `parse_summary`: Aggregate parse statistics for stored web evidence in the request.
 - `parse_details`: Per-record parse metadata extracted from `document_parse_summary`.
 - `parse_summary.avg_quality_score`: Mean adapter-reported quality score across stored web evidence for the request.
 - `parse_details[*].quality_tier` and `parse_details[*].source_span`: Per-record extraction diagnostics derived from the shared parse contract.
-- Stored web evidence provenance now also preserves normalized archive context under `metadata.provenance.metadata`, including fields such as `content_origin`, `capture_source`, `historical_capture`, `archive_url`, `version_of`, `captured_at`, and `observed_at` when available.
+- Stored web evidence provenance now also preserves normalized archive context under `metadata.provenance.metadata`, including fields such as `content_origin`, `capture_source`, `historical_capture`, `archive_url`, `version_of`, `captured_at`, and `observed_at` when available. When a live URL is archived during acquisition, the original search result remains the stored support source, while `metadata.archive_acquisition`, `search_metadata.archive_acquisition`, parse lineage, and support-link metadata carry the generated archive URL and capture timestamp.
+
+Queue-aware scraper execution:
+
+- `scraper_queue_state`: Inspection-only queue summary returned by bounded scraper-cycle/reporting payloads when queue storage is available. It includes `jobs`, `job_count`, `status_counts`, `claim_type_counts`, `queue_owner_counts`, `ready_queued_count`, `running_count`, `completed_count`, `failed_count`, `next_available_at`, and `inspection_only: true`. Count fields aggregate all rows matching the requested user/status filters; `jobs` remains a bounded preview list controlled by the caller's limit.
+- `Mediator.get_scraper_queue_state(...)` returns the same shape without claiming or starting jobs. Worker flows claim jobs through `run_next_agentic_scraper_job(...)`; completion/failure updates are accepted only for claimed `running` rows, and optional worker identity must match the row's claiming worker. Completed queue rows carry metadata such as `executed_from_queue`, `worker_id`, `claimed_job_id`, `final_result_count`, and `storage_summary`.
+- The agentic scraper CLI is queue-first: `agentic_scraper_cli.py run` enqueues a job, `run --direct` performs immediate bounded execution, `worker` claims queued jobs, and `queue-state` inspects queue health without executing work.
 
 ## Automatic Evidence Discovery
 
@@ -590,6 +674,32 @@ Representative shape:
         "collect_missing_support_kind": 1,
         "collect_initial_support": 1
       },
+      "graph_gap_query_summary": {
+        "graph_gap_query_count": 2,
+        "graph_gap_has_support_count": 1,
+        "graph_gap_empty_count": 1,
+        "graph_gap_total_fact_count": 4,
+        "graph_gap_unique_fact_count": 2,
+        "graph_gap_duplicate_fact_count": 2,
+        "graph_gap_semantic_cluster_count": 2,
+        "graph_gap_semantic_duplicate_count": 2,
+        "graph_gap_strength_counts": {
+          "strong": 1,
+          "none": 1
+        },
+        "graph_gap_recommended_action_counts": {
+          "review_existing_support": 1,
+          "retrieve_more_support": 1
+        },
+        "graph_gap_priority_adjustment_counts": {
+          "-1": 1,
+          "1": 1
+        },
+        "graph_gap_missing_support_kind_counts": {
+          "evidence": 1,
+          "authority": 2
+        }
+      },
       "contradiction_candidate_count": 1,
       "contradicted_elements": ["Protected activity"],
       "support_packet_summary": {
@@ -624,7 +734,58 @@ Representative shape:
   "claim_support_gaps": {
     "employment discrimination": {
       "unresolved_count": 2,
-      "unresolved_elements": []
+      "unresolved_elements": [
+        {
+          "element_id": "employment:1",
+          "element_text": "Protected activity",
+          "graph_support_strength": "strong",
+          "graph_gap_context": {
+            "strength": "strong",
+            "recommended_action": "review_existing_support",
+            "priority_adjustment": -1,
+            "has_graph_support": true,
+            "result_count": 1,
+            "total_fact_count": 4,
+            "unique_fact_count": 2,
+            "duplicate_fact_count": 2,
+            "semantic_cluster_count": 2,
+            "semantic_duplicate_count": 2,
+            "fact_registry_summary": {
+              "registry_version": "claim_fact_registry_summary.v1",
+              "fact_count": 4
+            }
+          },
+          "graph_gap_query": {
+            "claim_type": "employment discrimination",
+            "claim_element_id": "employment:1",
+            "claim_element_text": "Protected activity",
+            "missing_support_kinds": ["evidence", "authority"],
+            "strength": "strong",
+            "recommended_action": "review_existing_support",
+            "priority_adjustment": -1,
+            "has_graph_support": true,
+            "result_count": 1,
+            "total_fact_count": 4,
+            "unique_fact_count": 2,
+            "duplicate_fact_count": 2,
+            "semantic_cluster_count": 2,
+            "semantic_duplicate_count": 2
+          }
+        }
+      ],
+      "graph_gap_query_summary": {
+        "graph_gap_query_count": 2,
+        "graph_gap_has_support_count": 1,
+        "graph_gap_empty_count": 1,
+        "graph_gap_strength_counts": {
+          "strong": 1,
+          "none": 1
+        },
+        "graph_gap_recommended_action_counts": {
+          "review_existing_support": 1,
+          "retrieve_more_support": 1
+        }
+      }
     }
   },
   "claim_contradiction_candidates": {
@@ -680,7 +841,10 @@ Compatibility note:
 - `evidence_storage_summary[claim_type]` is the authoritative deduplication-aware breakdown.
 - `claim_coverage_summary[claim_type]` is the compact support-health snapshot for dashboards and automation.
 - `claim_coverage_summary[claim_type].support_packet_summary` adds compact lineage counts for archive captures, fallback-only authority text, capture sources, and source-field fallbacks.
+- `claim_coverage_summary[claim_type].graph_gap_query_summary` mirrors the claim-level unresolved-gap GraphRAG rollup so dashboards can show how many missing elements already have graph-backed support hits, which action the graph classifier recommends, and whether the remaining gaps are empty retrieval lanes.
 - `claim_support_gaps[claim_type]` and `claim_contradiction_candidates[claim_type]` expose the richer unresolved-support and conflict diagnostics behind that compact summary.
+- `claim_support_gaps[claim_type].unresolved_elements[*].graph_gap_context` is the compact, classified GraphRAG support assessment for a missing/partial claim element. `graph_gap_query` repeats the operator-facing query identifiers plus normalized counts/action fields without requiring consumers to parse raw `graph_support.results`.
+- `claim_support_gaps[claim_type].graph_gap_query_summary` aggregates those element-level graph-gap query packets across all unresolved elements for the claim.
 - `claim_support_snapshots[claim_type]` exposes the persisted snapshot ids, support-kind scope, freshness metadata, and bounded-retention pruning metadata for the stored diagnostics that automatic workflows just wrote.
 - `claim_support_snapshot_summary[claim_type]` compresses that lifecycle state into fresh versus stale counts, snapshot kinds, retention limits, and total pruning for dashboard-style consumers.
 
@@ -718,6 +882,36 @@ Stored authority records returned by `Mediator.get_legal_authorities(...)` also 
 
 - `fact_count`: Number of persisted fact rows extracted from the authority text.
 - `provenance.metadata`: Normalized authority source-context metadata, including `content_origin`, `content_source_field`, `fallback_mode`, `text_available`, and the parse-detected `input_format`.
+- `treatment_records`: Durable authority-treatment rows. Relationship records expose graph-compatible aliases: `treated_by_authority_id`, `treated_authority_id`, and `target_authority_id` all identify the related authority when available; `treated_by_citation` and `target_citation` identify the related citation.
+- `authority_treatment_edges`: Graph-compatible projections of the same treatment history. Each edge exposes `source_authority_id` / `source_citation` for the treating authority, `target_authority_id` / `target_citation` for the stored authority being treated, `relation_type`, `confidence`, source/date/explanation fields, and compatibility aliases such as `treatment_type` and `treatment_confidence`. `LegalGraphBuilder.build_from_authorities(...)` consumes these edges directly when present, preserving stored edge direction and resolving both raw IDs and `authority:{id}` aliases.
+- `citation_history_summary`: Compact counts over treatment records, including related authority/citation counts, related IDs/citations, source counts, and earliest/latest treatment dates.
+- `search_programs`: Durable per-authority legal search-plan rows, when the authority was collected from claim-element-aware search programs.
+- `search_program_summary`: Compact counts over stored search programs by `program_type`, `authority_intent`, and distinct claim elements.
+- Normalized search result payloads can include W7.1 ranking metadata in `metadata.ranking_score`, `metadata.search_ranking_factors`, and `metadata.search_ranking_explanation`. Factors cover query match, claim-element fit, authority class, jurisdiction, source quality, temporal relevance, graph/support signals, and archive signals.
+
+Representative search-program row:
+
+```json
+{
+  "program_id": "legal_search_program:abc123",
+  "program_type": "treatment_check_search",
+  "claim_type": "employment retaliation",
+  "authority_intent": "confirm_good_law",
+  "query_text": "Smith v. Jones later treatment",
+  "claim_element_id": "employment_retaliation:3",
+  "claim_element_text": "Causal connection",
+  "jurisdiction": "9th Circuit",
+  "forum": "federal",
+  "authority_families": ["case_law"],
+  "search_terms": ["later treatment"],
+  "metadata": {
+    "authority_id": 42,
+    "authority_citation": "Smith v. Jones, 123 F.3d 456",
+    "authority_source": "recap",
+    "authority_type": "case_law"
+  }
+}
+```
 
 Per-source keys follow the pattern:
 
@@ -901,7 +1095,8 @@ Representative shape:
         "logic_proof": {"not_implemented": 1},
         "logic_contradictions": {"not_implemented": 1},
         "ontology_build": {"implemented": 1},
-        "ontology_validation": {"implemented": 1}
+        "ontology_validation": {"implemented": 1},
+        "ontology_workflow": {"implemented": 1}
       },
       "reasoning_backend_available_count": 4,
       "reasoning_predicate_count": 4,
@@ -1046,7 +1241,28 @@ Representative shape:
               "logic_proof": {"operation": "prove_claim_elements"},
               "logic_contradictions": {"operation": "check_contradictions"},
               "ontology_build": {"operation": "build_ontology"},
-              "ontology_validation": {"operation": "validate_ontology"}
+              "ontology_validation": {"operation": "validate_ontology"},
+              "ontology_workflow": {"operation": "build_validate_score_ontology"}
+            },
+            "ontology_workflow": {
+              "metadata": {"operation": "build_validate_score_ontology"},
+              "ontology_quality": {
+                "valid": true,
+                "overall_quality_score": 0.42,
+                "grade": "D",
+                "entity_count": 3,
+                "relation_count": 1,
+                "concept_count": 2,
+                "gap_count": 2,
+                "has_gaps": true,
+                "has_blocking_gaps": false
+              }
+            },
+            "graphrag_quality": {
+              "valid": true,
+              "overall_quality_score": 0.42,
+              "grade": "D",
+              "gaps": []
             }
           },
           "proof_decision_trace": {
@@ -1195,7 +1411,8 @@ Representative shape:
         "collect_initial_support": 1,
         "collect_missing_support_kind": 1
       }
-    },
+    }
+  },
   "follow_up_execution_summary": {
     "civil rights": {
       "executed_task_count": 0,
@@ -1227,18 +1444,22 @@ Support-link semantics:
 - `support_trace_summary`: Compact counts over `support_traces`, including fact-trace volume, parse-source mix, graph-status mix, and distinct record or graph counts. Source-context counts are derived from fact lineage when available and otherwise fall back to the normalized record summary built from persisted provenance or parse metadata.
 - `support_packet_summary`: Compact lineage counts over the traced support corpus, including archive-capture totals, artifact-family mix, capture-source mix, authority fallback modes, and source-field fallback mix.
 - `authority_treatment_summary`: Compact authority-reliability counts over authority links, including supportive versus adverse versus uncertain link totals, treatment-type mix, and maximum treatment confidence.
-- `authority_rule_candidate_summary`: Compact counts over structured rule candidates extracted from authority text, including aligned rule totals, rule-type mix such as `element`, `exception`, or `procedural_prerequisite`, and maximum extraction confidence.
+- `authority_rule_candidate_summary`: Compact counts over structured rule candidates extracted from authority text, including aligned rule totals, rule-type mix such as `element`, `exception`, or `procedural_prerequisite`, deontic/operator-family/grounding-status counts, adverse-treatment totals, and maximum extraction confidence.
+- `authority rule candidates`: Persisted candidate rows expose `source_passage` and `metadata.source_passage` with chunk id/index, exact source offsets, and bounded passage text matching the candidate rule; `parse_lineage` mirrors the shared document parse contract so review/proof consumers can trace each candidate back to the parsed authority corpus.
 
 Interpretation notes:
 
 - `claim_coverage_matrix` is the review-oriented support payload for operator and UI workflows.
 - `claim_coverage_summary` is the compact companion payload for dashboards, logs, and quick status rendering.
 - `validation_status`, `validation_status_counts`, and `proof_gap_count` lift proof-health into the compact summary without requiring callers to inspect per-element diagnostics.
+- `formal_status`, `formal_status_counts`, `formal_predicate_count`, `formal_proof_gap_count`, `formalization_ready_element_count`, `theorem_export_ready`, `formal_support_quality_signal_counts`, `formal_primary_quality_signal_counts`, and `formal_quality_follow_up_action_counts` lift formal-validation readiness and routing pressure into the same compact summary without requiring dashboard clients to reopen `formal_validation_report`.
 - `reasoning_adapter_status_counts`, `reasoning_backend_available_count`, `reasoning_predicate_count`, `reasoning_ontology_entity_count`, `reasoning_ontology_relationship_count`, and `reasoning_fallback_ontology_count` summarize what the `ipfs_datasets` logic and GraphRAG adapters contributed to the current validation pass.
+- `claim_coverage_summary[claim_type].ontology_quality_summary` aggregates per-element `reasoning_diagnostics.graphrag_quality` into availability, validation, score, grade, ontology-gap type/severity/action counts, workflow status counts, and degraded-mode reason counts so dashboards and complaint phases can consume W5.1 ontology quality without scanning every element.
 - `decision_source_counts`, `adapter_contradicted_element_count`, and `decision_fallback_ontology_element_count` summarize how proof decisions were reached across the claim, including whether adapter contradiction output changed any element status.
 - `proof_supported_element_count`, `logic_unprovable_element_count`, and `ontology_invalid_element_count` summarize how often proof and ontology adapters positively supported an element, downgraded an element as unprovable, or reported an invalid reasoning graph.
 - `authority_treatment_summary` summarizes whether current legal-authority support appears clean, adverse, or uncertain based on persisted treatment records such as `questioned`, `limits`, `superseded`, or `good_law_unconfirmed`.
-- `authority_rule_candidate_summary` summarizes whether current legal-authority support already contains structured rule statements for the claim element. When authority support is present but `evidence` is still missing, operators can treat that as a likely factual-predicate gap rather than a legal-research gap.
+- `authority_rule_candidate_summary` summarizes whether current legal-authority support already contains structured rule statements for the claim element. Grounding fields such as `deontic_operator_counts`, `operator_family_counts`, `grounding_status_counts`, and `adverse_treatment_count` distinguish clean obligations, prohibitions, exceptions, procedural prerequisites, and weakened authorities. When authority support is present but `evidence` is still missing, operators can treat that as a likely factual-predicate gap rather than a legal-research gap.
+- Rule-candidate `source_passage` fields are sentence-level anchors rather than whole-chunk placeholders when parsed chunks are available, so future theorem/predicate translation can cite the exact authority sentence it used.
 - `support_packet_summary` summarizes operator-visible source-context lineage across the claim, including archive captures, capture-source mix, citation-only fallback modes, and content-source-field fallbacks. It prefers persisted `provenance.metadata` when present and falls back to parse lineage for older stored records.
 - `artifact_family_counts` in `support_packet_summary` and `support_trace_summary` makes corpus identity explicit for archived web pages versus live web pages versus authority-backed artifacts, so review flows do not need to infer artifact class from `content_origin` alone.
 - `graph_trace_summary` is the compact lineage companion for dashboards and audit surfaces; it counts traced links, snapshot creation versus reuse, source-table mix, and distinct graph ids without requiring callers to inspect raw support links.
@@ -1248,10 +1469,14 @@ Interpretation notes:
 - `claim_support_gaps` exposes unresolved-element diagnostics with recommended actions and per-element support context.
 - `claim_contradiction_candidates` exposes heuristic contradiction candidates for operator review.
 - `claim_support_validation` is the normalized proof-oriented companion payload. It classifies each element as `supported`, `incomplete`, `missing`, or `contradicted`, emits `proof_gaps`, and provides one recommended action per element.
+- `formal_validation_report` is the draft-generation-facing formal report. It aggregates per-claim and per-element `formal_status` values (`passed`, `needs_review`, `missing_premises`, `unprovable`, `invalid_ontology`, `contradicted`), predicate counts, proof-gap counts, theorem-export readiness, formula counts, theorem-export metadata, and any reasoner proof artifact exposed by the logic adapter. Claim and top-level reports include `support_quality_signal_counts`, `primary_quality_signal_counts`, and `quality_follow_up_action_counts`; claim reports also include `support_quality_summary`. Element reports include `premise_failure_category` (`missing_facts`, `missing_rules`, `adverse_authority`, `contradictory_facts`, or `unprovable_rules_or_facts`) plus authority rule/treatment summaries, `support_quality_summary`, `primary_quality_signal`, and `quality_follow_up_action` so failed premises can be triaged and routed without re-running validation.
 - `proof_diagnostics.reasoning` aggregates backend-oriented diagnostics from the logic and GraphRAG adapters, while `reasoning_diagnostics` preserves the per-element adapter packets used to produce those aggregates.
+- `reasoning_diagnostics.ontology_workflow` is the normalized GraphRAG W5.1 packet from `build_validate_score_ontology(...)`; `reasoning_diagnostics.graphrag_quality` is its compact advisory quality summary with validation, score, grade, count, workflow/degraded-mode provenance, and gap type/severity/action fields. These quality gaps are visible for review but do not alter proof-gap counts unless GraphRAG quality enforcement is explicitly enabled.
 - `proof_diagnostics.decision` aggregates how validation decisions were reached across the claim, while `proof_decision_trace` preserves the per-element decision source, any adapter contradiction contribution, and proof-oriented counts such as `logic_provable_count`, `logic_unprovable_count`, and `ontology_validation_signal`.
 - `claim_support_snapshots` exposes the persisted snapshot ids, metadata, `is_stale` freshness flag, and snapshot-retention pruning metadata for the gap and contradiction diagnostics written by automatic legal research.
+- `Mediator.persist_claim_coverage_matrix_snapshot(...)` stores the per-claim coverage matrix as `snapshot_kind: "coverage_matrix"` in the same snapshot table. `Mediator.get_claim_coverage_matrix_snapshots(...)` returns the latest matrix snapshot per claim with `stored_support_state_token`, `current_support_state_token`, and `is_stale` so review and drafting flows can reuse a durable authoritative matrix or detect when support changed. Snapshot metadata includes `coverage_matrix_summary` with compact `status_counts`, `support_by_kind`, `total_links`, `total_facts`, `graph_snapshot_ref_count`, `support_path_count`, `current_trace_path_count`, `persisted_path_count`, `graph_linked_path_count`, `support_ref_count`, `unique_support_ref_count`, `path_kind_counts`, and `support_quality_summary` values for dashboards that need snapshot health without loading the full matrix. `Mediator.research_case_automatically(...)` writes this snapshot alongside its gap and contradiction diagnostic snapshots.
 - `claim_support_snapshot_summary` is the compact lifecycle companion for those persisted diagnostics. It reports how many snapshots are fresh versus stale, which kinds are present, the active retention limits, and how much pruning happened during persistence.
+- `claim_coverage_matrix_snapshot_summary[claim_type].coverage_matrix_summary` rolls up the latest coverage snapshot metadata into compact status/support counts, graph snapshot refs, support path counts, current-trace versus persisted path counts, graph-linked path counts, support-ref counts, and path-kind mixes. The review dashboard renders these as coverage snapshot path-health chips.
 - `claim_reasoning_review` is the compact operator-facing reasoning review surface. It highlights claim elements that were contradicted, required fallback ontology, or encountered unavailable or degraded adapter states during validation.
 - `follow_up_history` and `follow_up_history_summary` expose the persisted follow-up execution ledger for automatic legal research, so legal-research consumers get the same audit trail already available in the review and web-evidence payloads.
 - `follow_up_plan_summary` and `follow_up_execution_summary` give automatic legal research the same compact planner and execution analytics already exposed in review and web-evidence flows.
@@ -1312,9 +1537,10 @@ Field semantics:
 - `fact_count`: Sum of fact rows attached to enriched evidence and authority support links for the claim element.
 - `evidence_record_id`: DuckDB evidence row resolved from the support reference CID.
 - `authority_record_id`: DuckDB legal-authority row resolved from the persisted support-link metadata.
-- `facts`: Persisted fact rows returned by `Mediator.get_evidence_facts(...)` or `Mediator.get_authority_facts(...)`, now carrying explicit cross-source fields such as `source_family`, `source_record_id`, `source_ref`, `record_scope`, and any available artifact-identity or parse-lineage fields. Discovered and archived web evidence reuses the same evidence-backed fact path, so archived web pages surface the same flattened contract through `Mediator.get_evidence_facts(...)` rather than a separate web-only fact family.
+- `facts`: Persisted fact rows returned by `Mediator.get_evidence_facts(...)` or `Mediator.get_authority_facts(...)`, now carrying explicit cross-source fields such as `source_family`, `source_record_id`, `source_ref`, `record_scope`, and any available artifact-identity or parse-lineage fields. Discovered and archived web evidence reuses the same evidence-backed fact path, so archived web pages surface the same flattened contract through `Mediator.get_evidence_facts(...)` rather than a separate web-only fact family. Evidence, web, and legal-authority fact rows expose `chunk_id`, `chunk_index`, and `source_passage` so review, contradiction, and predicate-grounding consumers can link an extracted fact back to the parsed passage. New evidence and legal-authority facts include bounded `source_passage.text` snippets alongside offsets.
 
 - For evidence-backed fact rows, `source_artifact_id` and `source_ref` are durable artifact identifiers from the parse-and-graph substrate, not necessarily the operator-facing CID used as the support link reference.
+- The `evidence_facts` and `legal_authority_facts` tables store the corpus contract in first-class columns as well as JSON metadata, including source identity, artifact/corpus/content-origin fields, parse quality, and passage anchors. Readers still fall back to legacy JSON metadata when older rows predate those columns.
 
 ## Claim Element View
 
@@ -1389,10 +1615,6 @@ Representative shape:
       "graph_id_count": 1
     },
     "recommended_action": "collect_missing_support_kind",
-
-    Interpretation notes:
-
-    - `graph_support` is a top-level alias for the same fallback ranking also carried inside `gap_summary.graph_support`, so callers inspecting one element do not need to dig through the gap summary to reach the ranked graph-support view.
     "graph_support": {
       "status": "ready",
       "results": [
@@ -1541,12 +1763,19 @@ Interpretation notes:
 - `support_packets` is the review-friendly lineage packet view over that same element-level support.
 - `support_packets[*]` now preserves the same core source identity fields as `support_facts` where available: `source_family`, `source_record_id`, `source_ref`, `record_scope`, and flattened artifact identity such as `artifact_family`, `corpus_family`, and `content_origin`.
 - `support_packets[*].lineage_summary` carries archive-history fields such as `archive_url` and `capture_source`, plus fallback markers such as `fallback_mode` and `content_source_field`.
+- Claim-support packet elements from `Mediator._build_claim_support_packets(...)` now include W8.1 operator drilldowns: `bundle_manifest` (fact/evidence/authority/testimony manifest entries and family counts), `archive_history` (archive captures), `graph_trace_drilldown` (graph summaries and rule candidates), `timeline_drilldown` (temporal summaries and timeline fact ids), `contradiction_report`, and `missing_support_report`.
+- Each claim packet also includes `support_packet_reports`, a compact aggregate over element drilldowns with `missing_support_counts`, `archive_capture_count`, `graph_rule_candidate_count`, and `contradiction_count`.
+- `claim_coverage_matrix[claim_type].elements[*].support_path_summary.paths[*]` includes persisted support paths plus a derived `source: "current_traces"` path for the element's current support traces. Current-trace paths expose `fact_ids`, `support_refs`, `support_kinds`, `source_families`, `graph_ids`, `trace_count`, `graph_trace_count`, top-level `support_fact_registry_summary`, and nested `support_fact_registry_summary`/`support_trace_summary`/`graph_trace_summary` metadata so review and drafting readiness consumers can drill down without requiring a prior explicit path-persistence call. Persisted `claim_support_paths` records now store compact `path_drilldown` metadata and return the same top-level `support_refs`, `support_ref_count`, `support_kinds`, `source_families`, `graph_ids`, `graph_id_count`, `graph_trace_count`, and `support_fact_registry_summary` fields when queried.
+- `graph_snapshot_refs[*].fact_registry_summary` preserves compact source/corpus/passages counts from typed graph snapshot payloads, explicit metadata, or snapshot `support_facts`, allowing graph artifact consumers to inspect coverage without reopening support links.
+- `graph_snapshot_refs[*].graph_snapshot_query` mirrors the adapter registry lookup status, snapshot count, aggregate `fact_registry_summary`, and adapter metadata for the ref's graph id. `graph_snapshot_refs[*].graph_snapshot` is the compact first matched adapter snapshot with graph/source ids, node/edge counts, persistence metadata, and top-level fact-registry summary for drilldown without a second `query_graph_snapshot(...)` call.
+- Each support path now includes `support_quality`, `support_quality_score`, `support_quality_tier`, and `quality_signals` from `score_support_path_quality(...)`. Tiers distinguish `strong_support`, `moderate_support`, `weak_support`, `duplicate_support`, and `structurally_missing` paths using source quality, graph connectivity, required support-kind coverage, ontology structure, and duplicate penalties.
+- `support_path_summary.quality_summary`, `claim_coverage_matrix[claim_type].elements[*].support_quality_summary`, `claim_coverage_matrix[claim_type].support_quality_summary`, and `claim_overview.claims[claim_type].support_quality_summary` aggregate path quality with scored-path counts, best/average scores, tier counts, quality-signal counts, strongest/weakest path IDs, and a recommended quality action.
 - The raw API preserves support-packet data without imposing a display order; the review dashboard currently renders archive captures first, fallback-only authority packets next, and remaining packets after that for faster operator scanning.
 - `evidence` and `authorities` are the matching stored rows for the resolved claim element.
 
 ## Support Fact Retrieval
 
-`Mediator.get_claim_support_facts(...)` returns the flattened persisted fact rows attached to claim-support links, optionally filtered to one claim element.
+`Mediator.get_claim_support_facts(...)` returns the flattened persisted fact rows attached to claim-support links, optionally filtered to one claim element. `Mediator.get_claim_fact_registry_summary(...)` returns the same scope as compact source/corpus counts for graph, review, and predicate consumers that do not need every fact row.
 
 Representative shape:
 
@@ -1572,6 +1801,15 @@ Representative shape:
     "parse_source": "web_document",
     "input_format": "html",
     "quality_tier": "high",
+    "chunk_id": "chunk-0",
+    "chunk_index": 0,
+    "source_passage": {
+      "chunk_id": "chunk-0",
+      "chunk_index": 0,
+      "start": 0,
+      "end": 42,
+      "text": "Plaintiff reported discrimination to HR."
+    },
     "evidence_record_id": 12,
     "authority_record_id": null
   }
@@ -1580,12 +1818,58 @@ Representative shape:
 
 Use this when downstream workflows need a cross-source fact list without re-walking `support_summary.links`.
 
+Representative summary shape:
+
+```json
+{
+  "claim_type": "employment discrimination",
+  "claim_element_id": "employment_discrimination:1",
+  "fact_count": 2,
+  "unique_fact_count": 2,
+  "unique_source_record_count": 1,
+  "passage_anchored_count": 2,
+  "source_family_counts": {
+    "evidence": 2
+  },
+  "record_scope_counts": {
+    "evidence": 2
+  },
+  "artifact_family_counts": {
+    "archived_web_page": 2
+  },
+  "corpus_family_counts": {
+    "web_page": 2
+  },
+  "content_origin_counts": {
+    "historical_archive_capture": 2
+  },
+  "parse_source_counts": {
+    "web_document": 2
+  },
+  "input_format_counts": {
+    "html": 2
+  },
+  "quality_tier_counts": {
+    "high": 2
+  }
+}
+```
+
 Interpretation notes:
 
 - `source_family`, `source_record_id`, `source_ref`, and `record_scope` make the fact contract explicit across evidence-backed versus authority-backed support rows.
 - `source_ref` is the durable artifact or authority reference carried by the fact lineage, while `support_ref` remains the operator-facing support-link reference such as a CID or citation.
 - `artifact_family`, `corpus_family`, and `content_origin` surface the same corpus identity used by support packets and support traces, with compatibility fallback for older stored rows that only carried `content_origin`.
 - `parse_source`, `input_format`, `quality_tier`, and `quality_score` lift fact-lineage parse context into the flattened fact rows so downstream graph or proof workflows do not need to re-open the parent support link to classify the source.
+- `chunk_id`, `chunk_index`, and `source_passage` are normalized for uploaded evidence, archived or live web pages, and legal-authority text so downstream support, contradiction, and proof workflows can trace each fact to a parsed passage without source-family branching. `source_passage.text` is a bounded snippet from the matched chunk or fact text for newly parsed rows; older rows may only contain IDs/offsets.
+- Evidence-backed and legal-authority rows persist those same fields as durable `evidence_facts` / `legal_authority_facts` columns, so graph and predicate consumers can query the corpus contract without parsing nested JSON while retaining JSON fallback for older databases.
+- `support_gaps.claims[claim_type].unresolved_elements[*].support_fact_registry_summary` embeds the same compact counts beside `support_facts`, `support_traces`, and `support_packets`, allowing follow-up planners and formal predicate builders to inspect corpus coverage without recomputing fact summaries.
+- `map_claim_elements_to_predicates(...)` preserves element-level `support_facts` on each claim-element predicate and emits both predicate-level and aggregate `fact_registry_summary` payloads using the same durable source/corpus count maps.
+- `prove_claim_elements(...)` carries `fact_registry_summary` through the proof result, metadata, and `temporal_reasoning_payload`, so theorem export and proof-review consumers can inspect source coverage without reopening claim-support rows.
+- `theorem_export.fact_registry_summary` preserves the same compact coverage metadata when theorem exporters receive it from the top-level proof result, nested reasoning result, or temporal-reasoning payload.
+- Draft-logic proof reports can include `fact_registry_summary` either by passing `support_facts` into the pipeline or by providing a precomputed `fact_registry_summary`. Rendered proof reports surface `Support facts` and `Passage-anchored facts` metrics so theorem/proof reviewers can see how much persisted corpus support is behind generated predicates.
+- `score_draft_quality(...)` reads `fact_registry_summary` from the proof report, theorem export, or temporal-reasoning payload to score `corpus_grounding` when explicit coverage percentages are unavailable, and returns the summary beside targeted source-backing or passage-anchor suggestions.
+- Formal complaint claim payloads preserve the same durable source/corpus fields on `draft.claims_for_relief[*].supporting_fact_entries` and embed `draft.claims_for_relief[*].support_summary.fact_registry_summary` so drafting previews, proof-review panels, and filing exports can inspect persisted fact coverage without re-querying mediator support links.
 
 ## Claim Graph Support Query
 
@@ -1634,6 +1918,9 @@ Representative shape:
     "duplicate_fact_count": 1,
     "semantic_cluster_count": 1,
     "semantic_duplicate_count": 1,
+    "unique_source_ref_count": 2,
+    "unique_source_record_count": 2,
+    "passage_anchored_count": 1,
     "support_by_kind": {
       "evidence": 2,
       "authority": 1
@@ -1641,6 +1928,38 @@ Representative shape:
     "support_by_source": {
       "evidence": 2,
       "legal_authorities": 1
+    },
+    "source_family_counts": {
+      "evidence": 2,
+      "legal_authority": 1
+    },
+    "record_scope_counts": {
+      "evidence": 2,
+      "authority": 1
+    },
+    "artifact_family_counts": {
+      "archived_web_page": 2,
+      "legal_authority_reference": 1
+    },
+    "corpus_family_counts": {
+      "web_archive": 2,
+      "legal_corpus": 1
+    },
+    "content_origin_counts": {
+      "historical_archive_capture": 2,
+      "authority_reference_fallback": 1
+    },
+    "parse_source_counts": {
+      "ipfs_datasets_py": 2,
+      "legal_authority_parser": 1
+    },
+    "input_format_counts": {
+      "html": 2,
+      "text": 1
+    },
+    "quality_tier_counts": {
+      "high": 2,
+      "medium": 1
     },
     "max_score": 2.6
   },
@@ -1655,6 +1974,7 @@ Representative shape:
 Interpretation notes:
 
 - `results[*]` preserves the same explicit source-family, artifact-identity, and parse-lineage fields exposed by `support_facts`, so graph-backed support ranking can be consumed without reopening raw fact rows.
+- `summary` mirrors the compact durable fact-registry maps from claim support, so graph consumers can inspect corpus/source coverage and passage anchoring without separately recomputing `get_claim_fact_registry_summary(...)`.
 
 Interpretation notes:
 
@@ -1692,7 +2012,15 @@ Representative shape:
       "parse_source": "web_document",
       "input_format": "html",
       "quality_tier": "high",
-      "quality_score": 0.92
+      "quality_score": 0.92,
+      "chunk_id": "chunk-0",
+      "chunk_index": 0,
+      "source_passage": {
+        "chunk_id": "chunk-0",
+        "chunk_index": 0,
+        "start": 0,
+        "end": 42
+      }
     }
   ],
   "total_facts": 3,
@@ -1746,6 +2074,63 @@ Important fields:
 - `storage_record_reused`: The underlying evidence row was reused.
 - `support_link_created`: The supporting claim-link row was newly inserted.
 - `support_link_reused`: The supporting claim-link row already existed.
+- `graph_snapshot`: Adapter-normalized snapshot metadata from `persist_graph_snapshot(...)`. In degraded mode the adapter stores a queryable fallback snapshot with `status="stored-fallback"`, `persisted=true`, and `metadata.persistence_scope="adapter_memory"`.
+- Typed claim-support snapshots created by `persist_typed_graph_snapshot(...)` include the same `graph_snapshot` payload and register with `query_graph_snapshot(...)`; snapshot metadata includes claim type, source kind, record scope, and `fact_registry_summary` when available.
+- Direct `persist_graph_snapshot(...)` records also expose top-level `fact_registry_summary` on queried snapshots. The adapter derives it from explicit persistence metadata, graph payload metadata, or `support_facts` so graph consumers do not have to inspect nested metadata to determine corpus/source/passages coverage.
+
+`query_graph_snapshot(graph_id=..., source_id=...)` returns the adapter-level snapshot registry for review and traceability flows:
+
+```json
+{
+  "status": "found",
+  "found": true,
+  "graph_id": "graph:abc",
+  "source_id": "artifact-1",
+  "snapshot_count": 1,
+  "fact_registry_summary": {
+    "registry_version": "claim_fact_registry_summary.v1",
+    "aggregation_scope": "graph_snapshot_query",
+    "snapshot_count": 1,
+    "fact_count": 1,
+    "source_family_counts": {"evidence": 1},
+    "source_ref_counts": {"bafy-evidence": 1},
+    "artifact_family_counts": {"archived_web_page": 1},
+    "content_origin_counts": {"historical_archive_capture": 1},
+    "passage_anchored_count": 1
+  },
+  "snapshots": [
+    {
+      "graph_id": "graph:abc",
+      "source_id": "artifact-1",
+      "status": "stored-fallback",
+      "node_count": 2,
+      "edge_count": 1,
+      "entities": [],
+      "relationships": [],
+      "fact_registry_summary": {
+        "registry_version": "claim_fact_registry_summary.v1",
+        "fact_count": 1,
+        "source_family_counts": {"evidence": 1},
+        "artifact_family_counts": {"archived_web_page": 1},
+        "content_origin_counts": {"historical_archive_capture": 1},
+        "passage_anchored_count": 1
+      },
+      "metadata": {
+        "persistence_scope": "adapter_memory",
+        "backend_storage_available": false,
+        "fact_registry_summary": {
+          "registry_version": "claim_fact_registry_summary.v1",
+          "fact_count": 1,
+          "source_family_counts": {"evidence": 1},
+          "artifact_family_counts": {"archived_web_page": 1},
+          "content_origin_counts": {"historical_archive_capture": 1},
+          "passage_anchored_count": 1
+        }
+      }
+    }
+  ]
+}
+```
 
 Interpretation examples:
 
@@ -1917,7 +2302,6 @@ Case-level auto-discovery payloads from `Mediator.discover_evidence_automaticall
       }
     }
   }
-}
 ```
 
 Interpretation notes:
@@ -1936,9 +2320,31 @@ Interpretation notes:
 - When authority execution encountered dataset-coverage problems, `follow_up_plan_summary` or `follow_up_execution_summary` can also include `search_warning_count`, `warning_family_counts`, `warning_code_counts`, `hf_dataset_id_counts`, and `search_warning_summary` so dashboards and CLI output can explain why legal retrieval came back sparse.
 - `claim_coverage_matrix[claim_type]` exposes the same grouped claim-element support view used by automatic legal research.
 - `claim_coverage_matrix[claim_type]` also includes per-element `support_packets` and `support_packet_summary` lineage rollups.
+- `claim_support_packets[claim_type].elements[*]` is the higher-level review workspace packet and includes `bundle_manifest`, `archive_history`, `graph_trace_drilldown`, `timeline_drilldown`, `contradiction_report`, and `missing_support_report` for operator drilldown.
+- `GET /api/claim-support/support-timeline` returns the same support lineage as a latest-first timeline using `captured_at`, `observed_at`, then stored `timestamp` as the ordering fields. Entries include `support_kind`, `support_ref`, `fact`, and `provenance` with archive URL, capture source, source domain, content hash, and historical-capture marker when available.
+- `GET /api/claim-support/archive-history` returns visible captures after filtering and limit application, and `domain_count` reflects the domains present in the returned `captures_by_domain` object.
+- `GET /api/claim-support/graph-trace` returns graph-support drilldowns scoped by claim element or support reference, with compact graph summary counts for operator inspection.
+- `persist_claim_coverage_matrix_snapshot(...)` persists those grouped rows under `snapshot_kind: "coverage_matrix"` with retention pruning. Retrieval via `get_claim_coverage_matrix_snapshots(...)` returns `coverage_matrix`, `snapshot.snapshot_id`, `snapshot.required_support_kinds`, `snapshot.metadata`, and stale-token fields for each claim. `snapshot.metadata.coverage_matrix_summary` is the compact coverage companion for status/support counts, graph snapshot refs, support paths, current-trace versus persisted paths, graph-linked paths, support-ref counts, path-kind mixes, and support quality.
+- Review payloads include `claim_coverage_matrix_snapshots[claim_type]` and `claim_coverage_matrix_snapshot_summary[claim_type]` so dashboards can inspect the latest persisted coverage matrix and its freshness independently from the live `claim_coverage_matrix` recomputation.
 - `claim_coverage_summary[claim_type]` includes the compact per-claim `support_packet_summary` totals used by operator dashboards.
 - `claim_coverage_summary[claim_type]` provides the smaller per-claim status snapshot with counts and missing-element labels.
 - Operator-facing review surfaces currently sort packet drilldowns archive-first and fallback-next, but that ordering is a dashboard convention layered on top of the raw `support_packets` payload rather than an API ordering guarantee.
+
+## Background Enrichment Jobs
+
+`POST /api/claim-support/enrich-background` queues long-running enrichment work such as archive, parse, graph, and validation passes. `GET /api/claim-support/enrichment-queue` lists queued/running/completed jobs, and `GET /api/claim-support/enrichment-job/{job_id}` returns one job detail.
+
+Queue entries include `job_id`, `status`, `priority`, `metadata`, `progress`, `partial_results`, `error`, `created_at`, and `updated_at`. Malformed or non-object stored metadata degrades to an empty object so the queue remains inspectable. Workers can persist progress and partial results through `Mediator.update_background_enrichment_job_status(...)`, so operator surfaces can show partial completion and failure details without blocking interactive case work.
+
+## Drafting Support Bundles
+
+`document_pipeline.build_drafting_support_bundles(...)` and `Mediator.get_drafting_support_bundles(...)` convert claim-support packets into section-level drafting bundles for `factual_allegations`, `jurisdiction_and_venue`, `claims_for_relief`, and `requested_relief`.
+
+Each section bundle includes `support_status`, `claim_elements`, `source_refs`, `explicit_gaps`, and `claim_element_count`. Claim-element entries carry support quality, lane labels, missing-support reports, authority-treatment summaries, authority rule-candidate summaries, and validation summaries such as contradiction counts and temporal-rule status. The mediator response also includes the source `claim_support_packets` so drafting can remain support-aware without re-querying raw support tables.
+
+`document_pipeline.build_drafting_guardrails(...)` and `Mediator.get_drafting_guardrails(...)` convert those bundles into stable warning objects for drafting and export surfaces. The response includes `available`, `status`, `warning_count`, `blocker_count`, and `warnings`. Each warning includes `warning_id`, `section_id`, `claim_type`, `element_id`, `severity` (`warning` or `blocker`), `warning_type`, `message`, `source`, `recommended_action`, `source_refs`, and optional `details`.
+
+Guardrail warning types include unsupported sections/elements, explicit section gaps, proof-support gaps, contradictions, temporal or procedural gaps, adverse authority, weak treatment/good-law confidence, missing procedural prerequisites, and failed premises. `FormalComplaintDocumentBuilder` embeds these guardrails under `drafting_readiness.drafting_guardrails` and also adds the warning objects to `drafting_readiness.warnings`, so exports can surface legally fragile sections without interrupting artifact generation.
 
 ## Claim Support Review API
 
@@ -2314,12 +2720,16 @@ Interpretation notes:
 - `follow_up_max_tasks_per_claim` limits side-effecting execution only; it does not truncate `follow_up_plan`.
 - `claim_support_gaps` and `claim_contradiction_candidates` are the richer operator-facing review sections for unresolved support and possible support conflicts.
 - `question_recommendations` is the compact dashboard-facing intake surface for the same review state. Each recommendation includes `question_id`, `question_text`, `target_claim_element_id`, `target_claim_element_text`, `question_lane`, `question_reason`, `expected_proof_gain`, and compact support context so operators can move directly from unresolved proof state into targeted testimony or document collection. Proposition-specific prompts may also include `source_fact_status`, `source_fact_ids`, `source_fact_text`, and `source_fact_table` when the recommendation comes from a non-supporting fact packet.
+- Structural GraphRAG support-quality recommendations use `question_lane` values such as `graph_quality_gap`, `support_quality_gap`, `source_quality_gap`, and `duplicate_support`. These recommendations may target elements that are count-covered but still weak by support-path scoring, and include `support_quality_summary` plus `quality_signal_counts` so denoiser prompts can ask for clearer graph relationships, cleaner source material, independent corroboration, or more direct support rather than generic missing evidence. `primary_quality_signal` identifies the highest-priority signal (`weak_graph_connectivity`, `weak_source_quality`, `duplicate_support`, `structurally_missing_support`, or `weak_support_path`) and `quality_follow_up_action` carries the routing action such as `persist_or_query_graph_support`, `improve_source_parse_quality`, or `collect_independent_support`.
+- Ontology-quality recommendations use `question_lane="ontology_quality_gap"` when an element's `reasoning_diagnostics.graphrag_quality` reports gaps. These cards include compact `ontology_quality`, `ontology_gap_types`, `quality_signal_counts.ontology_quality_gap`, `primary_quality_signal.signal_type="ontology_quality_gap"`, and a `quality_follow_up_action` such as `improve_ontology_quality`, so advisory ontology diagnostics can route follow-up even when quality enforcement does not create a proof gap.
+- `question_recommendation_summary[claim_type]` is the compact companion for dashboards and queue builders. It aggregates `recommendation_count`, `question_lane_counts`, `expected_proof_gain_counts`, `quality_signal_counts`, `primary_quality_signal_counts`, and `quality_follow_up_action_counts` from the rendered recommendations without requiring clients to scan every question card.
 - `document_artifacts` is the persisted operator-facing document ledger keyed by claim type. Each entry includes the stored evidence `record_id`, `cid`, `evidence_type`, `claim_element_id`, `claim_element_text`, `description`, `source_url`, `parse_status`, `chunk_count`, `fact_count`, `parsed_text_preview`, `parse_metadata`, `graph_status`, graph counts, compact `chunk_previews`, persisted `fact_previews`, and a compact `graph_preview` for dashboard drilldowns.
 - `document_summary` is the compact operator-facing summary for those artifacts, exposing `record_count`, `linked_element_count`, `total_chunk_count`, `total_fact_count`, `low_quality_record_count`, `graph_ready_record_count`, `parse_status_counts`, `quality_tier_counts`, and `graph_status_counts`.
-- `claim_coverage_matrix[claim_type].elements[*]` now carries merged proof-review fields from `claim_support_validation`, including `validation_status`, `recommended_action`, `proof_gap_count`, `proof_gaps`, `proof_decision_trace`, `proof_diagnostics`, plus `support_fact_packets` and `document_fact_packets` so the dashboard can show which persisted propositions are supporting the element and which ones came from saved documents.
+- `claim_coverage_matrix[claim_type].elements[*]` now carries merged proof-review fields from `claim_support_validation`, including `validation_status`, `recommended_action`, `proof_gap_count`, `proof_gaps`, `proof_decision_trace`, `proof_diagnostics`, `reasoning_diagnostics`, plus `support_fact_packets` and `document_fact_packets` so the dashboard can show which persisted propositions are supporting the element, which ones came from saved documents, and which advisory GraphRAG diagnostics explain follow-up routing.
 - Each entry in `support_fact_packets` and `document_fact_packets` also includes `proof_status` with one of `supporting`, `contradicting`, or `unresolved`, along with compact `support_fact_status_counts` and `document_fact_status_counts` on the element so the dashboard can summarize proposition-level proof state.
 - Elements with contradiction candidates may also expose `contradiction_pairs`, where each pair includes `fact_ids`, `overlap_terms`, `left_fact`, `right_fact`, and a compact `resolution_prompt` so the dashboard can present the opposing propositions side by side during operator review.
 - `claim_support_validation` is the first-class proof-status surface for the review API. Follow-up planning uses the same normalized validation statuses, so contradiction-heavy elements can be prioritized and are not auto-suppressed.
+- `formal_validation_report` is included alongside `claim_support_validation` so dashboard and drafting flows can inspect formal readiness, theorem-export metadata, and reasoner/proof artifacts without re-running validation.
 - `claim_support_snapshots` exposes any persisted diagnostic snapshot ids reused by the review payload; when a stored snapshot no longer matches current support state it is marked with `is_stale=true` and the payload falls back to recomputation for that claim.
 - `claim_support_snapshot_summary` is the compact review-facing lifecycle view for those persisted diagnostics, so dashboard consumers can see freshness and pruning at a glance without iterating the raw snapshot entries.
 - `claim_reasoning_review` is the compact review-facing reasoning surface for flagged claim elements, capturing fallback ontology use plus unavailable or degraded adapter states without forcing clients to inspect every `reasoning_diagnostics` packet.
@@ -2337,7 +2747,15 @@ Interpretation notes:
 - `testimony_summary` is the compact operator-facing ledger summary for those rows, exposing `record_count`, `linked_element_count`, `firsthand_status_counts`, and `confidence_bucket_counts`.
 - Each element in `claim_coverage_matrix[*].elements[*]` may now expose `document_records` and `document_record_count` alongside the existing testimony linkage, allowing the dashboard to show which parsed artifacts are attached to a legal element.
 - `follow_up_plan_summary` and `follow_up_execution_summary` now include `parse_quality_task_count` plus `quality_gap_targeted_task_count`, allowing review surfaces to distinguish parse-remediation work from ordinary support-gap or contradiction follow-up.
-- `follow_up_plan_summary` and `follow_up_execution_summary` also include compact authority search-program metrics: `authority_search_program_task_count`, `authority_search_program_count`, `authority_search_program_type_counts`, `authority_search_intent_counts`, `primary_authority_program_type_counts`, `primary_authority_program_bias_counts`, and `primary_authority_program_rule_bias_counts`.
+- Ontology-quality follow-up tasks use `follow_up_focus="ontology_quality_gap_closure"` and `query_strategy="ontology_quality_gap_targeted"` when advisory GraphRAG quality reports gaps. Task payloads include `ontology_quality`, `ontology_gap_types`, `ontology_quality_gap_count`, and `ontology_has_blocking_gaps`; summaries expose `ontology_quality_gap_task_count` and `ontology_quality_gap_targeted_task_count`. If the element is already count-supported, the task still executes targeted evidence retrieval from its ontology query variants without adding fake `missing_support_kinds`.
+- `follow_up_plan_summary` and `follow_up_execution_summary` now include `quality_signal_counts`, `primary_quality_signal_counts`, and `quality_follow_up_action_counts` aggregated from task-level support-quality routing metadata, so queues and dashboards can explain quality-gap follow-up pressure without reopening every task.
+- `follow_up_plan_summary`, `follow_up_execution_summary`, and `follow_up_history_summary` now aggregate task-level `graph_gap_context` into `graph_gap_context_task_count`, support/empty task counts, fact/cluster/duplicate totals, strength/recommended-action/priority-adjustment counts, source/corpus maps, and `graph_gap_fact_registry_summary`, so dashboards can inspect graph-gap pressure without reopening every ranked graph-support payload.
+- Follow-up plan tasks, execution result tasks, persisted execution metadata, and rehydrated `follow_up_history` rows now also expose `graph_gap_query`, the normalized routing packet shared with unresolved-gap query payloads. It keeps claim-element identifiers, missing support kinds, graph-hit counts, strength, recommended graph action, priority adjustment, and empty-lane state beside the compact `graph_gap_context`.
+- Follow-up plan, execution, and history summaries also roll those query packets into `graph_gap_query_task_count`, `graph_gap_query_has_support_task_count`, `graph_gap_query_empty_task_count`, `graph_gap_query_result_count`, `graph_gap_query_missing_support_kind_counts`, `graph_gap_query_strength_counts`, `graph_gap_query_recommended_action_counts`, and `graph_gap_query_priority_adjustment_counts`.
+- The claim-support review dashboard renders graph-gap follow-up signal cards plus plan, execution, history, task, and history-entry chips from the same `graph_gap_context`, `graph_gap_query`, and summary fields.
+- `follow_up_plan_summary` and `follow_up_execution_summary` also include compact authority search-program metrics: `authority_search_program_task_count`, `authority_search_program_count`, `authority_search_program_type_counts`, `authority_search_intent_counts`, `authority_jurisdiction_counts`, `authority_forum_counts`, `authority_family_counts`, `authority_defense_theme_counts`, `authority_time_window_counts`, `authority_graph_gap_bias_counts`, `primary_authority_program_type_counts`, `primary_authority_intent_counts`, `primary_authority_program_bias_counts`, `primary_authority_program_rule_bias_counts`, and `primary_authority_graph_gap_bias_counts`.
+- `follow_up_execution_summary` also includes selected authority context counts (`selected_authority_program_type_counts`, `selected_authority_intent_counts`, `selected_authority_jurisdiction_counts`, `selected_authority_forum_counts`, `selected_authority_family_counts`, `selected_authority_defense_theme_counts`, and `selected_authority_time_window_counts`) from the live execution result tasks, matching the history summary shape used after persistence.
+- `follow_up_history_summary` includes `selected_authority_intent_counts`, `selected_authority_jurisdiction_counts`, `selected_authority_forum_counts`, `selected_authority_family_counts`, `selected_authority_defense_theme_counts`, and `selected_authority_time_window_counts` alongside selected program type/bias counts so dashboards can explain whether executed authority searches served support, opposition, procedural, or good-law confirmation intent and what jurisdiction/source context shaped the selected program. It also mirrors quality-routing aggregates (`quality_signal_counts`, `primary_quality_signal_counts`, `quality_follow_up_action_counts`) plus ontology task counters so persisted ontology-quality handoffs remain visible after execution/history reloads.
 - `follow_up_plan_summary` and `follow_up_execution_summary` also expose chronology-specific planner aggregates: `temporal_gap_task_count`, `temporal_gap_targeted_task_count`, `temporal_rule_status_counts`, `temporal_rule_blocking_reason_counts`, and `temporal_resolution_status_counts` so operator surfaces can distinguish chronology handoffs and rule failures from ordinary gap closure.
 - `claim_coverage_summary`, `follow_up_plan_summary`, and `follow_up_execution_summary` are the compact operator-facing surfaces intended for dashboards and review tools; `resolution_applied_counts` highlights tasks that are still active only because unresolved support gaps remain after manual review.
 - When `execute_follow_up=true`, the response adds `compatibility_notice` and emits `Deprecation`, `Sunset`, `Link`, and `Warning` headers so clients can migrate off the compatibility path.
@@ -2702,6 +3120,18 @@ Follow-up planning payloads from `Mediator.get_claim_follow_up_plan(...)` now in
           "follow_up_focus": "fact_gap_closure",
           "query_strategy": "rule_fact_targeted",
           "missing_support_kinds": ["evidence"],
+          "source_preferences": {
+            "preferred_support_kind": "evidence",
+            "source_types": ["evidence", "web"],
+            "artifact_families": ["archived_web_page", "live_web_page"],
+            "authority_families": [],
+            "evidence_classes": [],
+            "archive_first": true,
+            "live_web_allowed": true,
+            "deduplicate_by": ["query_hash", "url", "citation", "semantic_cluster"]
+          },
+          "time_window": {},
+          "authority_intent": "support",
           "has_graph_support": true,
           "graph_support_strength": "strong",
           "recommended_action": "collect_fact_support",
@@ -2750,7 +3180,21 @@ Follow-up planning payloads from `Mediator.get_claim_follow_up_plan(...)` now in
               "authority_intent": "support",
               "query_text": "employment discrimination Protected activity fact pattern application authority",
               "claim_element_id": "employment_discrimination:1",
-              "claim_element_text": "Protected activity"
+              "claim_element_text": "Protected activity",
+              "jurisdiction": "federal",
+              "forum": "federal",
+              "time_window_start": "",
+              "time_window_end": "",
+              "authority_families": ["case_law", "agency_guidance"],
+              "metadata": {
+                "defense_theme": "fact_application",
+                "defense_themes": ["predicate_fact_gap"],
+                "authority_family_focus": ["case_law", "agency_guidance"],
+                "time_window": {},
+                "time_window_terms": [],
+                "follow_up_focus": "fact_gap_closure",
+                "query_strategy": "rule_fact_targeted"
+              }
             }
           ],
           "should_suppress_retrieval": true,
@@ -2787,6 +3231,28 @@ Follow-up planning payloads from `Mediator.get_claim_follow_up_plan(...)` now in
           "missing_fact_bundle": ["Event sequence"],
           "satisfied_fact_bundle": [],
           "resolution_status": "awaiting_testimony",
+          "source_preferences": {
+            "preferred_support_kind": "testimony",
+            "source_types": ["testimony", "evidence", "web"],
+            "artifact_families": ["archived_web_page", "live_web_page"],
+            "authority_families": [],
+            "evidence_classes": [],
+            "archive_first": true,
+            "live_web_allowed": true,
+            "deduplicate_by": ["query_hash", "url", "citation", "semantic_cluster"]
+          },
+          "time_window": {
+            "time_window_type": "temporal_rule_window",
+            "profile_id": "retaliation_temporal_profile_v1",
+            "status": "partial",
+            "anchor_ids": [],
+            "blocking_reasons": [
+              "Retaliation causation lacks a clear temporal ordering from protected activity to adverse action."
+            ],
+            "follow_up_count": 1,
+            "query_terms": ["temporal", "ordering", "before"]
+          },
+          "authority_intent": "procedural",
           "temporal_rule_profile_id": "retaliation_temporal_profile_v1",
           "temporal_rule_status": "partial",
           "temporal_rule_blocking_reasons": [
@@ -2814,14 +3280,24 @@ Interpretation notes:
 - `graph_support` is the same fallback support ranking returned by `Mediator.query_claim_graph_support(...)`.
 - `has_graph_support` is a quick boolean derived from whether any ranked fact results already exist for the task's claim element.
 - `graph_support_strength` classifies the ranked support snapshot as `none`, `moderate`, or `strong`.
+- `graph_gap_context` is the compact planner/execution snapshot derived from `graph_support`; it carries strength, recommended action, priority adjustment, fact/cluster/duplicate counts, source/corpus count maps, and fact-registry summary so dashboards can explain whether a task is graph-supported, graph-weak, or graph-empty without reopening the full ranked result list.
+- `graph_gap_query` is the compact routing packet derived from `graph_gap_context` plus the claim element and missing support kinds. It is suitable for queue workers and dashboards that need to distinguish graph-backed support review from empty retrieval lanes without reading `graph_support.results`.
 - `recommended_action` distinguishes ordinary retrieval from more specific modes such as `collect_fact_support` when rule candidates already identify the missing factual predicate, or `review_adverse_authority` when current authority support is adverse.
 - `follow_up_focus="temporal_gap_closure"` and `query_strategy="temporal_gap_targeted"` identify chronology-closure tasks that exist because legal timing is still insufficient, not because generic support is missing.
+- `source_preferences` captures the planner's preferred support lane, source types, artifact families, authority families, evidence classes, archive-first preference, and deduplication hints. Execution payloads and persisted follow-up history carry the same object so workers and dashboards do not have to infer task quality from query text alone.
+- `time_window` captures chronology-specific scope for temporal-rule tasks, including profile id/status, anchor ids, blocking reasons, follow-up count, and compact query terms. Non-temporal follow-up tasks may expose an empty object.
+- `authority_intent` is a compact planner intent such as `support`, `oppose`, `procedural`, or `confirm_good_law`; it is also persisted in follow-up history metadata.
+- When `graph_gap_query` reports existing graph support while `authority` remains missing, generated `authority_search_programs[*].metadata` includes `graph_gap_query`, `graph_gap_authority_bias="graph_backed_authority_gap"`, and `graph_gap_missing_support_kinds`; the same bias is added to program defense themes so legal search workers can explain graph-shaped missing-authority retrieval.
+- Authority execution promotes the selected program's `graph_gap_authority_bias` to `selected_search_program_graph_gap_bias`; live execution summaries and persisted history summaries aggregate it as `selected_authority_graph_gap_bias_counts`.
 - `resolution_status="awaiting_testimony"` or `awaiting_complainant_record` indicates the chronology task has already been routed into a human handoff lane instead of an immediate retrieval lane.
 - `authority_treatment_summary` carries the same supportive versus adverse authority signal used by claim coverage and review payloads, so planner consumers can tell when a task is driven by questioned or limiting authority rather than missing citations alone.
 - `temporal_rule_profile_id`, `temporal_rule_status`, `temporal_rule_blocking_reasons`, and `temporal_rule_follow_ups` surface the exact chronology rule failure and the recommended repair prompt so review clients, exports, and CLI summaries can explain why the task exists.
 - `authority_rule_candidate_summary` is the compact planner-facing count of extracted rule statements for the current claim element.
 - `rule_candidate_context.top_rule_texts` exposes the highest-confidence rule or exception snippets the planner used when building fact-gap-targeted follow-up queries.
+- `rule_candidate_context.top_rule_passages` and `rule_candidate_context.parse_lineages` preserve the source authority passage anchors and parse lineage for those snippets; persisted execution metadata mirrors them under `rule_candidate_focus` so history can explain which authority sentence shaped a fact-gap query.
+- `authority_rule_candidate_summary.fact_satisfied_rule_count`, `fact_unsatisfied_rule_count`, and `fact_satisfaction_status_counts` distinguish “law found but predicate facts are still missing” from “no matching authority rule found.” These counts compare matched rule-candidate predicate text against non-authority support already linked to the same claim element.
 - `authority_search_programs` is present when the task includes authority retrieval; it carries the claim-aware legal search bundle built for that claim element, including support-versus-adverse intent and program type.
+- `authority_search_programs[*]` also carries W7.5 context for legal search generation: `jurisdiction`, `forum`, `time_window_start`, `time_window_end`, `authority_families`, and metadata fields such as `defense_theme`, `defense_themes`, `authority_family_focus`, `time_window`, and `time_window_terms`.
 - `authority_search_program_summary.primary_program_bias` is the compact dashboard-facing form of the leading program's `metadata.authority_signal_bias`, so operator surfaces can show when adverse or uncertain treatment signals changed the bundle order.
 - `authority_search_program_summary.primary_program_rule_bias` is the compact dashboard-facing form of the leading program's `metadata.rule_signal_bias`, so operator surfaces can distinguish treatment-driven reordering from rule-driven reordering such as exception-heavy or procedural-prerequisite bundles.
 - `authority_search_programs[*].metadata.authority_signal_bias` is set to `adverse`, `uncertain`, or an empty string so planner consumers can see when existing treatment signals pushed adverse-authority or good-law-check programs ahead of ordinary support searches.
@@ -2831,6 +3307,8 @@ Interpretation notes:
 - `priority_score` is the sortable numeric priority after graph-support adjustment; `priority` is the corresponding label.
 - `should_suppress_retrieval` flags low-value follow-up tasks that are skipped automatically unless execution is forced.
 - `suppression_reason` explains why retrieval was suppressed.
+- Retrieval-session results and `retrieval_context.top_results[*]` can carry `metadata.retrieval_ranking_factors`, `metadata.retrieval_ranking_explanation`, `matched_query_terms`, `matched_claim_element_terms`, and top-level replay aliases `retrieval_ranking_factors` / `retrieval_ranking_explanation`. These are the local-chunk counterpart to search-result ranking metadata and explain why a persisted retrieval result outranked alternatives.
+- `orchestrator_ranking_factors` and `orchestrator_ranking_explanation` are emitted on normalized orchestrator records when `RetrievalOrchestrator.merge_and_rank(...)` is called with a query context. They use the same W7.1 factor families as search and retrieval-session results, plus existing cross-source fusion fields.
 
 Evidence task result:
 
@@ -2874,10 +3352,12 @@ Evidence task result:
 }
 ```
 
-Executed and skipped follow-up tasks also carry the same `graph_support` snapshot so downstream review can compare the pre-search support context with the new retrieval result.
-Authority executions additionally persist `search_program_ids`, `search_program_count`, `selected_search_program_bias`, and `selected_search_program_rule_bias` into the `claim_follow_up_execution` ledger metadata, and forwarded `search_programs` are attached to stored authority rows when the retrieval result itself did not already include a program bundle.
+Executed and skipped follow-up tasks also carry the same `graph_support`, `graph_gap_context`, `graph_gap_query`, `source_preferences`, `time_window`, and `authority_intent` snapshot so downstream review can compare the pre-search support context and intended source lane with the new retrieval result or skip reason.
+Authority executions additionally persist `search_program_ids`, `search_program_count`, `selected_search_program_bias`, `selected_search_program_rule_bias`, and `selected_search_program_graph_gap_bias` into the `claim_follow_up_execution` ledger metadata, and forwarded `search_programs` are attached to stored authority rows when the retrieval result itself did not already include a program bundle.
 
 When `authority_search_programs` are present on a follow-up task, authority execution uses the primary program's `query_text` as the effective live search query, narrows source fan-out with the primary program's `authority_families`, and records the original planner query separately as `task_query` in execution metadata.
+
+Adapter-level W9.1 program execution is also available through `integrations.ipfs_datasets.legal.search_legal_authority_program(program, max_results=...)`. It returns the original `program`, routed `results` buckets (`statutes`, `state_statutes`, `regulations`, `administrative_rules`, `case_law`, and `docket_materials`), flattened `flat_results`, `result_count`, and adapter metadata including `program_id`, `program_type`, `authority_intent`, jurisdiction, and resolved state code.
 
 Suppressed task example:
 
@@ -3298,6 +3778,59 @@ Representative shape:
       "download_url": "/api/documents/download?path=/workspace/tmp/generated_documents/example-affidavit.docx"
     }
   },
+  "document_builder_summary": {
+    "status": "warning",
+    "warning_count": 4,
+    "guardrail_warning_count": 2,
+    "guardrail_blocker_count": 1,
+    "support_status_counts": {
+      "supported": 2,
+      "partially_supported": 1
+    },
+    "section_support": [
+      {
+        "section_key": "claims_for_relief",
+        "title": "Claims for Relief",
+        "status": "warning",
+        "support_status": "partially_supported",
+        "claim_element_count": 3,
+        "source_ref_count": 4,
+        "explicit_gap_count": 1,
+        "review_url": "/claim-support-review?user_id=abc123&section=claims_for_relief"
+      }
+    ],
+    "source_ref_count": 4,
+    "source_family_counts": {
+      "evidence": 2,
+      "legal_authority": 1
+    },
+    "artifact_family_counts": {
+      "archived_web_page": 1,
+      "legal_authority_reference": 1
+    },
+    "warning_type_counts": {
+      "contradiction": 1,
+      "adverse_authority": 1
+    },
+    "artifact_provenance": {
+      "managed_output_dir": "/workspace/tmp/generated_documents",
+      "artifact_count": 2,
+      "downloadable_count": 2,
+      "artifacts": [
+        {
+          "format": "docx",
+          "filename": "example.docx",
+          "size_bytes": 12345,
+          "download_url": "/api/documents/download?path=/workspace/tmp/generated_documents/example.docx",
+          "managed_download": true
+        }
+      ]
+    },
+    "document_provenance_summary": {
+      "fact_backed_ratio": 0.67,
+      "low_grounding_flag": false
+    }
+  },
   "document_optimization": {
     "status": "optimized",
     "method": "actor_mediator_critic_optimizer",
@@ -3418,18 +3951,36 @@ Interpretation notes:
 - `drafting_readiness` is duplicated at the package top level and under `draft` for convenience; both carry the same payload family.
 - `drafting_readiness.status` is one of `ready`, `warning`, or `blocked` and summarizes filing readiness across all draft sections and claim-level validation signals.
 - `drafting_readiness.claims[*]` lifts claim-support and validation state into drafting-oriented claim summaries, including unresolved elements, proof-gap counts, contradiction counts, compact authority-treatment or rule-candidate signals, and compact source-context counts such as `source_family_counts`, `artifact_family_counts`, or `content_origin_counts` when the persisted support summary already exposes them.
-- `draft.claims_for_relief[*].support_summary` mirrors the same claim-level support totals used to build the pleading text and can now include compact source-context maps such as `source_family_counts`, `artifact_family_counts`, and `content_origin_counts` for builder-side provenance drilldown.
+- `draft.claims_for_relief[*].support_summary` mirrors the same claim-level support totals used to build the pleading text and can now include compact source-context maps such as `source_family_counts`, `artifact_family_counts`, and `content_origin_counts` plus `fact_registry_summary` for builder-side provenance and proof-coverage drilldown.
 - `draft.factual_allegations` is normalized into pleading-ready sentences before numbering, so intake prompt prefixes, generic support boilerplate, and clearly non-factual relief text are filtered out before the draft text and affidavit reuse those facts.
 - `draft.verification` is emitted alongside the draft body and export artifacts; state-oriented drafts switch to state-style verification text and `Verified on`, while federal-oriented drafts keep the penalty-of-perjury text and `Executed on`.
 - `draft.certificate_of_service` is emitted alongside the draft body and export artifacts; the title and service text can vary by forum style, including `Proof of Service` for state-oriented drafts.
 - `draft.affidavit` is the companion affidavit payload generated from the same intake knowledge graph, with venue lines, numbered fact statements, supporting exhibits, jurat text, and notary block lines used by the preview and affidavit export artifacts. Default affidavit intro, date labels, and jurat phrasing can also vary between federal-style and state-style drafts.
+- DOCX artifacts normally use the styled `python-docx` renderer. When that optional dependency is unavailable, the pipeline emits a minimal but valid DOCX package containing the same pleading text, affidavit text, section headings, grouped factual-allegation headings, claim-support gaps, and handoff content so document generation continues to consume and preserve validated support state instead of failing the export.
 - `drafting_readiness.claims[*].review_url`, `drafting_readiness.claims[*].review_context`, and `drafting_readiness.claims[*].review_intent` are added by the document API layer so clients can deep-link into the claim-support review surface without reconstructing query parameters themselves.
 - `drafting_readiness.sections` groups filing-readiness by major complaint section such as `summary_of_facts`, `jurisdiction_and_venue`, `claims_for_relief`, `requested_relief`, and `exhibits`.
 - `drafting_readiness.sections[*].review_url`, `drafting_readiness.sections[*].review_context`, and `drafting_readiness.sections[*].review_intent` are added by the document API layer so clients can link section warnings back to the review dashboard with stable query context.
 - `drafting_readiness.sections[*].claim_links` is present when a section maps to one or more claim types; multi-claim drafts can use those targeted links instead of relying on a single generic section URL, and each claim link carries its own `review_intent`.
 - `drafting_readiness.sections[*].warnings[*].severity` distinguishes soft filing warnings from harder blockers so degraded-mode drafting can remain usable.
+- `drafting_readiness.drafting_guardrails` carries W10.2 stable guardrail warning objects when section support bundles are available. If graph, authority-treatment, or logic extras are unavailable, the object can be absent or report `warning_count: 0`; document export and artifact rendering still proceed in degraded mode.
+- `drafting_readiness.claims[*].chip_labels` includes compact signal labels drawn from proof, chronology, authority-treatment, and element-coverage signals. Authority chip labels include `adverse authorities: N` (when adverse-treatment links exist) and `uncertain authorities: N` (when uncertain-treatment links such as `questioned`, `limits`, `superseded`, or `good_law_unconfirmed` are present).
+- `drafting_readiness` warning codes for claim-level entries:
+  - `claim_contradicted` (severity `blocked`) — the claim has active contradiction signals; the draft should not be filed until contradictions are resolved.
+  - `proof_gaps_present` (severity `warning`) — one or more proof-gap or failed-premise signals remain for this claim type.
+  - `chronology_gaps_present` (severity `warning`) — one or more chronology gaps or unresolved temporal predicates remain.
+  - `adverse_authority_present` (severity `warning`) — at least one authority linked to this claim has an adverse or limiting treatment type; the draft should be reviewed before relying on those authorities.
+  - `authority_reliability_uncertain` (severity `warning`) — at least one authority has unresolved treatment uncertainty such as `questioned`, `limits`, `superseded`, or `good_law_unconfirmed`.
+  - `unresolved_elements` (severity `warning`) — one or more claim elements remain uncovered or only partially supported.
+- `drafting_readiness` warning codes for section-level entries:
+  - `fact_support_thin` (severity `warning`) — the summary-of-facts section has limited or zero fact-backed support.
+  - `document_provenance_grounding_thin` (severity `warning`) — the document overall has a low fact-backed ratio; provenance grounding should be improved before formalization.
+  - `procedural_prerequisites_identified` (severity `warning`) — the jurisdiction-and-venue section has identified procedural prerequisites that may not yet be satisfied.
+  - `jurisdiction_or_venue_incomplete` (severity `warning`) — jurisdiction or venue statements are missing or incomplete.
+  - `requested_relief_missing` (severity `warning`) — no requested-relief items are present.
+  - `no_exhibits` (severity `warning`) — no exhibits are attached to the draft.
 - `review_links.dashboard_url` points to the review dashboard for the current user context, while `review_links.claims[*]` and `review_links.sections[*]` provide claim-specific and section-specific review URLs for non-browser consumers, each paired with normalized `review_intent` metadata.
 - `review_intent` is a top-level server-rendered review focus chosen from the current readiness warnings so the browser can restore the most relevant review destination before the operator clicks a follow-up link.
+- `document_builder_summary` is produced by the document API after artifact and review-link annotation. It is optimized for browser and CLI consumers that need a compact filing-readiness overview: section support status counts, per-section source/gap counts, rolled-up source-family and artifact-family counts, W10.2 guardrail warning/blocker counts, guardrail warning-type counts, managed artifact download provenance, and document grounding metrics.
 - `document_optimization` is present only when agentic optimization is enabled. It records the actor/mediator/critic loop outcome, selected backend (`upstream_agentic` when the `ipfs_datasets_py.optimizers.agentic` classes are importable, otherwise `local_fallback`), accepted iteration count, final score, optimized sections, packet-projection render context, section-level support history, router availability, concrete router usage diagnostics (`router_usage`), and optional IPFS trace metadata.
 - `document_optimization.upstream_optimizer.stage_provider_selection` shows whether actor/critic provider hints came from explicit request config or the upstream optimizer router, and which normalized llm_router provider name was resolved for each stage.
 - `artifacts.affidavit_docx`, `artifacts.affidavit_pdf`, and `artifacts.affidavit_txt` are companion affidavit exports emitted when the matching complaint formats are requested; they follow the same artifact schema and download URL rules as the primary complaint files.

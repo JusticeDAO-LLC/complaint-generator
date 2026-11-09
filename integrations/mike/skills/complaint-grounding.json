@@ -1,0 +1,41 @@
+{
+  "skill_asset_id": "complaint-grounding",
+  "version": "1.0.0",
+  "name": "Complaint grounding review",
+  "description": "Reviews a complaint draft against the legal corpus to confirm that every factual assertion is grounded in at least one authoritative source (US Code, Federal Register, or state law). Surfaces ungrounded assertions and a corpus coverage percentage for the editor guardrail panel.",
+  "capability": "legal_corpus_review",
+  "adapter": "integrations/ipfs_datasets/legal.py",
+  "entry_point": "constrain_assertions_to_corpus",
+  "required_for_grounding_modes": ["legal_corpus_only", "strict_legal_containment"],
+  "inputs": {
+    "assertions": {
+      "type": "array",
+      "description": "List of assertion dicts each carrying a 'text' key with the assertion text to search.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "assertion_id": {"type": "string"},
+          "text": {"type": "string"}
+        },
+        "required": ["text"]
+      }
+    },
+    "state": {
+      "type": "string",
+      "description": "Optional two-letter US state code to narrow state-law searches.",
+      "nullable": true
+    }
+  },
+  "outputs": {
+    "grounded": {"type": "array", "description": "Assertions grounded in at least one corpus document."},
+    "ungrounded": {"type": "array", "description": "Assertions for which no corpus document was found."},
+    "grounded_count": {"type": "integer"},
+    "ungrounded_count": {"type": "integer"},
+    "corpus_coverage_percent": {"type": "integer", "nullable": true}
+  },
+  "editor_integration": {
+    "panel": "proof_readiness_flags",
+    "displays": ["corpus_coverage_percent", "ungrounded_assertions"],
+    "block_on_zero_coverage": false
+  }
+}

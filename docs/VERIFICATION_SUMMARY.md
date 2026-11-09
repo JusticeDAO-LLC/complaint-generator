@@ -1,258 +1,123 @@
-# Verification and Enhancement of Three-Phase System
+# Refactor Verification Lanes
 
-## Comment Review Summary
+This document is the test-lane contract for complaint-generator refactors. The
+repository-wide suite remains the final regression authority; these focused lanes
+provide a fast, repeatable signal for the architectural surface being changed.
 
-The user requested verification that the three-phase complaint process fully encapsulates their workflow requirements, specifically:
+Run commands from the repository root. The Make targets use `python` by default;
+set `PYTHON=.venv/bin/python` when the project environment is not already active.
+Additional pytest options can be supplied with `PYTEST_ARGS`, for example:
 
-1. Three phases with denoising diffusion over text
-2. Knowledge graphs and dependency graphs stored in statefiles
-3. Phase 1: Initial intake with iterative questioning to exhaust question pool
-4. Phase 2: Evidence gathering with graph enhancement and denoising
-5. Phase 3: Neurosymbolic matching against legal graphs
-6. Synthesis of summaries from KG + transcripts + evidence (hiding graphs from users)
-7. Formal complaint generation per rules of civil procedure
-8. Iterative generator-mediator loop to drive down loss/noise
-
-## Verification Results
-
-### Already Fully Implemented ✅
-
-**Phase 1 - Initial Intake & Denoising:**
-- ✅ `KnowledgeGraphBuilder.build_from_text()` - creates KG from complaint
-- ✅ `DependencyGraphBuilder.build_from_claims()` - creates DG from claims
-- ✅ `ComplaintDenoiser.generate_questions()` - generates gap-filling questions
-- ✅ `ComplaintDenoiser.calculate_noise_level()` - tracks noise/uncertainty
-- ✅ `PhaseManager.has_converged()` - detects convergence
-- ✅ `PhaseManager.record_iteration()` - tracks loss history
-- ✅ Graphs serialized to `statefiles/` as JSON
-
-**Phase 2 - Evidence Gathering:**
-- ✅ `advance_to_evidence_phase()` - identifies evidence gaps
-- ✅ `add_evidence_to_graphs()` - adds evidence entities to KG/DG
-- ✅ `WebEvidenceSearchHook` - auto-discovers evidence from web
-- ✅ `evidence_gap_ratio` tracking for phase completion
-- ✅ Graphs enhanced with evidence nodes
-
-**Phase 3 - Neurosymbolic Formalization:**
-- ✅ `LegalGraphBuilder.build_from_statutes()` - creates legal requirement graph
-- ✅ `LegalGraphBuilder.build_rules_of_procedure()` - procedural rules graph
-- ✅ `NeurosymbolicMatcher.match_claims_to_law()` - symbolic + semantic matching
-- ✅ `NeurosymbolicMatcher.assess_claim_viability()` - checks legal sufficiency
-- ✅ `generate_formal_complaint()` - creates formal document
-
-**Cross-Phase Infrastructure:**
-- ✅ `PhaseManager` - orchestrates phases and transitions
-- ✅ Loss/noise history tracking with `loss_history` array
-- ✅ Convergence detection with sliding window
-- ✅ `AdversarialHarness` - AI-to-AI testing loop
-
-### Gaps Identified and Fixed 🔧
-
-**Gap 1: Denoising Not Explicit in Phase 2**
-- **Issue:** Evidence phase didn't have explicit denoising iteration
-- **Fix:** Added `generate_evidence_questions()` and `process_evidence_denoising()`
-- **Impact:** Now iteratively asks about missing evidence and evidence quality
-
-**Gap 2: Denoising Not Explicit in Phase 3**
-- **Issue:** Formalization phase didn't have explicit denoising iteration
-- **Fix:** Added `generate_legal_matching_questions()` and `process_legal_denoising()`
-- **Impact:** Now iteratively satisfies legal requirements and strengthens weak matches
-
-**Gap 3: No Unified Synthesis Method**
-- **Issue:** No method to combine KG + transcripts + evidence into user-friendly summary
-- **Fix:** Added `synthesize_complaint_summary()` method
-- **Impact:** Generates human-readable summaries hiding graph complexity
-
-## Enhancements Made
-
-### 1. Phase 2 Denoising (New Methods)
-
-**`ComplaintDenoiser.generate_evidence_questions()`**
-```python
-def generate_evidence_questions(self,
-                               knowledge_graph: KnowledgeGraph,
-                               dependency_graph: DependencyGraph,
-                               evidence_gaps: List[Dict[str, Any]],
-                               max_questions: int = 5) -> List[Dict[str, Any]]
-```
-- Generates questions about missing evidence
-- Generates questions about low-confidence evidence
-- Returns prioritized question list
-
-**`Mediator.process_evidence_denoising()`**
-```python
-def process_evidence_denoising(self, question: Dict[str, Any], answer: str) -> Dict[str, Any]
-```
-- Processes answers during evidence phase
-- Updates knowledge/dependency graphs
-- Calculates evidence-specific noise level
-- Tracks iteration progress
-
-### 2. Phase 3 Denoising (New Methods)
-
-**`ComplaintDenoiser.generate_legal_matching_questions()`**
-```python
-def generate_legal_matching_questions(self,
-                                     matching_results: Dict[str, Any],
-                                     max_questions: int = 5) -> List[Dict[str, Any]]
-```
-- Generates questions about unsatisfied legal requirements
-- Generates questions to strengthen weak legal matches
-- Returns prioritized question list
-
-**`Mediator.process_legal_denoising()`**
-```python
-def process_legal_denoising(self, question: Dict[str, Any], answer: str) -> Dict[str, Any]
-```
-- Processes answers during formalization phase
-- Re-runs neurosymbolic matching with new info
-- Calculates legal matching noise level
-- Determines readiness to generate formal complaint
-
-### 3. Synthesis Method (New Feature)
-
-**`ComplaintDenoiser.synthesize_complaint_summary()`**
-```python
-def synthesize_complaint_summary(self,
-                                knowledge_graph: KnowledgeGraph,
-                                conversation_history: List[Dict[str, Any]],
-                                evidence_list: List[Dict[str, Any]] = None) -> str
-```
-- Combines data from all three sources
-- Extracts parties, claims, facts from KG
-- Includes conversation insights
-- Summarizes available evidence
-- Generates human-readable narrative
-- Assesses completeness status
-
-**Output Format:**
-```markdown
-## Parties Involved
-- [People and organizations from KG]
-
-## Nature of Complaint
-- [Claims with types and descriptions]
-
-## Key Facts
-- [High-confidence facts from KG]
-
-## Available Evidence
-- [Evidence items with types]
-
-## Additional Context from Discussion
-- [Key clarifications from conversation]
-
-**Complaint Status:** [Completeness assessment]
+```bash
+make test-adapter PYTHON=.venv/bin/python PYTEST_ARGS="-q -x"
 ```
 
-## Testing
+## Required Validation Order
 
-### New Test File: `test_enhanced_denoising.py`
+For a normal refactor:
 
-**8 new tests added:**
+1. Run `make test-smoke` to catch import, packaging, launcher, and health failures.
+2. Run the lane that owns the changed surface.
+3. Run every additional lane named in the overlap guidance below when a change
+   crosses a package boundary.
+4. Run `make test-collect` before handoff. This is equivalent to the supervisor
+   gate `python -m pytest --collect-only -q`.
+5. Use `make test-refactor` for all five non-browser lanes, or the full regression
+   suite when the change is broad or release-bound.
 
-1. `test_evidence_denoising_questions` - Verifies Phase 2 question generation
-2. `test_evidence_quality_questions` - Tests low-confidence evidence handling
-3. `test_legal_matching_questions` - Verifies Phase 3 question generation
-4. `test_legal_strengthening_questions` - Tests weak match strengthening
-5. `test_synthesize_complaint_summary` - Tests synthesis with full data
-6. `test_synthesis_without_graphs` - Tests synthesis with minimal data
-7. `test_noise_calculation_across_phases` - Tests noise decreases with more info
-8. `test_question_generation_progression` - Tests phase-specific question types
+The lane commands inherit the repository's default gates: tests classified as
+LLM-, network-, or heavy-dependent skip unless their existing opt-in flag or
+environment variable is supplied. A skip is acceptable in a focused local lane
+only when the skipped capability is outside the changed behavior; CI or a
+capability-specific validation must exercise changed optional behavior.
 
-**Test Results:**
-- **Previous:** 33 tests passing
-- **New:** 41 tests passing (33 + 8)
-- **Status:** 100% passing
+## Lane Map
 
-## Code Statistics
+The explicit file lists in `Makefile` are the canonical membership for current
+tests. This keeps commands deterministic while marker adoption proceeds across
+the legacy suite.
 
-**Modified Files:**
-1. `complaint_phases/denoiser.py` - Added 3 methods (~200 lines)
-2. `mediator/mediator.py` - Added 3 methods (~150 lines)
+| Lane | Command | Owned surfaces | Use it for |
+| --- | --- | --- | --- |
+| Smoke | `make test-smoke` | package/import boundaries, mediator state, main-chat payload shape, runtime status contracts | Every refactor; changes to packaging, shared state/payloads, or dependency direction |
+| Adapter | `make test-adapter` | `integrations/ipfs_datasets`, adapter import boundaries and types, capabilities/degraded mode, provenance | Adapter implementations, optional dependency behavior, shared payload contracts, direct-import cleanup |
+| Mediator | `make test-mediator` | mediator facade and workflow services, claim support, evidence, web evidence, legal authority hooks | Orchestration extraction, hook behavior, public mediator compatibility, acquisition and support flows |
+| Document | `make test-document` | normalized parsing, parser fallbacks, legal-document parsing, formal drafting, workflow summaries | Ingestion contracts, chunks, drafting payloads, document rendering or export |
+| UI | `make test-ui` | application route assembly, review API/view payloads, dashboard and workspace templates | Request handlers, UI state shaping, templates, route contracts, review/document handoff |
 
-**New Files:**
-3. `tests/test_enhanced_denoising.py` - 8 tests (~350 lines)
+`make test-ui` is intentionally browser-free. It verifies server and rendered
+contract behavior in lean environments. Run `make test-ui-browser` when changing
+JavaScript interactions, browser navigation, accessibility-visible behavior, or
+the Playwright fixture/server boundary. The browser lane may skip when Playwright
+or its browser runtime is unavailable; browser-impacting work must run it in an
+environment where those dependencies are installed.
 
-**Total Addition:** ~700 lines of code + tests
+### Overlap Guidance
 
-## Workflow Examples
+Architectural changes often require more than one lane:
 
-### Complete Three-Phase Workflow with Denoising
+| Change | Minimum commands |
+| --- | --- |
+| An adapter payload consumed by mediator hooks | `make test-adapter`, then `make test-mediator` |
+| Document ingestion called through evidence hooks | `make test-adapter`, `make test-mediator`, then `make test-document` |
+| A mediator or DTO change rendered by an application | `make test-mediator`, then `make test-ui` |
+| Drafting payload or `/document` workflow change | `make test-document`, then `make test-ui` |
+| Template or browser interaction change | `make test-ui`, then `make test-ui-browser` |
+
+## P0 Workstream Commands
+
+The P0 workstreams are defined in `docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md` and
+cross-linked from `docs/REFACTOR_SUPERVISOR_TASKBOARD.md`. Each has one named,
+executable validation command. The aliases intentionally compose lanes where a
+workstream crosses architectural seams.
+
+| P0 workstream | Named validation command | Lanes exercised |
+| --- | --- | --- |
+| W1 Adapter hardening | `make validate-w1-adapters` | Adapter |
+| W2 Unified acquisition and provenance | `make validate-w2-acquisition` | Adapter, mediator |
+| W3 Document and chunk services | `make validate-w3-documents` | Adapter, mediator, document |
+| W4 Graph persistence and support queries | `make validate-w4-graphs` | Adapter, mediator |
+| W9 Legal corpus search and authority treatment | `make validate-w9-legal` | Adapter, mediator |
+| W10 Drafting and filing readiness | `make validate-w10-drafting` | Document, UI |
+
+Run `make validate-p0` when a change spans multiple P0 workstreams. It executes
+the union of their non-browser lanes once per Make invocation. Browser-affecting
+W10 work additionally requires `make test-ui-browser`.
+
+## Pytest Marker Contract
+
+`pytest.ini` registers the same five architectural markers: `smoke`, `adapter`,
+`mediator`, `document`, and `ui`. These markers describe ownership, while existing
+markers such as `unit`, `integration`, `browser`, `network`, `llm`, and `heavy`
+describe test level or runtime requirements. They are orthogonal and may be
+combined:
 
 ```python
-from mediator.mediator import Mediator
-
-mediator = Mediator([llm_backend])
-
-# Phase 1: Intake with denoising
-result = mediator.start_three_phase_process(complaint_text)
-for question in result['initial_questions']:
-    answer = get_user_input(question['question'])
-    update = mediator.process_denoising_answer(question, answer)
-    if update['converged']:
-        break
-
-# Phase 2: Evidence with denoising
-mediator.advance_to_evidence_phase()
-evidence_questions = result.get('suggested_evidence_types')
-for q in evidence_questions:
-    answer = get_user_input(q['question'])
-    update = mediator.process_evidence_denoising(q, answer)
-    if update['ready_for_formalization']:
-        break
-
-# Phase 3: Formalization with denoising
-mediator.advance_to_formalization_phase()
-legal_questions = result.get('suggested_legal_questions')
-for q in legal_questions:
-    answer = get_user_input(q['question'])
-    update = mediator.process_legal_denoising(q, answer)
-    if update['ready_to_generate']:
-        break
-
-# Generate formal complaint
-formal_complaint = mediator.generate_formal_complaint()
-
-# Get human-readable summary (hides graphs)
-summary = mediator.synthesize_complaint_summary()
-print(summary)
+@pytest.mark.adapter
+@pytest.mark.integration
+def test_normalized_parse_contract_round_trip():
+    ...
 ```
 
-### Using Synthesis for User Display
+New focused tests should carry the architectural marker matching their primary
+owner. Cross-surface tests may carry multiple architectural markers. Do not move
+a test out of the explicit Makefile lane merely because it is marked: marker-only
+selection such as `pytest -m adapter` is useful for incremental or plugin suites,
+but the Make target remains the stable refactor command until legacy marker
+coverage is complete.
 
-```python
-# Instead of showing raw graphs:
-kg = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
-# DON'T: display_to_user(kg.to_dict())  # Too complex!
+## Maintaining the Map
 
-# Show synthesized summary:
-summary = mediator.synthesize_complaint_summary(include_conversation=True)
-display_to_user(summary)  # Human-readable narrative
-```
+When adding or relocating a test for one of these surfaces:
 
-## Conclusion
+- add its architectural marker;
+- update the corresponding `*_TESTS` list in `Makefile` when it is part of the
+  stable fast-confidence set;
+- keep optional browser coverage in `UI_BROWSER_TESTS`, not `UI_TESTS`;
+- update the overlap or P0 map if ownership changes; and
+- confirm both the focused target and `make test-collect` succeed.
 
-The three-phase complaint processing system now **fully encapsulates** all requirements with explicit denoising at every phase:
-
-### ✅ Complete Checklist
-
-1. ✅ **Phase 1 Denoising:** Knowledge/dependency graphs + iterative questioning
-2. ✅ **Phase 2 Denoising:** Evidence gathering + evidence quality questions
-3. ✅ **Phase 3 Denoising:** Legal matching + requirement satisfaction questions
-4. ✅ **Synthesis Method:** KG + transcripts + evidence → human-readable summary
-5. ✅ **Graph Storage:** All graphs in statefiles/ as JSON
-6. ✅ **Neurosymbolic Matching:** Symbolic (pattern) + semantic (LLM) reasoning
-7. ✅ **Formal Complaint:** Generated per rules of civil procedure
-8. ✅ **Iterative Loop:** Generator-mediator with loss/noise tracking
-9. ✅ **Adversarial Testing:** LLM-based complainant-mediator-critic system
-10. ✅ **Comprehensive Tests:** 41 tests covering all phases and features
-
-### 🎯 Performance Metrics
-
-- **Test Coverage:** 41/41 passing (100%)
-- **Code Quality:** Clean, modular, well-documented
-- **Integration:** Seamless with existing mediator
-- **Extensibility:** Easy to add new question types or phases
-
-The system is ready for production use with full denoising diffusion across all three phases!
+Long-running performance, stress, live-network, live-LLM, and full end-to-end
+coverage, including workspace dataset tests that require a complete optional
+`ipfs_datasets_py` checkout, remain outside these fast lanes. Use the existing
+regression, canary, and HACC targets for those concerns.

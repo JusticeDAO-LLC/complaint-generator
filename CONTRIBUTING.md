@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing to the complaint generator! This guide will help you get started.
 
+The Git remote is `endomorphosis/complaint-generator`. Session reports live in `docs/archive/sessions`. Plans and profiles live in `docs/archive/reports`. The document pipeline, document optimization, intake status, and workflow guidance bodies live in `complaint_phases` with root shims. Claim-support review lives in `mediator/claim_support_review.py`. Keep `INTERFACE_SCHEMA` at `complaint-generator/module-interface@1` and `INTERFACE_VERSION` at `1.0.0`. See [docs/architecture/consolidation_modules.md](docs/architecture/consolidation_modules.md).
+
 ## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)

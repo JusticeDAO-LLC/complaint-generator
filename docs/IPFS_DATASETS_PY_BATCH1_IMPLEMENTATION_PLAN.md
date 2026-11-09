@@ -1,7 +1,7 @@
 # IPFS Datasets Py Batch 1 Implementation Plan
 
 Date: 2026-03-12
-Status: In progress; provenance-normalization and archived-page corpus slices completed, shared fact-registry slice next
+Status: Batch 1 contract-completion slices implemented; focused ingestion and claim-support validation passing
 
 Companion docs:
 
@@ -192,6 +192,12 @@ Suggested issue title:
 
 - `Promote legal authority full text into the shared parse and corpus pipeline`
 
+Current status:
+
+- completed in the current checkout
+- legal authority full text, HTML body content, and citation-only fallbacks now route through the shared document parse contract
+- authority-derived facts now carry chunk and source-passage lineage so adverse-authority review, contradiction checks, and predicate grounding can trace facts back to parsed authority passages
+
 ## Slice 5: Shared fact-registry completion
 
 Goal:
@@ -223,9 +229,12 @@ Suggested issue title:
 
 Current status:
 
-- in progress
+- shared passage lineage completed in the current checkout
 - archived-page corpus identity is now explicit, and archived web evidence facts now round-trip through the shared persisted evidence fact API with the same explicit artifact, corpus, and parse-lineage fields asserted for the broader fact contract
-- the remaining Batch 1 gap is broader cross-source enforcement and documentation so later graph and logic consumers can treat that fact substrate as one durable family without source-specific assumptions
+- legal-authority facts now expose chunk IDs, chunk indexes, and source passage spans in the same normalized fact row shape used by downstream support review
+- uploaded evidence facts, archived web evidence facts, and legal-authority facts now expose the same top-level `chunk_id`, `chunk_index`, and `source_passage` fields; claim-support fact flattening preserves those fields for support and graph consumers
+- parse envelopes now include canonical chunk rows with stable IDs, offsets, per-chunk source/page spans, parser version, input format, extraction method, quality tier, and section-label placeholders
+- focused adapter, ingestion, authority, web-evidence, and claim-support validation now passes for the Batch 1 contract surface
 
 ## Recommended execution order
 
@@ -293,12 +302,12 @@ Mitigation:
 
 ## Deliverable checklist
 
-- [ ] one canonical parse envelope across source families
-- [ ] one provenance and transform-lineage model across source families
-- [ ] archived and fetched web pages normalized into the shared case corpus
-- [ ] legal authority full text normalized into the shared case corpus
-- [ ] shared fact registry completed across evidence, archives, and authority text
-- [ ] focused ingestion and claim-support tests pass
+- [x] one canonical parse envelope across source families
+- [x] one provenance and transform-lineage model across source families
+- [x] archived and fetched web pages normalized into the shared case corpus
+- [x] legal authority full text normalized into the shared case corpus
+- [x] shared fact registry completed across evidence, archives, and authority text
+- [x] focused ingestion and claim-support tests pass
 
 ## Recommended next coding slice
 

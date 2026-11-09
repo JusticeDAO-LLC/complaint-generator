@@ -1,0 +1,204 @@
+.evidence-library,
+.evidence-library * {
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.evidence-library {
+    margin: 16px 0 22px;
+    padding: 16px;
+    border: 1px solid var(--line, #d7d2c8);
+    border-radius: 18px;
+    background: rgba(255, 252, 247, 0.92);
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.evidence-library-toolbar,
+.evidence-library-switch,
+.evidence-library-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    align-items: end;
+    min-width: 0;
+}
+
+.evidence-library-toolbar label {
+    display: grid;
+    gap: 4px;
+    font-weight: 700;
+    min-width: 0;
+    flex: 1 1 180px;
+}
+
+.evidence-library-toolbar input,
+.evidence-library-toolbar select {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+}
+
+.evidence-library-summary {
+    margin: 12px 0;
+}
+
+.evidence-library-body {
+    display: grid;
+    grid-template-columns: minmax(0, 34%) minmax(0, 1fr);
+    gap: 14px;
+    min-width: 0;
+}
+
+.evidence-library-list,
+.evidence-library-detail,
+.evidence-library-state {
+    min-width: 0;
+    border: 1px solid var(--line, #d7d2c8);
+    border-radius: 14px;
+    background: #fff;
+}
+
+.evidence-library-list {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    max-height: min(640px, 70vh);
+    overflow: auto;
+    padding: 8px;
+}
+
+.evidence-library-item {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    text-align: left;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background: #f7f4ee;
+}
+
+.evidence-library-item[aria-pressed="true"] {
+    border-color: #1f4b3a;
+    background: #e7f2ec;
+}
+
+.evidence-library-item small,
+.evidence-library-detail p {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.evidence-library-detail {
+    padding: 14px 16px;
+}
+
+.evidence-library-detail h3 {
+    margin: 0 0 8px;
+}
+
+.evidence-library-detail section + section {
+    margin-top: 12px;
+}
+
+.evidence-library-state {
+    padding: 14px 16px;
+}
+
+.evidence-library-state[hidden],
+.evidence-library-body[hidden],
+.evidence-library-switch[hidden] {
+    display: none;
+}
+
+.evidence-library[data-layout="list-detail"] .evidence-library-body {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.evidence-library[data-layout="list-detail"][data-pane="list"] .evidence-library-detail,
+.evidence-library[data-layout="list-detail"][data-pane="detail"] .evidence-library-list {
+    display: none;
+}
+
+.evidence-library[data-layout="master-detail"] .evidence-library-switch {
+    display: none;
+}
+
+#evidence-preview,
+#evidence-preview-viewport,
+#evidence-preview-stage,
+#evidence-preview-alternative,
+.evidence-library img,
+.evidence-library canvas,
+.evidence-library pre,
+.evidence-library iframe {
+    max-width: 100%;
+    min-width: 0;
+}
+
+#evidence-preview-viewport {
+    min-height: 8rem;
+    max-height: min(320px, 50vh);
+    overflow: auto;
+}
+
+#evidence-preview-stage,
+.evidence-library img,
+.evidence-library canvas,
+.evidence-library pre {
+    overflow-wrap: anywhere;
+    height: auto;
+}
+
+.evidence-library button,
+#evidence-library-add {
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.evidence-library-actions,
+#evidence-preview-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-width: 100%;
+}
+
+@media (max-width: 767px) {
+    /* The expanded case header can cover most of a narrow viewport. Keep
+       evidence controls reachable when the user scrolls this workbench. */
+    body:has([data-tab-panel="evidence"].is-active) .case-shell {
+        position: static;
+    }
+
+    .evidence-library,
+    [data-tab-panel="evidence"] {
+        padding: 12px;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+
+    .evidence-library-body,
+    .evidence-library[data-layout="master-detail"] .evidence-library-body {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    [data-tab-panel="evidence"] .stage-banner,
+    [data-tab-panel="evidence"] * {
+        grid-template-columns: minmax(0, 1fr) !important;
+        min-width: 0;
+    }
+}
+
+@media (max-width: 390px) {
+    .evidence-library-toolbar label,
+    .evidence-library-actions button,
+    #evidence-preview-controls button {
+        flex: 1 1 100%;
+    }
+}

@@ -6,19 +6,9 @@ import argparse
 import json
 import os
 import socket
-import sys
 import time
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from backends import LLMRouterBackend, WorkstationBackendDatabases, WorkstationBackendModels
-from mediator import Mediator
 
 
 def load_config(path: str) -> Dict[str, Any]:
@@ -27,6 +17,8 @@ def load_config(path: str) -> Dict[str, Any]:
 
 
 def build_backends(config: Dict[str, Any], backend_id: Optional[str] = None) -> List[Any]:
+    from backends import LLMRouterBackend, WorkstationBackendDatabases, WorkstationBackendModels
+
     mediator_config = config.get('MEDIATOR', {})
     backend_ids = mediator_config.get('backends', [])
     if backend_id:
@@ -73,7 +65,9 @@ def build_backends(config: Dict[str, Any], backend_id: Optional[str] = None) -> 
     return backends
 
 
-def create_mediator(config_path: str, backend_id: Optional[str] = None, allow_no_backend: bool = False) -> Mediator:
+def create_mediator(config_path: str, backend_id: Optional[str] = None, allow_no_backend: bool = False) -> Any:
+    from mediator import Mediator
+
     if not os.path.exists(config_path):
         if allow_no_backend:
             return Mediator(backends=[])
@@ -90,6 +84,8 @@ def create_mediator(config_path: str, backend_id: Optional[str] = None, allow_no
 
 
 def format_run_summary(result: Dict[str, Any]) -> str:
+    if result.get('queued'):
+        return f"queued_job_id: {result.get('job_id', -1)}"
     scraper_run = result.get('scraper_run', {}) if isinstance(result.get('scraper_run'), dict) else {}
     storage_summary = result.get('storage_summary', {}) if isinstance(result.get('storage_summary'), dict) else {}
     final_quality = result.get('final_quality', {}) if isinstance(result.get('final_quality'), dict) else {}
@@ -171,7 +167,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest='command', required=True)
 
-    run_parser = subparsers.add_parser('run', help='Run the bounded agentic scraper loop')
+    run_parser = subparsers.add_parser('run', help='Queue a scraper job by default; use --direct for bounded immediate execution')
     run_parser.add_argument('--keywords', nargs='+', required=True, help='Seed keywords for the scraper loop')
     run_parser.add_argument('--domains', nargs='*', default=None, help='Optional domains to prioritize')
     run_parser.add_argument('--iterations', type=int, default=3, help='Number of optimization iterations')
@@ -180,6 +176,9 @@ def create_parser() -> argparse.ArgumentParser:
     run_parser.add_argument('--user-id', default='cli-user', help='User id for stored records and run history')
     run_parser.add_argument('--claim-type', default=None, help='Optional claim type for stored results')
     run_parser.add_argument('--min-relevance', type=float, default=0.5, help='Minimum relevance when storing results')
+    run_parser.add_argument('--priority', type=int, default=100, help='Queue priority when not using --direct; lower numbers run first')
+    run_parser.add_argument('--ready-in-seconds', type=float, default=0.0, help='Queue delay before the job becomes claimable')
+    run_parser.add_argument('--direct', action='store_true', help='Run immediately instead of enqueueing for a worker')
     run_parser.add_argument('--no-store-results', action='store_true', help='Do not store accepted daemon results as evidence')
 
     enqueue_parser = subparsers.add_parser('enqueue', help='Queue a scraper job for later worker execution')
@@ -199,6 +198,11 @@ def create_parser() -> argparse.ArgumentParser:
     queue_parser.add_argument('--user-id', default='cli-user', help='User id to inspect')
     queue_parser.add_argument('--status', default='queued', choices=['queued', 'running', 'completed', 'failed', 'all'], help='Queue status to show')
     queue_parser.add_argument('--limit', type=int, default=20, help='Maximum number of jobs to return')
+
+    queue_state_parser = subparsers.add_parser('queue-state', help='Show scraper queue state summary without claiming jobs')
+    queue_state_parser.add_argument('--user-id', default='cli-user', help='User id to inspect')
+    queue_state_parser.add_argument('--status', default='all', choices=['queued', 'running', 'completed', 'failed', 'all'], help='Queue status to summarize')
+    queue_state_parser.add_argument('--limit', type=int, default=20, help='Maximum number of jobs to inspect')
 
     worker_parser = subparsers.add_parser('worker', help='Consume queued scraper jobs')
     worker_parser.add_argument('--worker-id', default=f"scraper-worker@{socket.gethostname()}", help='Worker identifier for claimed jobs')
@@ -265,6 +269,22 @@ def run_worker(args: argparse.Namespace, mediator: Mediator) -> Dict[str, Any]:
 def execute_command(args: argparse.Namespace, mediator: Mediator) -> Dict[str, Any]:
     if args.command == 'run':
         mediator.state.username = args.user_id
+        if not getattr(args, 'direct', False):
+            available_at = datetime.now(UTC) + timedelta(seconds=max(float(getattr(args, 'ready_in_seconds', 0.0)), 0.0))
+            return mediator.enqueue_agentic_scraper_job(
+                keywords=args.keywords,
+                domains=args.domains,
+                iterations=args.iterations,
+                sleep_seconds=args.sleep_seconds,
+                quality_domain=args.quality_domain,
+                user_id=args.user_id,
+                claim_type=args.claim_type,
+                min_relevance=args.min_relevance,
+                store_results=not args.no_store_results,
+                priority=getattr(args, 'priority', 100),
+                available_at=available_at,
+                metadata={'queued_by': 'agentic_scraper_cli.run'},
+            )
         return mediator.run_agentic_scraper_cycle(
             keywords=args.keywords,
             domains=args.domains,
@@ -297,6 +317,11 @@ def execute_command(args: argparse.Namespace, mediator: Mediator) -> Dict[str, A
             mediator.state.username = args.user_id
         status = None if args.status == 'all' else args.status
         return {'jobs': mediator.get_scraper_queue(user_id=args.user_id, status=status, limit=args.limit)}
+    if args.command == 'queue-state':
+        if args.user_id:
+            mediator.state.username = args.user_id
+        status = None if args.status == 'all' else args.status
+        return mediator.get_scraper_queue_state(user_id=args.user_id, status=status, limit=args.limit)
     if args.command == 'worker':
         return run_worker(args, mediator)
     if args.command == 'history':
@@ -319,6 +344,15 @@ def render_output(command: str, payload: Dict[str, Any], as_json: bool) -> str:
         return f"queued_job_id: {payload.get('job_id', -1)}"
     if command == 'queue':
         return format_queue_rows(payload.get('jobs', []))
+    if command == 'queue-state':
+        return '\n'.join([
+            f"jobs: {payload.get('job_count', 0)}",
+            f"ready_queued: {payload.get('ready_queued_count', 0)}",
+            f"running: {payload.get('running_count', 0)}",
+            f"completed: {payload.get('completed_count', 0)}",
+            f"failed: {payload.get('failed_count', 0)}",
+            format_queue_rows(payload.get('jobs', [])),
+        ])
     if command == 'worker':
         return format_worker_summary(payload)
     if command == 'history':

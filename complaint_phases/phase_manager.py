@@ -6,7 +6,7 @@ Manages the three-phase complaint process and transitions between phases.
 
 import logging
 from enum import Enum
-from typing import Dict, Any, Callable, List
+from typing import Dict, Any, Callable, List, Optional
 from datetime import datetime, UTC
 
 logger = logging.getLogger(__name__)
@@ -14,6 +14,19 @@ logger = logging.getLogger(__name__)
 _INTAKE_GAPS_THRESHOLD = 3
 _EVIDENCE_GAP_RATIO_THRESHOLD = 0.3
 _DENOISING_MAX_ITERATIONS = 20
+_INCOMPLETE_INTERVIEW_STOPS = frozenset({
+    'needs_answer',
+    'deferred_unknown',
+    'deferred_needs_evidence',
+    'provider_unavailable',
+    'blocked_provider',
+    'cancelled',
+    'limit_reached',
+    'no_progress',
+    'needs_review',
+    'paused',
+    'awaiting_user',
+})
 _EVIDENCE_REVIEWABLE_ESCALATION_STATUSES = {
     'awaiting_complainant_record',
     'awaiting_third_party_record',
@@ -66,6 +79,22 @@ def _coerce_ratio(value: Any, default: float = 1.0) -> float:
 
 def _utc_now_isoformat() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _attach_stopping_policy(action: Dict[str, Any], stop: Dict[str, Any], *, paused: bool = False) -> Dict[str, Any]:
+    """Copy the truthful stopping projection onto a phase action."""
+    from complaint_phases.interface import project_stopping_policy
+
+    projected = project_stopping_policy(stop, paused=paused)
+    action['outcome'] = projected['outcome']
+    action['stopping_policy'] = projected
+    action['remaining_issues'] = list(projected.get('remaining_issues') or [])
+    action['resumable_next_action'] = dict(projected.get('resumable_next_action') or {})
+    action['legal_sufficiency'] = False
+    action['core_facts_complete'] = False
+    action['proof_requirements_satisfied'] = False
+    action['filing_ready'] = False
+    return action
 
 
 class ComplaintPhase(Enum):
@@ -311,6 +340,8 @@ class PhaseManager:
         event_ledger = intake_case_file.get('event_ledger') if isinstance(intake_case_file.get('event_ledger'), list) else []
         temporal_fact_registry = intake_case_file.get('temporal_fact_registry') if isinstance(intake_case_file.get('temporal_fact_registry'), list) else []
         temporal_issue_registry = intake_case_file.get('temporal_issue_registry') if isinstance(intake_case_file.get('temporal_issue_registry'), list) else []
+        if not temporal_issue_registry and isinstance(intake_case_file.get('timeline_issues'), list):
+            temporal_issue_registry = intake_case_file.get('timeline_issues')
         timeline_consistency_summary = intake_case_file.get('timeline_consistency_summary') if isinstance(intake_case_file.get('timeline_consistency_summary'), dict) else {}
 
         event_records = temporal_fact_registry if temporal_fact_registry else event_ledger
@@ -333,6 +364,7 @@ class PhaseManager:
         issue_count = len(temporal_issue_registry)
         open_issue_count = 0
         blocking_issue_count = 0
+        unsupported_order_assumption_count = 0
         missing_temporal_predicates: List[str] = []
         required_provenance_kinds: List[str] = []
         for issue in temporal_issue_registry:
@@ -343,6 +375,15 @@ class PhaseManager:
                 open_issue_count += 1
             if bool(issue.get('blocking')) or str(issue.get('severity') or '').strip().lower() == 'blocking':
                 blocking_issue_count += 1
+            # Detect unsupported ordering assumptions (relative-only or order-gap issues)
+            issue_type = str(issue.get('issue_type') or issue.get('category') or '').strip().lower()
+            if status_value != 'resolved' and issue_type in {
+                'relative_only_ordering',
+                'unsupported_ordering',
+                'order_gap',
+                'missing_absolute_date',
+            }:
+                unsupported_order_assumption_count += 1
             for predicate in issue.get('missing_temporal_predicates') or []:
                 normalized_predicate = str(predicate or '').strip()
                 if normalized_predicate and normalized_predicate not in missing_temporal_predicates:
@@ -372,6 +413,10 @@ class PhaseManager:
             failure_reasons.append(f'{blocking_issue_count} blocking chronology issue(s) remain open')
         elif open_issue_count > 0:
             failure_reasons.append(f'{open_issue_count} chronology issue(s) remain unresolved')
+        if unsupported_order_assumption_count > 0:
+            failure_reasons.append(
+                f'{unsupported_order_assumption_count} unsupported ordering assumption(s) must be anchored'
+            )
         if missing_temporal_predicates:
             failure_reasons.append(f'missing temporal predicates: {", ".join(missing_temporal_predicates[:3])}')
         if required_provenance_kinds:
@@ -386,6 +431,7 @@ class PhaseManager:
             'unanchored_event_count': unanchored_event_count,
             'open_issue_count': open_issue_count,
             'blocking_issue_count': blocking_issue_count,
+            'unsupported_order_assumption_count': unsupported_order_assumption_count,
             'missing_temporal_predicates': missing_temporal_predicates,
             'required_provenance_kinds': required_provenance_kinds,
             'failure_reasons': failure_reasons,
@@ -428,7 +474,17 @@ class PhaseManager:
             criteria['chronology_provenance_coverage_complete'] = not bool(chronology_readiness.get('required_provenance_kinds'))
             criteria['chronology_ready_for_formalization'] = bool(chronology_readiness.get('ready_for_temporal_formalization', False))
 
+        dependency_graph = data.get('dependency_graph')
+        metadata = getattr(dependency_graph, 'metadata', {}) or {}
+        verified_mode = metadata.get('legal_requirement_mode') == 'verified_sources'
+        legal_source_gap = verified_mode and (bool(metadata.get('legal_source_gaps'))
+            or not [node for node in dependency_graph.nodes.values() if getattr(node.node_type, 'value', '') == 'claim'])
+        if verified_mode:
+            criteria['legal_sources_available'] = not legal_source_gap
+
         blockers: List[str] = []
+        if legal_source_gap:
+            blockers.append('legal_context_source_gap')
         if not has_knowledge_graph:
             blockers.append('missing_knowledge_graph')
         if not has_dependency_graph:
@@ -466,11 +522,23 @@ class PhaseManager:
                 blockers.append('chronology_provenance_coverage_incomplete')
             if chronology_readiness.get('open_issue_count', 0) > 0:
                 blockers.append('chronology_open_issues')
+            if chronology_readiness.get('unsupported_order_assumption_count', 0) > 0:
+                blockers.append('order_assumption_unsupported')
 
         for blocker in data.get('intake_blockers', []) or []:
             normalized = str(blocker or '').strip()
             if normalized and normalized not in blockers:
                 blockers.append(normalized)
+
+        interview_stop = data.get('interview_stop') if isinstance(data.get('interview_stop'), dict) else {}
+        interview_state = str(interview_stop.get('state') or '').strip()
+        if interview_state in _INCOMPLETE_INTERVIEW_STOPS:
+            blocker_name = f'interview_{interview_state}'
+            if blocker_name not in blockers:
+                blockers.append(blocker_name)
+            criteria['interview_saturated'] = False
+        elif interview_state == 'saturated':
+            criteria['interview_saturated'] = True
 
         total_criteria = len(criteria)
         satisfied_criteria = sum(1 for satisfied in criteria.values() if satisfied)
@@ -523,6 +591,72 @@ class PhaseManager:
             'blocking_contradictions': list(data.get('blocking_contradictions', [])),
             'escalated_blocking_contradictions': list(data.get('escalated_blocking_contradictions', [])),
             'complainant_summary_confirmation': dict(data.get('complainant_summary_confirmation', {})),
+        }
+
+    # Proof-readiness score below which formalization is blocked.
+    _PROOF_READINESS_FORMALIZATION_THRESHOLD: float = 0.6
+
+    def get_evidence_readiness(self) -> Dict[str, Any]:
+        """Return current evidence-phase proof-readiness metrics and formalization blockers.
+
+        This is the Batch 6 proof-readiness gate: callers can inspect
+        ``formalization_blockers`` to understand why a case cannot yet advance
+        to formalization, and ``proof_readiness_score`` to see how close it is
+        to the threshold.
+        """
+        data = self.phase_data.get(ComplaintPhase.EVIDENCE, {}) or {}
+        packets = data.get('claim_support_packets')
+        if not isinstance(packets, dict) or not packets:
+            return {
+                'ready': False,
+                'proof_readiness_score': 0.0,
+                'credible_support_ratio': 0.0,
+                'draft_ready_element_ratio': 0.0,
+                'evidence_completion_ready': False,
+                'formalization_blockers': ['no_claim_support_data'],
+                'blocker_count': 1,
+                'chronology_failure_reasons': [],
+            }
+        summary = self._build_evidence_packet_summary(data)
+        proof_readiness_score = float(summary.get('proof_readiness_score', 0.0) or 0.0)
+        evidence_completion_ready = bool(summary.get('evidence_completion_ready', False))
+        credible_support_ratio = float(summary.get('credible_support_ratio', 0.0) or 0.0)
+        draft_ready_element_ratio = float(summary.get('draft_ready_element_ratio', 0.0) or 0.0)
+        blocking_contradictions = int(summary.get('claim_support_blocking_contradictions', 0) or 0)
+        unresolved_without_review_path = int(
+            summary.get('claim_support_unresolved_without_review_path_count', 0) or 0
+        )
+        unresolved_temporal_issues = int(summary.get('claim_support_unresolved_temporal_issue_count', 0) or 0)
+        missing_anchor_tasks = int(summary.get('temporal_missing_anchor_task_count', 0) or 0)
+        missing_predicate_count = int(summary.get('temporal_missing_predicate_count', 0) or 0)
+        open_provenance_requirements = int(summary.get('temporal_required_provenance_kind_count', 0) or 0)
+        chronology_failure_reasons = list(summary.get('chronology_failure_reasons', []) or [])
+
+        formalization_blockers: List[str] = []
+        if proof_readiness_score < self._PROOF_READINESS_FORMALIZATION_THRESHOLD:
+            formalization_blockers.append('below_proof_readiness_threshold')
+        if blocking_contradictions > 0:
+            formalization_blockers.append('has_blocking_contradictions')
+        if unresolved_without_review_path > 0:
+            formalization_blockers.append('has_unresolved_elements_without_review_path')
+        if unresolved_temporal_issues > 0:
+            formalization_blockers.append('has_unresolved_chronology_issues')
+        if missing_anchor_tasks > 0:
+            formalization_blockers.append('has_missing_chronology_anchors')
+        if missing_predicate_count > 0:
+            formalization_blockers.append('has_missing_temporal_predicates')
+        if open_provenance_requirements > 0:
+            formalization_blockers.append('has_open_provenance_requirements')
+
+        return {
+            'ready': evidence_completion_ready and not formalization_blockers,
+            'proof_readiness_score': proof_readiness_score,
+            'credible_support_ratio': credible_support_ratio,
+            'draft_ready_element_ratio': draft_ready_element_ratio,
+            'evidence_completion_ready': evidence_completion_ready,
+            'formalization_blockers': formalization_blockers,
+            'blocker_count': len(formalization_blockers),
+            'chronology_failure_reasons': chronology_failure_reasons,
         }
 
     def _build_evidence_packet_summary(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1070,6 +1204,19 @@ class PhaseManager:
             logger.warning("Cannot advance to phase %s - requirements not met", phase.value)
             return False
     
+    def _verified_legal_sources_ready(self) -> bool:
+        """Direct phase entry shares intake's source-admission boundary."""
+        from .dependency_graph import DependencyGraphBuilder, NodeType
+        graph = self.phase_data[ComplaintPhase.INTAKE].get('dependency_graph')
+        metadata = getattr(graph, 'metadata', {}) or {}
+        if metadata.get('legal_requirement_mode') != 'verified_sources':
+            return True
+        claims = graph.get_nodes_by_type(NodeType.CLAIM)
+        if not claims or metadata.get('legal_source_gaps'):
+            return False
+        builder = getattr(self.mediator, 'dg_builder', None) or DependencyGraphBuilder()
+        return all(builder._claim_has_sourced_requirement(graph, claim.id) for claim in claims)
+
     def _can_advance_to(self, phase: ComplaintPhase) -> bool:
         """Check if we can advance to a given phase."""
         if phase == ComplaintPhase.INTAKE:
@@ -1081,7 +1228,7 @@ class PhaseManager:
         
         if phase == ComplaintPhase.FORMALIZATION:
             # Can advance to formalization if evidence gathering is sufficient
-            return self.is_phase_complete(ComplaintPhase.EVIDENCE)
+            return self._verified_legal_sources_ready() and self.is_phase_complete(ComplaintPhase.EVIDENCE)
         
         return False
     
@@ -1113,6 +1260,13 @@ class PhaseManager:
         - Gaps have been identified and addressed (or exhausted)
         - Denoising iterations have converged
         """
+        data = self.phase_data[ComplaintPhase.INTAKE]
+        stop = data.get('interview_stop') if isinstance(data.get('interview_stop'), dict) else {}
+        stop_state = str(stop.get('state') or '').strip()
+        if stop_state in _INCOMPLETE_INTERVIEW_STOPS:
+            return False
+        if stop_state == 'saturated' and not stop.get('intake_complete'):
+            return False
         readiness = self.get_intake_readiness()
         return readiness['ready']
     
@@ -1172,6 +1326,13 @@ class PhaseManager:
         matching_done = data.get('matching_complete', False)
         complaint_generated = data.get('formal_complaint', None) is not None
         
+        if not self._verified_legal_sources_ready():
+            return False
+        intake_graph = self.phase_data[ComplaintPhase.INTAKE].get('dependency_graph')
+        if (getattr(intake_graph, 'metadata', {}) or {}).get('legal_requirement_mode') == 'verified_sources':
+            legal_graph = data.get('legal_graph')
+            if legal_graph is None or not legal_graph.get_elements_by_type('legal_requirement'):
+                return False
         return has_legal_graph and matching_done and complaint_generated
     
     def update_phase_data(self, phase: ComplaintPhase, key: str, value: Any):
@@ -1179,6 +1340,80 @@ class PhaseManager:
         self.phase_data[phase][key] = value
         self._refresh_phase_derived_state(phase)
         logger.debug("Updated %s data: %s = %s", phase.value, key, value)
+
+    def select_explained_gap_questions(self, denoiser: Any, *, max_questions: int = 8) -> Dict[str, Any]:
+        """Select explained intake questions from the graphs already stored for this phase."""
+        data = self.phase_data[ComplaintPhase.INTAKE]
+        inquiries = denoiser.select_explained_gap_inquiries(
+            data.get("knowledge_graph"),
+            data.get("dependency_graph"),
+            intake_case_file=data.get("intake_case_file"),
+            max_questions=max_questions,
+        )
+        data["explained_inquiries"] = list(inquiries)
+        data["current_explained_inquiry"] = denoiser.current_explained_inquiry
+        data["suppressed_semantic_duplicates"] = list(getattr(denoiser, "suppressed_semantic_duplicates", []) or [])
+        return {
+            "inquiries": list(inquiries),
+            "current": denoiser.current_explained_inquiry,
+            "suppressed_semantic_duplicates": data["suppressed_semantic_duplicates"],
+        }
+
+    def apply_explained_inquiry_answer(
+        self,
+        answer: Any,
+        denoiser: Any,
+        *,
+        disposition: Any = None,
+        inquiry: Optional[Dict[str, Any]] = None,
+        max_questions: int = 8,
+    ) -> Dict[str, Any]:
+        """Apply one explained answer and store the resulting next question."""
+        data = self.phase_data[ComplaintPhase.INTAKE]
+        result = denoiser.apply_explained_inquiry_answer(
+            answer,
+            data.get("knowledge_graph"),
+            data.get("dependency_graph"),
+            intake_case_file=data.get("intake_case_file"),
+            inquiry=inquiry if isinstance(inquiry, dict) else data.get("current_explained_inquiry"),
+            disposition=disposition,
+            max_questions=max_questions,
+        )
+        data["current_explained_inquiry"] = result.get("next_inquiry")
+        data["explained_inquiries"] = list(result.get("inquiries") or [])
+        data["suppressed_semantic_duplicates"] = list(getattr(denoiser, "suppressed_semantic_duplicates", []) or [])
+        records = data.setdefault("explained_answer_records", [])
+        records.append({
+            "disposition": result.get("disposition"),
+            "recorded_as": result.get("recorded_as"),
+            "target_id": result.get("removed_target_id"),
+            "objective_id": result.get("objective_id"),
+            "satisfies_requirement": bool(result.get("satisfies_requirement")),
+        })
+        return result
+
+    def explain_current_inquiry(self) -> Dict[str, Any]:
+        """Return the terminal /why payload for the current explained question."""
+        from complaint_phases.interface import format_terminal_why
+
+        inquiry = self.phase_data[ComplaintPhase.INTAKE].get("current_explained_inquiry")
+        return format_terminal_why(inquiry if isinstance(inquiry, dict) else None)
+
+    def record_verified_dependency_refresh(self, graph: Any, report: Dict[str, Any]) -> Dict[str, Any]:
+        """Store a scoped dependency refresh and the legal-source gaps it left visible."""
+        intake = self.phase_data[ComplaintPhase.INTAKE]
+        intake["dependency_graph"] = graph
+        refresh_report = dict(report or {})
+        intake["verified_dependency_refresh"] = refresh_report
+        metadata = getattr(graph, "metadata", {}) if graph is not None else {}
+        gaps = list(metadata.get("legal_source_gaps") or []) if isinstance(metadata, dict) else []
+        intake["legal_context_source_gaps"] = gaps
+        gap_types = [item for item in (intake.get("intake_gap_types") or []) if item != "legal_context_source_gap"]
+        if gaps:
+            gap_types.append("legal_context_source_gap")
+        intake["intake_gap_types"] = gap_types
+        self._refresh_phase_derived_state(ComplaintPhase.INTAKE)
+        return refresh_report
     
     def get_phase_data(self, phase: ComplaintPhase, key: str = None) -> Any:
         """Get data for a specific phase."""
@@ -1249,6 +1484,37 @@ class PhaseManager:
         data = self.phase_data[ComplaintPhase.INTAKE]
 
         readiness = self.get_intake_readiness()
+        wait = data.get('intentional_user_wait') if isinstance(data.get('intentional_user_wait'), dict) else {}
+        if wait.get('paused') and wait.get('intentional'):
+            paused_action = {
+                'action': 'awaiting_user',
+                'awaiting_user': True,
+                'worker_stalled': False,
+                'supervisory_restart': False,
+                'filing_ready': False,
+                'intake_complete': False,
+                'intake_readiness_score': readiness['score'],
+                'intake_blockers': readiness['blockers'],
+            }
+            return _attach_stopping_policy(paused_action, {}, paused=True)
+
+        stop = data.get('interview_stop') if isinstance(data.get('interview_stop'), dict) else {}
+        stop_state = str(stop.get('state') or '').strip()
+        if stop_state in _INCOMPLETE_INTERVIEW_STOPS or stop_state == 'saturated':
+            stop_action = {
+                'action': 'interview_saturated' if stop_state == 'saturated' else stop_state,
+                'interview_state': stop_state,
+                'awaiting_user': stop_state == 'needs_answer' or str(stop.get('outcome') or '') == 'awaiting_user',
+                'worker_stalled': False,
+                'supervisory_restart': False,
+                'filing_ready': False,
+                'intake_complete': bool(stop.get('intake_complete')) and stop_state == 'saturated',
+                'unresolved_issue_summary': stop.get('unresolved_issue_summary') or {},
+                'message': stop.get('message'),
+                'intake_readiness_score': readiness['score'],
+                'intake_blockers': readiness['blockers'],
+            }
+            return _attach_stopping_policy(stop_action, stop)
 
         if 'knowledge_graph' not in data:
             return {
@@ -1300,15 +1566,47 @@ class PhaseManager:
                 'intake_blockers': readiness['blockers'],
             }
 
-        if denoising_iteration_cap_hit or (data.get('denoising_converged', False) and remaining_gaps <= gap_threshold):
+        genuinely_ready = bool(data.get('denoising_converged', False) and remaining_gaps <= gap_threshold and readiness.get('ready'))
+        if denoising_iteration_cap_hit and not genuinely_ready:
+            return _attach_stopping_policy({
+                'action': 'limit_reached',
+                'interview_state': 'limit_reached',
+                'filing_ready': False,
+                'intake_complete': False,
+                'awaiting_user': False,
+                'worker_stalled': False,
+                'supervisory_restart': False,
+                'message': 'Iteration cap reached. Intake is not complete and the complaint is not ready to file.',
+                'intake_readiness_score': readiness['score'],
+                'intake_blockers': readiness['blockers'],
+            }, {
+                'state': 'limit_reached',
+                'intake_complete': False,
+                'unresolved_issue_summary': {
+                    'items': [{'reason': 'iteration_cap'}],
+                    'rejected_shortcuts': ['iteration_cap'],
+                    'legal_sufficiency': False,
+                    'core_facts_complete': False,
+                    'open_answerable_count': 0,
+                },
+            })
+
+        if genuinely_ready:
             return {
                 'action': 'complete_intake',
+                'filing_ready': False,
                 'intake_readiness_score': readiness['score'],
                 'intake_blockers': readiness['blockers'],
             }
 
         return {
-            'action': 'complete_intake',
+            'action': 'needs_answer',
+            'interview_state': 'needs_answer',
+            'filing_ready': False,
+            'intake_complete': False,
+            'awaiting_user': True,
+            'worker_stalled': False,
+            'supervisory_restart': False,
             'intake_readiness_score': readiness['score'],
             'intake_blockers': readiness['blockers'],
         }

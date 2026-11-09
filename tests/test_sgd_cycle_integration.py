@@ -17,6 +17,8 @@ def _load_session_sgd_report_module():
 
 _sgd = _load_session_sgd_report_module()
 _find_session_json_files = _sgd._find_session_json_files
+_maybe_load_json = _sgd._maybe_load_json
+_safe_int = _sgd._safe_int
 _summarize_session = _sgd._summarize_session
 _write_report = _sgd._write_report
 
@@ -59,6 +61,62 @@ class MockMediator:
 			'next_action': {'action': 'complete_intake'},
 			'phase_completion': {'intake': True},
 		}
+
+
+def test_safe_int_treats_expected_conversion_failures_as_missing():
+	assert _safe_int("42") == 42
+	assert _safe_int(None) is None
+	assert _safe_int("not-an-integer") is None
+	assert _safe_int([]) is None
+	assert _safe_int(float("inf")) is None
+
+
+def test_safe_int_does_not_swallow_unexpected_conversion_failures():
+	class BrokenInteger:
+		def __int__(self):
+			raise RuntimeError("unexpected conversion failure")
+
+	try:
+		_safe_int(BrokenInteger())
+	except RuntimeError as exc:
+		assert str(exc) == "unexpected conversion failure"
+	else:
+		raise AssertionError("_safe_int swallowed an unexpected RuntimeError")
+
+
+def test_maybe_load_json_treats_expected_artifact_failures_as_missing(tmp_path, monkeypatch):
+	missing_path = tmp_path / "missing.json"
+	malformed_path = tmp_path / "malformed.json"
+	malformed_path.write_text('{"entities":', encoding="utf-8")
+	invalid_utf8_path = tmp_path / "invalid-utf8.json"
+	invalid_utf8_path.write_bytes(b'\xff')
+
+	assert _maybe_load_json(None) is None
+	assert _maybe_load_json(str(missing_path)) is None
+	assert _maybe_load_json(str(malformed_path)) is None
+	assert _maybe_load_json(str(invalid_utf8_path)) is None
+
+	def raise_oserror(path):
+		raise OSError(f"unable to read {path}")
+
+	monkeypatch.setattr(_sgd, "_load_json", raise_oserror)
+	assert _maybe_load_json(str(malformed_path)) is None
+
+
+def test_maybe_load_json_does_not_swallow_unexpected_failures(tmp_path, monkeypatch):
+	artifact_path = tmp_path / "artifact.json"
+	artifact_path.write_text("{}", encoding="utf-8")
+
+	def raise_runtime_error(path):
+		raise RuntimeError(f"unexpected loader failure for {path}")
+
+	monkeypatch.setattr(_sgd, "_load_json", raise_runtime_error)
+	try:
+		_maybe_load_json(str(artifact_path))
+	except RuntimeError as exc:
+		assert str(exc) == f"unexpected loader failure for {artifact_path}"
+	else:
+		raise AssertionError("_maybe_load_json swallowed an unexpected RuntimeError")
 
 
 def test_batch_persist_then_sgd_report(tmp_path):

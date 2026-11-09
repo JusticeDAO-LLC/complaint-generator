@@ -1,0 +1,67 @@
+{
+  "attempt_count": 3,
+  "event": {
+    "attempt": 1,
+    "board_namespace": "refactor-g1-g1-s2.todo.md",
+    "branch": "implementation/ref-004-attempt-1-1784663183",
+    "canonical_task_cid": "baguqeerafl5scnvnhgjqnbd4xwacpvamdpy3lnvlqdolc3ctxrf3oxh4se4a",
+    "canonical_task_key": "task/v1/2afb2136ad399306847cbd8027d40c1bf1b5b6ab80dcb16c53bc4bb75cfc9138",
+    "cleanup_result": {},
+    "implementation_commit": "20319ee0aa268a46fef6d37b19cf29e0aae8bf3a",
+    "merge_ref": "20319ee0aa268a46fef6d37b19cf29e0aae8bf3a",
+    "merge_ref_source": "implementation_commit",
+    "merge_result": {
+      "attempted": true,
+      "branch": "20319ee0aa268a46fef6d37b19cf29e0aae8bf3a",
+      "command": [
+        "git",
+        "merge",
+        "--no-ff",
+        "--no-edit",
+        "20319ee0aa268a46fef6d37b19cf29e0aae8bf3a"
+      ],
+      "deterministic_conflict_repair": [],
+      "finished_at": "2026-07-22T01:57:35.579376+00:00",
+      "generated_submodule_reconciliation": [],
+      "identical_untracked_paths": [],
+      "llm_merge_resolver": {
+        "attempted": false,
+        "reason": "resolver_command_not_configured"
+      },
+      "main_worktree_path": "/home/barberb/complaint-generator",
+      "merge_abort_result": {
+        "aborted": true,
+        "attempted": true,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": ""
+      },
+      "merge_commit": "",
+      "merged": false,
+      "resolved_generated_conflicts": [],
+      "restored_generated_dirty_overlap": [],
+      "returncode": 1,
+      "shared_worktree_path_scrub": {},
+      "started_at": "2026-07-22T01:57:34.804357+00:00",
+      "stderr": "",
+      "stdout": "Auto-merging applications/complaint_workspace.py\nCONFLICT (content): Merge conflict in applications/complaint_workspace.py\nAuto-merging applications/document_api.py\nCONFLICT (content): Merge conflict in applications/document_api.py\nAuto-merging docs/ARCHITECTURE.md\nCONFLICT (content): Merge conflict in docs/ARCHITECTURE.md\nAuto-merging docs/REFACTOR_SUPERVISOR_TASKBOARD.md\nCONFLICT (add/add): Merge conflict in docs/REFACTOR_SUPERVISOR_TASKBOARD.md\nAuto-merging integrations/ipfs_datasets/__init__.py\nCONFLICT (content): Merge conflict in integrations/ipfs_datasets/__init__.py\nAuto-merging scripts/enrich_email_timeline_authorities.py\nCONFLICT (content): Merge conflict in scripts/enrich_email_timeline_authorities.py\nAuto-merging scripts/generate_email_search_plan.py\nCONFLICT (content): Merge conflict in scripts/generate_email_search_plan.py\nAuto-merging scripts/generate_hacc_email_seed_plan.py\nCONFLICT (content): Merge conflict in scripts/generate_hacc_email_seed_plan.py\nAuto-merging scripts/gmail_duckdb_daemon.py\nCONFLICT (content): Merge conflict in scripts/gmail_duckdb_daemon.py\nAuto-merging scripts/refactor_agent_supervisor.py\nCONFLICT (add/add): Merge conflict in scripts/refactor_agent_supervisor.py\nAutomatic merge failed; fix conflicts and then commit the result.\n",
+      "submodule_conflict_repair": {
+        "reason": "no_gitlink_conflicts",
+        "repaired": false
+      },
+      "submodule_merge_results": [],
+      "target_branch": "main",
+      "used_ephemeral_main_worktree": false
+    },
+    "reason": "merge_retry_failed",
+    "resolved": false,
+    "task_id": "REF-004",
+    "timestamp": "2026-07-22T01:57:35.655101+00:00",
+    "type": "merge_reconciled"
+  },
+  "fingerprint": "59a03008ee0d1847cb8d6cb035bbe6b8d7865cdfad1ab87021cd38bad4fc638d",
+  "max_attempts": 3,
+  "quarantined_at": 1784693778.710624,
+  "reason": "llm_router response did not fully resolve the worktree; falling back to tool-backed resolver\n2026-07-21 21:10:00,526 - ipfs_accelerate_py.ipfs_kit_integration - INFO - Successfully imported ipfs_kit_py modules from /home/barberb/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py\n2026-07-21 21:10:00,526 - ipfs_accelerate_py.ipfs_kit_integration - INFO - IPFS Kit integration enabled successfully\n2026-07-21 21:10:00,527 - ipfs_accelerate_py.common.storage_wrapper - INFO - Storage initialized with distributed backend\n2026-07-21 21:10:07,789 - ipfs_kit_py.lotus_kit - INFO - Lotus binary available: False\n2026-07-21 21:10:08,242 - ipfs_kit_py.ipfs_datasets_integration - INFO - ipfs_datasets_py is available for dataset operations\n2026-07-21 21:10:08,243 - ipfs_kit_py.arrow_metadata_index - INFO - ipfs_datasets_py available for arrow metadata index\n2026-07-21 21:10:08,428 - ipfs_kit_py._high_level_api_impl - INFO - TieredCacheManager imported successfully\n2026-07-21 21:10:08,432 - ipfs_kit_py._high_level_api_impl - INFO - FSJournalReplication imported successfully\n2026-07-21 21:10:08,434 - ipfs_kit_py._high_level_api_impl - INFO - WALManager imported successfully\n2026-07-21 21:10:08,436 - ipfs_kit_py._high_level_api_impl - INFO - WebRTC benchmark helpers: anyio_support=True\n2026-07-21 21:10:08,439 - ipfs_kit_py.high_level_api - INFO - Successfully loaded IPFSSimpleAPI implementation\n2026-07-21 21:10:08,440 - ipfs_kit_py.high_level_api - INFO - Successfully imported WebRTCBenchmarkIntegrationAnyIO\n2026-07-21 21:10:08,502 - ipfs_accelerate_py.auto_patch_transformers - INFO - Patched transformers.AutoModel.from_pretrained for distributed storage\n2026-07-21 21:10:08,502 - ipfs_accelerate_py.auto_patch_transformers - INFO - Successfully patched 1 transformers classes for distributed storage\nwarning: lock acquisition timed out after 60.0s; proceeding without lock\ncodex merge resolver timed out; falling back to copilot\n",
+  "receipt_type": "merge_resolver_quarantine"
+}

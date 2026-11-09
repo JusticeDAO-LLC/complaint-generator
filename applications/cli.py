@@ -1,5 +1,9 @@
 import json
+import os
+import sys
 import shlex
+import shutil
+import textwrap
 import importlib.util
 from pathlib import Path
 from urllib import request
@@ -27,9 +31,103 @@ class CLI:
 		self.print_commands()
 		print('')
 
+		self._terminal_stop_reason = None
 		self.feed()
-		self.loop()
+		try:
+			self.loop()
+		except EOFError:
+			self._persist_terminal_stop('eof')
+			print('Recoverable pause after EOF (exit 1). Pending inquiry kept.')
+			raise SystemExit(1)
+		except KeyboardInterrupt:
+			self._persist_terminal_stop('interrupted')
+			print('\nRecoverable pause after interrupt (exit 130). Pending inquiry kept.')
+			raise SystemExit(130)
 
+
+	def _color_enabled(self):
+		if os.environ.get('NO_COLOR') or os.environ.get('COMPLAINT_CLI_NO_COLOR'):
+			return False
+		if str(os.environ.get('TERM') or '') == 'dumb':
+			return False
+		return sys.stdout.isatty() if hasattr(sys.stdout, 'isatty') else False
+
+	def _paint(self, code, text):
+		rendered = self._render_text(text)
+		if not self._color_enabled():
+			return rendered
+		return '\033[%sm%s\033[0m' % (code, rendered)
+
+	def _render_text(self, text):
+		raw = str(text or '')
+		if os.environ.get('COMPLAINT_CLI_ASCII') == '1':
+			raw = raw.encode('ascii', 'replace').decode('ascii')
+		columns = os.environ.get('COLUMNS', '')
+		width = int(columns) if str(columns).isdigit() else shutil.get_terminal_size(fallback=(80, 24)).columns
+		width = max(8, width)
+		lines = []
+		for paragraph in raw.splitlines() or ['']:
+			if len(paragraph) <= width:
+				lines.append(paragraph)
+			else:
+				lines.extend(textwrap.wrap(paragraph, width=width, break_long_words=True, replace_whitespace=False) or [paragraph])
+		return '\n'.join(lines)
+
+	def _persist_terminal_stop(self, reason):
+		self._terminal_stop_reason = reason
+		try:
+			self.save()
+		except Exception as exception:
+			self.print_error('pause save failed: %s' % exception)
+
+	def _slash_command(self, text):
+		stripped = str(text or '').strip()
+		if not stripped.startswith('/'):
+			return False
+		parts = stripped.split(None, 1)
+		command = parts[0].lower()
+		argument = parts[1] if len(parts) > 1 else ''
+		known = {'/help', '/status', '/why', '/skip', '/edit', '/pause', '/resume', '/quit'}
+		if command not in known:
+			self.print_error('Unknown command. It was not stored. Use /help.')
+			return True
+		if command == '/help':
+			self.print_commands()
+			print('Exit codes: 0 finished or /quit, 1 EOF recoverable pause, 130 Ctrl-C recoverable pause.')
+			print('Multiline input ends a line with \\. NO_COLOR and TERM=dumb disable color. COMPLAINT_CLI_ASCII=1 forces ASCII. COLUMNS wraps narrow terminals.')
+			print('Stale concurrent answers are rejected and are not saved.')
+		elif command == '/status':
+			self.print_response(self._format_status_output())
+		elif command == '/why':
+			payload_getter = getattr(self.mediator, 'get_current_inquiry_payload', None)
+			summary = ''
+			if callable(payload_getter):
+				try:
+					payload = payload_getter() or {}
+					explanation = payload.get('explanation') or {}
+					summary = str(explanation.get('summary') or explanation.get('why_this_matters') or '').strip()
+				except Exception:
+					summary = ''
+			self.print_response(summary or 'Why this question: it asks for a fact the interview still does not have. /why is not stored as an answer.')
+		elif command == '/skip':
+			self.mediator.state.answered_questions['last_skipped'] = 'skipped'
+			self.print_response('Recorded skipped. It does not satisfy the underlying legal requirement.')
+		elif command == '/edit':
+			if not argument.strip():
+				self.print_error('Usage: /edit replacement text. Nothing was changed.')
+			else:
+				self.mediator.state.answered_questions['last_edit'] = argument.strip()
+				self.print_response('Edited the last recorded answer. The pending question is unchanged.')
+		elif command == '/pause':
+			self._persist_terminal_stop('user_pause')
+			print('Chat paused. Resume with /resume. The pending inquiry is unchanged.')
+		elif command == '/resume':
+			self.resume()
+		elif command == '/quit':
+			self._persist_terminal_stop('user_quit')
+			print('Chat paused. Resume with the same session to continue the saved intake.')
+			raise SystemExit(0)
+		return True
 
 	def loop(self):
 		while True:
@@ -50,8 +148,12 @@ class CLI:
 			try:
 				text = input(last_question + '> ')
 			except EOFError:
-				print('\nExiting mediator CLI.')
-				return
+				raise
+			except KeyboardInterrupt:
+				raise
+			if text.strip().startswith('/'):
+				self._slash_command(text)
+				continue
 			self.mediator.state.answered_questions["last_question"] = text
 
 			if text == '':
@@ -110,14 +212,22 @@ class CLI:
 				if question:
 					return question
 			except Exception:
-				pass
+				log.warning(
+					'Could not resolve the current inquiry prompt; using the fallback prompt',
+					exc_info=True,
+				)
 		return 'Response'
 
 	def feed(self, text=None):
 		try:
 			if text is not None:
-				print('\033[96m%s\033[0m' % f'You: {text}')
-			print('\033[93m%s\033[0m' % 'Mediator is thinking...')
+				print(self._paint('96', f'You: {text}'))
+			print(self._paint('93', 'Mediator is thinking...'))
+			transition = getattr(self.mediator, 'transition_shared_interview', None)
+			if callable(transition):
+				response = transition(text)
+				self.print_response(self._format_shared_interview(response))
+				return
 			response = self.mediator.io(text)
 			self.print_response(response)
 			payload_getter = getattr(self.mediator, 'get_current_inquiry_payload', None)
@@ -126,12 +236,34 @@ class CLI:
 				explanation = payload.get('explanation') or {}
 				summary = str(explanation.get('summary') or '').strip()
 				if summary:
-					print('\033[90m%s\033[0m' % f"Why this question: {summary}")
+					print(self._paint('90', f"Why this question: {summary}"))
 		except UserPresentableException as exception:
 			self.print_error(exception.description)
 		except Exception as exception:
 			self.print_error('error occured: %s' % exception)
 			print('\ninternal state may be corrupted. proceed with caution.')
+
+	def _format_shared_interview(self, response):
+		if not isinstance(response, dict):
+			return response
+		inquiry = response.get('inquiry') if isinstance(response.get('inquiry'), dict) else {}
+		question = str(inquiry.get('question') or response.get('message') or '').strip()
+		lines = [
+			f"status={response.get('status')}",
+			f"session_id={response.get('session_id')}",
+			f"session_revision={response.get('session_revision')}",
+			f"expected_question_revision={response.get('expected_question_revision')}",
+			f"inquiry_id={inquiry.get('inquiry_id')}",
+			f"legal_sufficiency={response.get('legal_sufficiency')}",
+		]
+		error = response.get('error') if isinstance(response.get('error'), dict) else None
+		if error:
+			lines.append(f"error={error.get('code')} resumable={error.get('resumable')}")
+		if question:
+			lines.append(question)
+		elif response.get('message'):
+			lines.append(str(response.get('message')))
+		return '\n'.join(lines)
 
 
 
@@ -210,6 +342,16 @@ class CLI:
 			lines.append(f"- [{timestamp}] {sender}: {message}")
 		return '\n'.join(lines)
 
+	def _shared_interview_projection(self):
+		exporter = getattr(getattr(self.mediator, 'workflow_actions', None), 'export_session_projection', None)
+		if not callable(exporter):
+			return None
+		try:
+			return exporter()
+		except Exception:
+			log.warning('Could not export the shared interview projection', exc_info=True)
+			return None
+
 	def _local_state_dir(self):
 		return Path(__file__).resolve().parent.parent / 'statefiles'
 
@@ -237,6 +379,16 @@ class CLI:
 				"current_inquiry_explanation": getattr(state, 'current_inquiry_explanation', None),
 				"data": getattr(state, 'data', {}),
 			},
+			"terminal_controls": {
+				"schema": "terminal-controls-v1",
+				"stop_reason": getattr(self, '_terminal_stop_reason', None),
+				"pending_question": self._resolve_prompt_text(),
+				"objective_id": str((getattr(state, 'current_inquiry', {}) or {}).get('objective_id') or '') if isinstance(getattr(state, 'current_inquiry', None), dict) else '',
+				"graph_revision": int((getattr(state, 'current_inquiry', {}) or {}).get('revision') or 0) if isinstance(getattr(state, 'current_inquiry', None), dict) else 0,
+				"unknown_answers": [value for value in (getattr(state, 'answered_questions', {}) or {}).values() if str(value).strip().lower() in {'unknown', 'not sure', 'unsure'}],
+				"skipped_answers": [getattr(state, 'answered_questions', {}).get('last_skipped')] if isinstance(getattr(state, 'answered_questions', None), dict) and getattr(state, 'answered_questions', {}).get('last_skipped') else [],
+			},
+			"shared_interview": self._shared_interview_projection(),
 		}
 
 	def _restore_local_session_payload(self, payload):
@@ -244,6 +396,18 @@ class CLI:
 		state = self.mediator.state
 		for field_name, value in state_payload.items():
 			setattr(state, field_name, value)
+		projection = payload.get('shared_interview') if isinstance(payload, dict) else None
+		restorer = getattr(getattr(self.mediator, 'workflow_actions', None), 'restore_session_projection', None)
+		if isinstance(projection, dict) and callable(restorer):
+			restorer(projection)
+		controls = payload.get('terminal_controls') if isinstance(payload, dict) else None
+		if isinstance(controls, dict):
+			self._terminal_stop_reason = controls.get('stop_reason')
+			print('Restored pending question objective=%s revision=%s stop_reason=%s' % (
+				controls.get('objective_id') or '',
+				controls.get('graph_revision'),
+				controls.get('stop_reason') or '',
+			))
 		sync_chat_history = getattr(state, '_sync_chat_history_state', None)
 		if callable(sync_chat_history):
 			sync_chat_history()
@@ -626,11 +790,13 @@ class CLI:
 			selected_program_type_counts = summary.get('selected_authority_program_type_counts', {}) if isinstance(summary.get('selected_authority_program_type_counts'), dict) else {}
 			selected_program_bias_counts = summary.get('selected_authority_program_bias_counts', {}) if isinstance(summary.get('selected_authority_program_bias_counts'), dict) else {}
 			selected_program_rule_bias_counts = summary.get('selected_authority_program_rule_bias_counts', {}) if isinstance(summary.get('selected_authority_program_rule_bias_counts'), dict) else {}
+			selected_graph_gap_bias_counts = summary.get('selected_authority_graph_gap_bias_counts', {}) if isinstance(summary.get('selected_authority_graph_gap_bias_counts'), dict) else {}
 			history_program_entry_count = sum(int(count or 0) for count in selected_program_type_counts.values())
 			if not (
 				history_program_entry_count > 0
 				or selected_program_bias_counts
 				or selected_program_rule_bias_counts
+				or selected_graph_gap_bias_counts
 			):
 				continue
 			lines.append(
@@ -645,6 +811,9 @@ class CLI:
 			if selected_program_rule_bias_counts:
 				rule_bias_labels = self._format_cli_count_labels(selected_program_rule_bias_counts)
 				lines.append(f'  selected_rule_biases: {rule_bias_labels}')
+			if selected_graph_gap_bias_counts:
+				graph_gap_bias_labels = self._format_cli_count_labels(selected_graph_gap_bias_counts)
+				lines.append(f'  selected_graph_gap_biases: {graph_gap_bias_labels}')
 			source_context_summary = self._format_follow_up_source_context_summary(summary)
 			if source_context_summary:
 				lines.append(f'  source_context: {source_context_summary}')
@@ -972,10 +1141,7 @@ class CLI:
 		docx_available = importlib.util.find_spec('docx') is not None
 		if isinstance(output_formats, list):
 			if 'docx' in output_formats and not docx_available:
-				self.print_error('python-docx is not installed; skipping docx export for this run.')
-				output_formats = [fmt for fmt in output_formats if fmt != 'docx']
-			if not output_formats:
-				output_formats = ['pdf']
+				self.print_error('python-docx is not installed; the document builder will report availability for the requested docx format.')
 		service_recipient_details = options.get('service_recipient_details')
 		if isinstance(service_recipient_details, str):
 			try:
@@ -1116,7 +1282,169 @@ class CLI:
 		return '\n'.join(lines)
 
 
+	def build_complete_interview_snapshot(self, *, revision='0'):
+		from integrations.ipfs_datasets.storage import assemble_interview_snapshot
+		state = self.mediator.state
+		projection = self._shared_interview_projection() or {}
+		answered = getattr(state, 'answered_questions', {}) or {}
+		if not isinstance(answered, dict):
+			answered = {}
+		unknown_items = []
+		deferred_items = []
+		unknown_tokens = {'unknown', 'not sure', 'unsure', "i don't know", 'i do not know'}
+		deferred_tokens = {'skipped', 'deferred', 'later', 'not now'}
+		for field_name, value in answered.items():
+			text = str(value).strip().lower()
+			if text in unknown_tokens:
+				unknown_items.append({'field': str(field_name), 'disposition': 'unknown'})
+			elif text in deferred_tokens:
+				deferred_items.append({'field': str(field_name), 'disposition': 'deferred'})
+		graphs = {
+			'knowledge_graph': projection.get('knowledge_graph') if isinstance(projection.get('knowledge_graph'), dict) else {'status': 'unknown'},
+			'dependency_graph': projection.get('dependency_graph') if isinstance(projection.get('dependency_graph'), dict) else {'status': 'unknown'},
+		}
+		pending = projection.get('pending_inquiry')
+		if not isinstance(pending, dict):
+			current = getattr(state, 'current_inquiry', None)
+			pending = current if isinstance(current, dict) else {'status': 'unknown', 'reason': 'not_recorded'}
+		provenance = {}
+		if isinstance(graphs['knowledge_graph'], dict):
+			provenance = graphs['knowledge_graph'].get('provenance') if isinstance(graphs['knowledge_graph'].get('provenance'), dict) else {}
+		if not provenance:
+			provenance = {'status': 'unknown', 'source': 'interview-snapshot'}
+		inquiry = pending if isinstance(pending, dict) else {}
+		revisions = {
+			'session_revision': projection.get('session_revision', 'unknown'),
+			'question_revision': projection.get('question_revision', inquiry.get('revision', 'unknown')),
+			'graph_revision': inquiry.get('revision', projection.get('question_revision', 'unknown')),
+		}
+		transcript = []
+		chat_history = getattr(state, 'chat_history', {}) or {}
+		if isinstance(chat_history, dict):
+			for timestamp, entry in chat_history.items():
+				if isinstance(entry, dict):
+					transcript.append({'at': str(timestamp), 'sender': str(entry.get('sender') or ''), 'message': str(entry.get('message') or entry.get('question') or '')})
+				else:
+					transcript.append({'at': str(timestamp), 'message': str(entry)})
+		complaint_text = str(getattr(state, 'original_complaint', None) or getattr(state, 'complaint_summary', None) or '')
+		return assemble_interview_snapshot(
+			session_id=str(projection.get('session_id') or getattr(state, 'username', None) or 'unknown-session'),
+			revision=str(revision),
+			outcome_reason=str(getattr(self, '_terminal_stop_reason', None) or 'unknown'),
+			pending_inquiry=pending,
+			knowledge_graph=graphs['knowledge_graph'],
+			dependency_graph=graphs['dependency_graph'],
+			provenance=provenance,
+			unknown_items=unknown_items,
+			deferred_items=deferred_items,
+			complaint_text=complaint_text,
+			transcript=transcript,
+			exports={'status': 'unknown' if not getattr(state, 'complaint', None) else 'present'},
+			durability_payload={'writer': 'cli', 'status': 'pending'},
+			revisions=revisions,
+		)
+
+	def _interview_protection_settings(self):
+		protection = getattr(self, '_interview_protection', None) or os.environ.get('COMPLAINT_INTERVIEW_PROTECTION')
+		directory = getattr(self, '_interview_snapshot_dir', None) or os.environ.get('COMPLAINT_INTERVIEW_SNAPSHOT_DIR')
+		key = getattr(self, '_interview_key', None)
+		key_id = getattr(self, '_interview_key_id', None)
+		if key_id is None:
+			key_id = os.environ.get('COMPLAINT_INTERVIEW_KEY_ID')
+		tenant = getattr(self, '_interview_tenant_id', None) or os.environ.get('COMPLAINT_INTERVIEW_TENANT') or 'synthetic-user'
+		case_id = getattr(self, '_interview_case_id', None) or os.environ.get('COMPLAINT_INTERVIEW_CASE') or tenant
+		return {
+			'protection': protection,
+			'directory': directory,
+			'key': key,
+			'key_id': key_id,
+			'tenant_id': str(tenant),
+			'case_id': str(case_id),
+		}
+
+	def save_private_interview_snapshot(self, *, expected_revision=None, migrate_plaintext=False, fail_before_head=False):
+		from integrations.ipfs_datasets.storage import InterviewSnapshotError, persist_interview_snapshot
+		settings = self._interview_protection_settings()
+		protection = settings['protection']
+		if protection != 'user_chosen_encrypted':
+			raise InterviewSnapshotError('encrypted interview protection is required', code='protection_required', public_status='unavailable')
+		if not settings['directory'] or settings['key'] is None or not settings['key_id']:
+			raise InterviewSnapshotError('Private interview keys require unlock.', code='unlock_needed', public_status='unlock_needed')
+		scope = (str(Path(settings['directory']).resolve()), settings['tenant_id'], settings['case_id'], settings['key_id'])
+		if expected_revision is None and getattr(self, '_interview_revision_scope', None) == scope:
+			expected_revision = getattr(self, '_interview_committed_revision', None)
+		snapshot = self.build_complete_interview_snapshot()
+		result = persist_interview_snapshot(
+			settings['directory'],
+			snapshot,
+			protection='user_chosen_encrypted',
+			tenant_id=settings['tenant_id'],
+			case_id=settings['case_id'],
+			principal_id=settings['tenant_id'],
+			key=settings['key'],
+			key_id=settings['key_id'],
+			expected_revision=expected_revision,
+			migrate_plaintext=migrate_plaintext,
+			fail_before_head=fail_before_head,
+		)
+		self._last_interview_receipt = result['receipt']
+		self._interview_revision_scope = scope
+		self._interview_committed_revision = result['receipt']['revision']
+		log.info('interview snapshot committed revision=%s session_id=%s status=%s', result['receipt'].get('revision'), result['receipt'].get('session_id'), result['receipt'].get('status'))
+		return result
+
+	def resume_private_interview_snapshot(self):
+		from integrations.ipfs_datasets.storage import load_interview_snapshot
+		settings = self._interview_protection_settings()
+		if settings['protection'] != 'user_chosen_encrypted':
+			raise RuntimeError('encrypted interview protection is required')
+		if not settings['directory'] or settings['key'] is None or not settings['key_id']:
+			from integrations.ipfs_datasets.storage import InterviewSnapshotError
+			raise InterviewSnapshotError('Private interview keys require unlock.', code='unlock_needed', public_status='unlock_needed')
+		loaded = load_interview_snapshot(
+			settings['directory'],
+			protection='user_chosen_encrypted',
+			tenant_id=settings['tenant_id'],
+			case_id=settings['case_id'],
+			principal_id=settings['tenant_id'],
+			key=settings['key'],
+			key_id=settings['key_id'],
+		)
+		snapshot = loaded['snapshot']
+		graphs = snapshot.get('graphs') if isinstance(snapshot.get('graphs'), dict) else {}
+		knowledge = graphs.get('knowledge_graph') if isinstance(graphs.get('knowledge_graph'), dict) else {}
+		dependency = graphs.get('dependency_graph') if isinstance(graphs.get('dependency_graph'), dict) else {}
+		shared = None
+		if knowledge.get('status') != 'unknown' and dependency.get('status') != 'unknown' and 'entities' in knowledge:
+			shared = {
+				'schema_version': 'shared-interview-session-v1',
+				'session_id': snapshot.get('session_id'),
+				'session_revision': snapshot.get('revisions', {}).get('session_revision'),
+				'question_revision': snapshot.get('revisions', {}).get('question_revision'),
+				'pending_inquiry': snapshot.get('pending_inquiry'),
+				'knowledge_graph': knowledge,
+				'dependency_graph': dependency,
+			}
+		self._restore_local_session_payload({'state': {
+			'original_complaint': snapshot.get('complaint_text'),
+			'current_inquiry': snapshot.get('pending_inquiry'),
+			'chat_history': {str(index): item for index, item in enumerate(snapshot.get('transcript') or [])},
+		}, 'shared_interview': shared, 'terminal_controls': {
+			'stop_reason': snapshot.get('outcome_reason'),
+			'objective_id': (snapshot.get('pending_inquiry') or {}).get('objective_id') if isinstance(snapshot.get('pending_inquiry'), dict) else '',
+			'graph_revision': snapshot.get('revisions', {}).get('graph_revision'),
+		}})
+		self._last_interview_receipt = loaded['receipt']
+		self._interview_revision_scope = (str(Path(settings['directory']).resolve()), settings['tenant_id'], settings['case_id'], settings['key_id'])
+		self._interview_committed_revision = loaded['receipt']['revision']
+		return loaded
+
 	def save(self):
+		settings = self._interview_protection_settings()
+		if settings['protection'] == 'user_chosen_encrypted':
+			result = self.save_private_interview_snapshot()
+			print('Interview snapshot saved revision=%s status=%s' % (result['receipt'].get('revision'), result['receipt'].get('status')))
+			return result
 		if self._using_temporary_session():
 			output_dir = self._local_state_dir()
 			output_dir.mkdir(parents=True, exist_ok=True)
@@ -1144,6 +1472,11 @@ class CLI:
 		print("Profile saved")
 	
 	def resume(self):
+		settings = self._interview_protection_settings()
+		if settings['protection'] == 'user_chosen_encrypted':
+			loaded = self.resume_private_interview_snapshot()
+			print('Resumed encrypted interview snapshot revision=%s' % loaded['receipt'].get('revision'))
+			return loaded
 		if self._using_temporary_session():
 			state_dir = self._local_state_dir()
 			files = sorted(state_dir.glob('temporary-cli-session-*.json'))
@@ -1172,11 +1505,11 @@ class CLI:
 
 
 	def print_response(self, text):
-		print('\033[92m%s\033[0m' % 'Mediator response:')
-		print('\033[1m%s\033[0m' % text)
+		print(self._paint('92', 'Mediator response:'))
+		print(self._paint('1', text))
 
 	def print_error(self, text):
-		print('\033[91m%s\033[0m' % text)
+		print(self._paint('91', text))
 
 	def print_commands(self):
 		print('!help       show available commands')

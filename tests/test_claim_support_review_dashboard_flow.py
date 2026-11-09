@@ -7,7 +7,7 @@ FastAPI = pytest.importorskip("fastapi").FastAPI
 Response = pytest.importorskip("fastapi").Response
 
 from applications.review_api import attach_claim_support_review_routes
-from applications.review_ui import attach_claim_support_review_ui_routes
+from applications.review_ui import attach_claim_support_review_ui_routes, load_claim_support_review_html
 from claim_support_review import (
     ClaimSupportDocumentSaveRequest,
     ClaimSupportFollowUpExecuteRequest,
@@ -20,11 +20,296 @@ from claim_support_review import (
 pytestmark = pytest.mark.no_auto_network
 
 
+def test_claim_support_review_template_includes_formal_routing_signals():
+    page_html = load_claim_support_review_html()
+
+    assert "Formal validation routing" in page_html
+    assert "signal-formal-proof-gaps" in page_html
+    assert "signal-formal-routing-chips" in page_html
+    assert "formal_quality_follow_up_action_counts" in page_html
+    assert "Graph gap follow-ups" in page_html
+    assert "signal-graph-gap-follow-ups" in page_html
+    assert "buildGraphGapSummaryLabels" in page_html
+    assert "renderGraphGapContextChips" in page_html
+    assert "Coverage snapshot paths" in page_html
+    assert "Coverage path mix" in page_html
+    assert "claim_coverage_matrix_snapshot_summary" in page_html
+    assert "Graph gap queries" in page_html
+    assert "graph_gap_query_summary" in page_html
+    assert "renderGraphGapQueryChips" in page_html
+    assert "graph_gap_query" in page_html
+    assert "graph_gap_query_missing_support_kind_counts" in page_html
+    assert "Authority graph gaps" in page_html
+
+
+def test_follow_up_history_summary_aggregates_graph_gap_context():
+    from claim_support_review import summarize_follow_up_history_claim
+
+    summary = summarize_follow_up_history_claim([
+        {
+            "execution_id": 44,
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:2",
+            "claim_element_text": "Causal connection",
+            "support_kind": "authority",
+            "status": "executed",
+            "execution_mode": "retrieve_support",
+            "follow_up_focus": "parse_quality_improvement",
+            "query_strategy": "quality_gap_targeted",
+            "graph_gap_context": {
+                "strength": "moderate",
+                "recommended_action": "target_missing_support_kind",
+                "priority_adjustment": 0,
+                "has_graph_support": True,
+                "total_fact_count": 2,
+                "unique_fact_count": 1,
+                "duplicate_fact_count": 1,
+                "semantic_cluster_count": 1,
+                "semantic_duplicate_count": 1,
+                "source_family_counts": {"legal_authority": 1},
+                "artifact_family_counts": {"legal_authority_reference": 1},
+                "corpus_family_counts": {"legal_authority": 1},
+                "content_origin_counts": {"authority_reference_fallback": 1},
+                "fact_registry_summary": {
+                    "registry_version": "claim_fact_registry_summary.v1",
+                    "fact_count": 2,
+                    "source_family_counts": {"legal_authority": 1},
+                    "artifact_family_counts": {"legal_authority_reference": 1},
+                    "corpus_family_counts": {"legal_authority": 1},
+                    "content_origin_counts": {"authority_reference_fallback": 1},
+                    "passage_anchored_count": 1,
+                },
+            },
+            "graph_gap_query": {
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "claim_element_text": "Causal connection",
+                "missing_support_kinds": ["authority"],
+                "strength": "moderate",
+                "recommended_action": "target_missing_support_kind",
+                "priority_adjustment": 0,
+                "has_graph_support": True,
+                "result_count": 2,
+            },
+        },
+        {
+            "execution_id": 45,
+            "claim_type": "retaliation",
+            "claim_element_id": "retaliation:2",
+            "claim_element_text": "Causal connection",
+            "support_kind": "evidence",
+            "status": "executed",
+            "execution_mode": "retrieve_support",
+            "follow_up_focus": "support_gap_closure",
+            "query_strategy": "standard_gap_targeted",
+            "graph_gap_context": {
+                "strength": "none",
+                "recommended_action": "retrieve_more_support",
+                "priority_adjustment": 1,
+                "has_graph_support": False,
+                "fact_registry_summary": {
+                    "registry_version": "claim_fact_registry_summary.v1",
+                    "fact_count": 0,
+                },
+            },
+            "graph_gap_query": {
+                "claim_type": "retaliation",
+                "claim_element_id": "retaliation:2",
+                "claim_element_text": "Causal connection",
+                "missing_support_kinds": "evidence",
+                "strength": "none",
+                "recommended_action": "retrieve_more_support",
+                "priority_adjustment": 1,
+                "has_graph_support": False,
+                "result_count": 0,
+            },
+        },
+    ])
+
+    assert summary["graph_gap_context_task_count"] == 2
+    assert summary["graph_gap_has_support_task_count"] == 1
+    assert summary["graph_gap_empty_task_count"] == 1
+    assert summary["graph_gap_total_fact_count"] == 2
+    assert summary["graph_gap_unique_fact_count"] == 1
+    assert summary["graph_gap_duplicate_fact_count"] == 1
+    assert summary["graph_gap_semantic_cluster_count"] == 1
+    assert summary["graph_gap_semantic_duplicate_count"] == 1
+    assert summary["graph_gap_strength_counts"] == {"moderate": 1, "none": 1}
+    assert summary["graph_gap_recommended_action_counts"] == {
+        "target_missing_support_kind": 1,
+        "retrieve_more_support": 1,
+    }
+    assert summary["graph_gap_priority_adjustment_counts"] == {"0": 1, "1": 1}
+    assert summary["graph_gap_source_family_counts"] == {"legal_authority": 1}
+    assert summary["graph_gap_artifact_family_counts"] == {"legal_authority_reference": 1}
+    assert summary["graph_gap_corpus_family_counts"] == {"legal_authority": 1}
+    assert summary["graph_gap_content_origin_counts"] == {"authority_reference_fallback": 1}
+    assert summary["graph_gap_fact_registry_summary"]["fact_count"] == 2
+    assert summary["graph_gap_fact_registry_summary"]["passage_anchored_count"] == 1
+    assert summary["graph_gap_fact_registry_summary"]["source_family_counts"] == {
+        "legal_authority": 1,
+    }
+    assert summary["graph_gap_query_task_count"] == 2
+    assert summary["graph_gap_query_has_support_task_count"] == 1
+    assert summary["graph_gap_query_empty_task_count"] == 1
+    assert summary["graph_gap_query_result_count"] == 2
+    assert summary["graph_gap_query_missing_support_kind_counts"] == {
+        "authority": 1,
+        "evidence": 1,
+    }
+    assert summary["graph_gap_query_strength_counts"] == {"moderate": 1, "none": 1}
+    assert summary["graph_gap_query_recommended_action_counts"] == {
+        "target_missing_support_kind": 1,
+        "retrieve_more_support": 1,
+    }
+    assert summary["graph_gap_query_priority_adjustment_counts"] == {"0": 1, "1": 1}
+
+
+def test_claim_coverage_summary_preserves_graph_gap_query_summary():
+    from claim_support_review import _summarize_claim_coverage_claim
+
+    graph_gap_query_summary = {
+        "graph_gap_query_count": 1,
+        "graph_gap_has_support_count": 1,
+        "graph_gap_empty_count": 0,
+        "graph_gap_total_fact_count": 3,
+        "graph_gap_strength_counts": {"moderate": 1},
+        "graph_gap_recommended_action_counts": {"target_missing_support_kind": 1},
+    }
+
+    summary = _summarize_claim_coverage_claim(
+        "retaliation",
+        {
+            "elements": [],
+            "total_elements": 1,
+            "total_links": 0,
+            "total_facts": 0,
+            "status_counts": {"covered": 0, "partially_supported": 0, "missing": 1},
+        },
+        {"missing": [{"element_text": "Causal connection"}]},
+        {
+            "unresolved_count": 1,
+            "unresolved_elements": [
+                {
+                    "element_text": "Causal connection",
+                    "recommended_action": "target_missing_support_kind",
+                },
+            ],
+            "graph_gap_query_summary": graph_gap_query_summary,
+        },
+        {},
+    )
+
+    assert summary["graph_gap_query_summary"] == graph_gap_query_summary
+    assert summary["unresolved_element_count"] == 1
+    assert summary["recommended_gap_actions"] == {"target_missing_support_kind": 1}
+
+
+def test_follow_up_plan_summary_aggregates_authority_graph_gap_bias():
+    from claim_support_review import _summarize_follow_up_plan_claim
+
+    summary = _summarize_follow_up_plan_claim({
+        "blocked_task_count": 0,
+        "tasks": [
+            {
+                "recommended_action": "target_missing_support_kind",
+                "follow_up_focus": "support_gap_closure",
+                "query_strategy": "standard_gap_targeted",
+                "authority_search_program_summary": {
+                    "program_count": 1,
+                    "program_type_counts": {"element_definition_search": 1},
+                    "authority_intent_counts": {"support": 1},
+                    "graph_gap_authority_bias_counts": {"graph_backed_authority_gap": 1},
+                    "primary_graph_gap_authority_bias": "graph_backed_authority_gap",
+                },
+            },
+        ],
+    })
+
+    assert summary["authority_graph_gap_bias_counts"] == {
+        "graph_backed_authority_gap": 1,
+    }
+    assert summary["primary_authority_graph_gap_bias_counts"] == {
+        "graph_backed_authority_gap": 1,
+    }
+
+
+def test_authority_search_programs_include_graph_gap_query_bias():
+    try:
+        from mediator import Mediator
+    except ImportError as e:
+        pytest.skip(f"Mediator requires dependencies: {e}")
+
+    mediator = Mediator(backends=[Mock(id="test-backend")])
+    mediator.legal_authority_search.build_search_programs = Mock(return_value=[
+        {
+            "program_id": "legal_search_program:authority-1",
+            "program_type": "element_definition_search",
+            "claim_type": "employment",
+            "authority_intent": "support",
+            "query_text": "employment Protected activity element definition",
+            "claim_element_id": "employment:1",
+            "claim_element_text": "Protected activity",
+            "authority_families": ["statute", "case_law"],
+            "metadata": {},
+        },
+    ])
+
+    programs = mediator._build_authority_search_programs_for_task(
+        "employment",
+        {
+            "claim_element_id": "employment:1",
+            "claim_element": "Protected activity",
+            "queries": {
+                "authority": ['"employment" "Protected activity" statute'],
+            },
+            "source_preferences": {
+                "authority_families": ["statute", "case_law"],
+            },
+            "follow_up_focus": "support_gap_closure",
+            "query_strategy": "standard_gap_targeted",
+            "recommended_action": "target_missing_support_kind",
+            "graph_gap_query": {
+                "claim_type": "employment",
+                "claim_element_id": "employment:1",
+                "claim_element_text": "Protected activity",
+                "missing_support_kinds": ["authority"],
+                "strength": "moderate",
+                "recommended_action": "target_missing_support_kind",
+                "priority_adjustment": 0,
+                "has_graph_support": True,
+                "result_count": 2,
+            },
+        },
+    )
+    build_kwargs = mediator.legal_authority_search.build_search_programs.call_args.kwargs
+    summary = mediator._summarize_authority_search_programs(programs)
+
+    assert "graph_backed_authority_gap" in build_kwargs["defense_themes"]
+    assert programs[0]["metadata"]["graph_gap_authority_bias"] == "graph_backed_authority_gap"
+    assert programs[0]["metadata"]["graph_gap_query"]["claim_element_id"] == "employment:1"
+    assert programs[0]["metadata"]["graph_gap_missing_support_kinds"] == ["authority"]
+    assert summary["graph_gap_authority_bias_counts"] == {"graph_backed_authority_gap": 1}
+    assert summary["primary_graph_gap_authority_bias"] == "graph_backed_authority_gap"
+
+
 def _build_dashboard_app(mediator: Mock) -> FastAPI:
     app = FastAPI()
     attach_claim_support_review_routes(app, mediator)
     attach_claim_support_review_ui_routes(app)
     return app
+
+
+def _find_route(app: FastAPI, path: str):
+    pending = list(app.routes)
+    while pending:
+        route = pending.pop(0)
+        if getattr(route, "path", None) == path:
+            return route
+        original_router = getattr(route, "original_router", None)
+        if original_router is not None:
+            pending.extend(getattr(original_router, "routes", []))
+    raise AssertionError(f"Route not registered: {path}")
 
 
 def _build_dashboard_mediator() -> Mock:
@@ -610,6 +895,7 @@ def _build_dashboard_mediator() -> Mock:
                     "selected_search_program_type": "element_definition_search",
                     "selected_search_program_bias": "uncertain",
                     "selected_search_program_rule_bias": "procedural_prerequisite",
+                    "selected_search_program_graph_gap_bias": "graph_backed_authority_gap",
                 },
                 {
                     "execution_id": 45,
@@ -874,32 +1160,12 @@ def _build_dashboard_mediator() -> Mock:
 async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_round_trip():
     mediator = _build_dashboard_mediator()
     app = _build_dashboard_app(mediator)
-    page_route = next(
-        route for route in app.routes if getattr(route, "path", None) == "/claim-support-review"
-    )
-    review_route = next(
-        route for route in app.routes if getattr(route, "path", None) == "/api/claim-support/review"
-    )
-    execute_route = next(
-        route
-        for route in app.routes
-        if getattr(route, "path", None) == "/api/claim-support/execute-follow-up"
-    )
-    resolve_route = next(
-        route
-        for route in app.routes
-        if getattr(route, "path", None) == "/api/claim-support/resolve-manual-review"
-    )
-    testimony_route = next(
-        route
-        for route in app.routes
-        if getattr(route, "path", None) == "/api/claim-support/save-testimony"
-    )
-    document_route = next(
-        route
-        for route in app.routes
-        if getattr(route, "path", None) == "/api/claim-support/save-document"
-    )
+    page_route = _find_route(app, "/claim-support-review")
+    review_route = _find_route(app, "/api/claim-support/review")
+    execute_route = _find_route(app, "/api/claim-support/execute-follow-up")
+    resolve_route = _find_route(app, "/api/claim-support/resolve-manual-review")
+    testimony_route = _find_route(app, "/api/claim-support/save-testimony")
+    document_route = _find_route(app, "/api/claim-support/save-document")
 
     page_html = await page_route.endpoint()
 
@@ -929,6 +1195,8 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert soup.find(id="signal-history-normalized") is not None
     assert soup.find(id="signal-follow-up-source-context") is not None
     assert soup.find(id="signal-temporal-gap-tasks") is not None
+    assert soup.find(id="signal-follow-up-quality-actions") is not None
+    assert soup.find(id="signal-follow-up-quality-chips") is not None
     assert soup.find(id="intake-status-chips") is not None
     assert soup.find(id="intake-contradiction-list") is not None
     assert soup.find(id="signal-archive-captures") is not None
@@ -944,14 +1212,44 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert soup.find(id="history-list") is not None
     assert soup.find(id="history-summary-chips") is not None
     assert "authority program ${task.authority_search_program_summary.primary_program_type}" in page_html
+    assert "authority intent ${task.authority_intent}" in page_html
+    assert "jurisdiction ${task.authority_search_program_summary.primary_jurisdiction}" in page_html
+    assert "forum ${task.authority_search_program_summary.primary_forum}" in page_html
+    assert "authority family ${family}" in page_html
+    assert "defense theme ${theme}" in page_html
+    assert "time window ${task.authority_search_program_summary.primary_time_window.status}" in page_html
     assert "authority bias ${task.authority_search_program_summary.primary_program_bias}" in page_html
     assert "rule bias ${task.authority_search_program_summary.primary_program_rule_bias}" in page_html
     assert "No graph source context" in page_html
     assert "History programs: ${selectedProgramTypes.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
+    assert "History intents: ${selectedAuthorityIntents.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
+    assert "History jurisdictions: ${selectedJurisdictions.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
+    assert "History authority families: ${selectedFamilies.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
+    assert "History defense themes: ${selectedDefenseThemes.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
+    assert "History authority windows: ${selectedTimeWindows.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
     assert "History biases: ${selectedProgramBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
     assert "History rule biases: ${selectedProgramRuleBiases.map(([label, count]) => `${label}=${count}`).join(', ')}" in page_html
     assert "History source context:" in page_html
+    assert "Authority jurisdictions" in page_html
+    assert "Authority families" in page_html
+    assert "Defense themes" in page_html
+    assert "Authority windows" in page_html
+    assert "Ontology quality elements:" in page_html
+    assert "Ontology blocking gaps:" in page_html
+    assert "Ontology workflow degraded:" in page_html
+    assert "Ontology grade ${grade}: ${count}" in page_html
+    assert "Ontology workflow ${status}: ${count}" in page_html
+    assert "Ontology severity ${severity}: ${count}" in page_html
+    assert "Ontology action ${action}: ${count}" in page_html
     assert "Chronology follow-up tasks" in page_html
+    assert "Follow-up quality routing" in page_html
+    assert "No follow-up quality routing signals" in page_html
+    assert "quality_follow_up_action_counts" in page_html
+    assert "historySummary && historySummary.quality_follow_up_action_counts" in page_html
+    assert "History ontology" in page_html
+    assert "ontology grade" in page_html
+    assert "blocking ontology gap" in page_html
+    assert "setFollowUpSignals(planSummary, historySummary, executionSummary)" in page_html
     assert "Chronology tasks:" in page_html
     assert "Chronology targeted:" in page_html
     assert "Chronology status" in page_html
@@ -978,7 +1276,15 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "No follow-up tasks match the selected filter." in page_html
     assert "No follow-up history matches the selected filter." in page_html
     assert "program: ${entry.selected_search_program_type}" in page_html
+    assert "intent: ${entry.selected_search_program_intent || entry.authority_intent}" in page_html
+    assert "jurisdiction: ${entry.selected_search_program_jurisdiction}" in page_html
+    assert "forum: ${entry.selected_search_program_forum}" in page_html
+    assert "authority family: ${family}" in page_html
+    assert "defense theme: ${theme}" in page_html
+    assert "time window: ${entry.selected_search_program_time_window.status}" in page_html
     assert "rule bias: ${entry.selected_search_program_rule_bias}" in page_html
+    assert "graph-gap bias: ${entry.selected_search_program_graph_gap_bias}" in page_html
+    assert "Selected graph-gap biases" in page_html
     assert "family: ${entry.source_family}" in page_html
     assert "artifact: ${entry.artifact_family}" in page_html
     assert "origin: ${entry.content_origin}" in page_html
@@ -1012,6 +1318,15 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     assert "postFormData" in page_html
     assert "renderIntakeStatus" in page_html
     assert "renderQuestionRecommendations" in page_html
+    assert "question-recommendation-summary-chips" in page_html
+    assert "question_recommendation_summary" in page_html
+    assert "quality action ${label}: ${count}" in page_html
+    assert "quality action ${recommendation.quality_follow_up_action}" in page_html
+    assert "quality signal ${recommendation.primary_quality_signal.signal_type}" in page_html
+    assert "quality ${label}: ${count}" in page_html
+    assert "renderFollowUpQualityRoutingChips(task)" in page_html
+    assert "renderFollowUpQualityRoutingChips(entry, { separator: ': ' })" in page_html
+    assert "support_quality_summary" in page_html
     assert "renderTestimonyRecords" in page_html
     assert "renderDocumentArtifacts" in page_html
     assert "Timeline Ordering" in page_html
@@ -1436,6 +1751,9 @@ async def test_claim_support_review_dashboard_flow_serves_page_and_supports_api_
     }
     assert review_payload["follow_up_history_summary"]["retaliation"]["selected_authority_program_rule_bias_counts"] == {
         "procedural_prerequisite": 1,
+    }
+    assert review_payload["follow_up_history_summary"]["retaliation"]["selected_authority_graph_gap_bias_counts"] == {
+        "graph_backed_authority_gap": 1,
     }
     assert review_payload["follow_up_history_summary"]["retaliation"]["source_family_counts"] == {
         "legal_authority": 1,

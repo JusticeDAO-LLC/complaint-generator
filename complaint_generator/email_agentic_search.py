@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ipfs_datasets_py.processors.legal_data import email_agentic_search as _email_agentic_search
+from integrations.ipfs_datasets.legal_data import legal_module
+
+_email_agentic_search = legal_module("email_agentic_search")
 
 from .email_graphrag import build_email_graphrag_artifacts
 

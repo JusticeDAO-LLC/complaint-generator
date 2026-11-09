@@ -15,6 +15,84 @@ from .complaint_types import get_registered_types
 logger = logging.getLogger(__name__)
 
 
+# Scenario-specific proof burden profiles keyed by complaint type.
+# Each profile captures the distinct proof obligations, minimum evidence paths,
+# and adversarial risks that make each scenario different from the others.
+_PROOF_BURDEN_BY_TYPE: Dict[str, Dict[str, Any]] = {
+    'employment_discrimination': {
+        'required_elements': [
+            'protected_class_membership',
+            'adverse_employment_action',
+            'causal_connection',
+            'comparator_or_pattern_evidence',
+        ],
+        'minimum_proof_path': ['testimony', 'documentary', 'comparator_evidence'],
+        'primary_adversarial_risk': 'employer legitimate reason rebuttal',
+        'burden_standard': 'preponderance',
+        'key_fact_types': ['adverse_action_date', 'hr_complaint_records', 'performance_reviews'],
+    },
+    'retaliation': {
+        'required_elements': [
+            'protected_activity',
+            'adverse_action_after_protected_activity',
+            'causal_connection_to_protected_activity',
+            'temporal_proximity_or_pattern',
+        ],
+        'minimum_proof_path': ['testimony', 'documentary', 'temporal_chronology'],
+        'primary_adversarial_risk': 'contradictory dates or missing protected activity record',
+        'burden_standard': 'preponderance',
+        'key_fact_types': [
+            'protected_activity_date',
+            'adverse_action_date',
+            'retaliation_sequence_evidence',
+        ],
+    },
+    'housing_discrimination': {
+        'required_elements': [
+            'protected_class_membership',
+            'discriminatory_act_or_policy',
+            'causal_connection_or_disparate_impact',
+        ],
+        'minimum_proof_path': ['testimony', 'documentary', 'policy_records'],
+        'primary_adversarial_risk': 'pretextual housing justification',
+        'burden_standard': 'preponderance',
+        'key_fact_types': [
+            'denial_or_adverse_action_date',
+            'policy_documents',
+            'comparator_applicant_treatment',
+        ],
+    },
+    'consumer_fraud': {
+        'required_elements': [
+            'misrepresentation_or_omission',
+            'reliance_on_representation',
+            'actual_damages',
+            'causation',
+        ],
+        'minimum_proof_path': ['documentary', 'communications', 'financial_records'],
+        'primary_adversarial_risk': 'missing transaction records or disputed reliance',
+        'burden_standard': 'preponderance',
+        'key_fact_types': [
+            'purchase_date',
+            'representations_made',
+            'transaction_records',
+            'remediation_attempts',
+        ],
+    },
+    'unlawful_eviction': {
+        'required_elements': [
+            'tenancy_established',
+            'eviction_notice_or_action',
+            'statutory_grounds_not_met_or_retaliation',
+        ],
+        'minimum_proof_path': ['documentary', 'lease_records', 'testimony'],
+        'primary_adversarial_risk': 'missing notice date or rent payment disputes',
+        'burden_standard': 'preponderance',
+        'key_fact_types': ['notice_date', 'lease_terms', 'rent_payment_history'],
+    },
+}
+
+
 @dataclass
 class SeedComplaintTemplate:
     """Template for generating seed complaints from complaint_analysis data."""
@@ -27,6 +105,19 @@ class SeedComplaintTemplate:
     optional_fields: List[str]
     keywords: List[str] = field(default_factory=list)
     legal_patterns: List[str] = field(default_factory=list)
+    proof_burden: Dict[str, Any] = field(default_factory=dict)
+    """Scenario-specific proof burden metadata.
+
+    Keys:
+    - ``required_elements``: list of legal elements that must be proven.
+    - ``minimum_proof_path``: list of evidence types sufficient to satisfy the
+      burden (e.g. ``["testimony", "documentary", "authority"]``).
+    - ``primary_adversarial_risk``: the main challenge a mediator faces when
+      gathering evidence for this claim type (e.g. ``"contradictory dates"``,
+      ``"missing witness"``).
+    - ``burden_standard``: legal standard (e.g. ``"preponderance"``,
+      ``"clear_and_convincing"``).
+    """
     
     def instantiate(self, values: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -54,7 +145,8 @@ class SeedComplaintTemplate:
             'description': self.description,
             'key_facts': key_facts,
             'keywords': self.keywords,
-            'legal_patterns': self.legal_patterns
+            'legal_patterns': self.legal_patterns,
+            'proof_burden': dict(self.proof_burden),
         }
 
 
@@ -157,7 +249,8 @@ class SeedGenerator:
             required_fields=['landlord_name', 'protected_class', 'discriminatory_action'],
             optional_fields=['property_address', 'date_of_incident', 'witnesses', 'prior_complaints'],
             keywords=keywords,
-            legal_patterns=legal_terms
+            legal_patterns=legal_terms,
+            proof_burden=dict(_PROOF_BURDEN_BY_TYPE.get('housing_discrimination', {})),
         )
         self.templates[template.id] = template
         
@@ -178,7 +271,8 @@ class SeedGenerator:
             required_fields=['landlord_name', 'eviction_reason'],
             optional_fields=['property_address', 'notice_date', 'lease_terms', 'rent_payment_status'],
             keywords=keywords,
-            legal_patterns=legal_terms
+            legal_patterns=legal_terms,
+            proof_burden=dict(_PROOF_BURDEN_BY_TYPE.get('unlawful_eviction', {})),
         )
         self.templates[template.id] = template
     
@@ -202,7 +296,8 @@ class SeedGenerator:
             required_fields=['employer_name', 'position', 'protected_class', 'discriminatory_action'],
             optional_fields=['date_of_incident', 'witnesses', 'hr_complaints'],
             keywords=keywords,
-            legal_patterns=legal_terms
+            legal_patterns=legal_terms,
+            proof_burden=dict(_PROOF_BURDEN_BY_TYPE.get('employment_discrimination', {})),
         )
         self.templates[template.id] = template
         
@@ -223,7 +318,45 @@ class SeedGenerator:
             required_fields=['employer_name', 'position', 'termination_date'],
             optional_fields=['termination_reason', 'years_employed', 'performance_reviews'],
             keywords=keywords,
-            legal_patterns=legal_terms
+            legal_patterns=legal_terms,
+            proof_burden={
+                'required_elements': [
+                    'employment_relationship',
+                    'adverse_employment_action',
+                    'violation_of_public_policy_or_contract',
+                ],
+                'minimum_proof_path': ['documentary', 'testimony', 'employment_records'],
+                'primary_adversarial_risk': 'at-will employment defense',
+                'burden_standard': 'preponderance',
+                'key_fact_types': ['termination_date', 'performance_reviews', 'employment_contract'],
+            },
+        )
+        self.templates[template.id] = template
+
+        # Retaliation template
+        template = SeedComplaintTemplate(
+            id='employment_retaliation_1',
+            type='retaliation',
+            category='employment',
+            description='Workplace retaliation after protected activity',
+            key_facts_template={
+                'employer_name': None,
+                'position': None,
+                'protected_activity': None,
+                'protected_activity_date': None,
+                'adverse_action': None,
+                'adverse_action_date': None,
+                'witnesses': [],
+            },
+            required_fields=[
+                'employer_name', 'position', 'protected_activity', 'adverse_action',
+            ],
+            optional_fields=[
+                'protected_activity_date', 'adverse_action_date', 'witnesses',
+            ],
+            keywords=keywords,
+            legal_patterns=legal_terms,
+            proof_burden=dict(_PROOF_BURDEN_BY_TYPE.get('retaliation', {})),
         )
         self.templates[template.id] = template
     
@@ -266,7 +399,8 @@ class SeedGenerator:
             required_fields=['business_name', 'product_or_service', 'fraud_type'],
             optional_fields=['amount_lost', 'date_of_purchase', 'attempts_to_resolve'],
             keywords=keywords,
-            legal_patterns=legal_terms
+            legal_patterns=legal_terms,
+            proof_burden=dict(_PROOF_BURDEN_BY_TYPE.get('consumer_fraud', {})),
         )
         self.templates[template.id] = template
     

@@ -1,5 +1,6 @@
 -e .
--e ./ipfs_datasets_py[file_conversion,knowledge_graphs,scraping,vectors]
+-e ./external/ipfs_kit_py[api,ipld,ai_ml]
+-e ./external/ipfs_datasets_py[file_conversion,ipld,knowledge_graphs,logic,scraping,vectors,api]
 
 pytest>=7.4.0
 pytest-mock>=3.12.0
@@ -14,7 +15,18 @@ duckdb>=0.9.0
 pyarrow>=15.0.0,<21.0.0; python_version < '3.14'
 PyJWT>=2.8.0,<3.0.0
 beautifulsoup4>=4.12.0,<5.0.0
+newspaper3k>=0.2.8,<1.0.0
+readability-lxml>=0.8.0,<1.0.0
+lxml_html_clean>=0.4.0
 cryptography>=41.0.0
+# Private-storage contract (CIMP-PRIV-003): root stays on cryptography>=41.0.0.
+# external/ipfs_kit_py/requirements.txt floors cryptography>=38.0.0. That pin is
+# the Kit library requirement, not the Kit package version. Do not treat 38 as
+# a Kit release and do not lower this root pin to match it.
+# Optional extras, not installed by the lines in this file:
+#   complaint-generator[private-storage]  -> cryptography>=41.0.0 (already required)
+#   complaint-generator[keyring]          -> keyring>=24.2.0 (PRIV004; not a default)
+cffi>=1.16.0
 httpx>=0.28.1,<1.0.0
 cachetools>=5.3.0
 python-multipart>=0.0.9
@@ -22,6 +34,16 @@ python-docx>=1.1.2
 reportlab>=4.2.5
 typer>=0.12.0,<1.0.0
 playwright>=1.53.0,<2.0.0
+yt-dlp>=2025.6.30
+ffmpeg-python>=0.2.0
+matplotlib>=3.5.0
+plotly>=5.9.0
+rdflib>=6.0.0
+neo4j>=5.20.0
+seaborn>=0.12.0
+spacy>=3.0.0
+# Z3 SMT solver (optional — used by check_contradictions when available)
+z3-solver>=4.12.0
 
 # Pylance-like typechecking (CLI)
 pyright>=1.1.390

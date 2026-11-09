@@ -1209,6 +1209,86 @@ def test_session_runs_document_generation_handoff_and_records_grounding_summary(
     assert result.final_state["claim_support_packet_summary"]["claim_count"] == 1
 
 
+def test_document_generation_logs_intake_confirmation_failure_and_continues(caplog):
+    class _FailingConfirmationMediator(_DocumentMediator):
+        def confirm_intake_summary(self, confirmation_note="", confirmation_source="complainant"):
+            raise RuntimeError("intake confirmation failed")
+
+    mediator = _FailingConfirmationMediator()
+    session = _make_document_session(mediator)
+
+    with caplog.at_level("WARNING", logger="adversarial_harness.session"):
+        result = session._run_document_generation({"type": "housing_discrimination"})
+
+    assert result["ready_to_file"] is True
+    assert mediator.document_kwargs["user_id"] == "document_session"
+    assert "Could not confirm the intake summary for adversarial session document_session" in caplog.text
+    assert "intake confirmation failed" in caplog.text
+
+
+def test_document_generation_logs_formalization_transition_failure_and_continues(caplog):
+    class _FailingFormalizationMediator(_DocumentMediator):
+        def advance_to_formalization_phase(self):
+            raise RuntimeError("formalization transition failed")
+
+    mediator = _FailingFormalizationMediator()
+    session = _make_document_session(mediator)
+
+    with caplog.at_level("WARNING", logger="adversarial_harness.session"):
+        result = session._run_document_generation({"type": "housing_discrimination"})
+
+    assert result["ready_to_file"] is True
+    assert mediator.document_kwargs["user_id"] == "document_session"
+    assert "Could not advance adversarial session document_session to formalization" in caplog.text
+    assert "formalization transition failed" in caplog.text
+
+
+def test_document_generation_logs_evidence_transition_failure_and_continues(caplog):
+    class _FailingEvidenceMediator(_DocumentMediator):
+        def advance_to_evidence_phase(self):
+            raise RuntimeError("evidence transition failed")
+
+    mediator = _FailingEvidenceMediator()
+    session = _make_document_session(mediator)
+
+    with caplog.at_level("WARNING", logger="adversarial_harness.session"):
+        result = session._run_document_generation({"type": "housing_discrimination"})
+
+    assert result["ready_to_file"] is True
+    assert mediator.document_kwargs["user_id"] == "document_session"
+    assert "Could not advance adversarial session document_session to evidence" in caplog.text
+    assert "evidence transition failed" in caplog.text
+
+
+def test_document_generation_logs_formalization_graph_failure_and_continues(caplog):
+    class _FailingGraphMediator(_DocumentMediator):
+        def __init__(self):
+            super().__init__()
+            self.phase_manager = _PhaseManagerStub(
+                {
+                    (ComplaintPhase.INTAKE, "knowledge_graph"): object(),
+                    (ComplaintPhase.INTAKE, "dependency_graph"): object(),
+                    (ComplaintPhase.INTAKE, "intake_case_file"): {},
+                    (ComplaintPhase.FORMALIZATION, "legal_graph"): None,
+                }
+            )
+            self.neurosymbolic_matcher = object()
+
+        def _build_intake_selector_legal_graph(self, intake_case_file):
+            raise RuntimeError("formalization graph bootstrap failed")
+
+    mediator = _FailingGraphMediator()
+    session = _make_document_session(mediator)
+
+    with caplog.at_level("WARNING", logger="adversarial_harness.session"):
+        result = session._run_document_generation({"type": "housing_discrimination"})
+
+    assert result["ready_to_file"] is True
+    assert mediator.document_kwargs["user_id"] == "document_session"
+    assert "Could not prepare formalization graphs for adversarial session document_session" in caplog.text
+    assert "formalization graph bootstrap failed" in caplog.text
+
+
 def test_session_builds_fallback_document_packet_when_builder_is_unavailable():
     mediator = _FallbackDocumentMediator()
     session = _make_fallback_document_session(mediator)
@@ -1230,6 +1310,41 @@ def test_session_builds_fallback_document_packet_when_builder_is_unavailable():
     assert result.final_state["document_generation"]["factual_allegation_count"] >= 1
     assert result.final_state["document_generation"]["requested_relief_count"] >= 1
     assert result.final_state["document_generation"]["draft_text_available"] is True
+
+
+def test_fallback_document_logs_failed_phase_read_and_recovers_remaining_inputs(caplog):
+    class _PartiallyFailingPhaseManager:
+        def get_phase_data(self, phase, key):
+            if key == "uploaded_evidence_summary":
+                raise RuntimeError("evidence summary read failed")
+            if key == "claim_support_packet_summary":
+                return {"claim_count": 2}
+            if key == "intake_case_file":
+                return {
+                    "canonical_facts": [
+                        {"fact_text": "The agency issued a dated termination notice."},
+                    ],
+                }
+            return None
+
+    mediator = _FallbackDocumentMediator()
+    mediator.phase_manager = _PartiallyFailingPhaseManager()
+    session = _make_fallback_document_session(mediator)
+
+    with caplog.at_level("WARNING", logger="adversarial_harness.session"):
+        result = session._build_document_generation_fallback(
+            {"type": "housing_discrimination"},
+        )
+
+    claim = result["draft"]["claims_for_relief"][0]
+    assert claim["support_summary"]["uploaded_evidence_count"] == 0
+    assert claim["support_summary"]["claim_support_claim_count"] == 2
+    assert result["draft"]["factual_allegations"] == [
+        "The agency issued a dated termination notice.",
+    ]
+    assert "Could not read uploaded_evidence_summary phase data" in caplog.text
+    assert "fallback_document_session" in caplog.text
+    assert "evidence summary read failed" in caplog.text
 
 
 def test_session_result_preserves_optimizer_graph_targets_and_kg_dynamics():

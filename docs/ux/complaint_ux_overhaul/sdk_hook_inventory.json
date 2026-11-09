@@ -1,0 +1,447 @@
+{
+  "schema": "complaint-ux-sdk-hook-inventory@1",
+  "task_id": "CIMP-UX-02",
+  "qualification_vocabulary": [
+    "present",
+    "callable",
+    "active",
+    "unavailable",
+    "unsupported"
+  ],
+  "experience_binding": {
+    "contract": "docs/ux/complaint_ux_overhaul/experience_contract.md",
+    "baseline_manifest": "docs/ux/complaint_ux_overhaul/baseline/screenshot_manifest.json",
+    "baseline_application_commit": "6f27c60c3b49b8bad49088bd46e788fa31c646eb",
+    "preserved_baseline_state": "authenticated_backend_with_existing_stale_workspace_header",
+    "preserved_defect": "A working authenticated inquiry can sit under a stale No case selected/access denied header. This inventory does not treat that header as success.",
+    "pixels_observed_by_this_inventory": false
+  },
+  "owners": [
+    {
+      "name": "ipfs_accelerate_py",
+      "declared_pin": "947f873e407efd9b12c551a5e69a9b62819b9c4e",
+      "relative_path": "external/ipfs_accelerate_py",
+      "canonical_source_path": "external/ipfs_accelerate_py/ipfs_accelerate_py/__init__.py",
+      "checkout_kind": "opaque_gitlink",
+      "populated": false,
+      "declared_submodule": true,
+      "checked_out_commit": "",
+      "checked_out_commit_status": "unavailable",
+      "checked_out_commit_error_type": "FileNotFoundError",
+      "pin_is_observed_head": false,
+      "module_origin": "pinned_checkout_absent",
+      "qualification": "unavailable"
+    },
+    {
+      "name": "ipfs_datasets_py",
+      "declared_pin": "b857f28462bfbb9cbf02232a79cdefcaa1ef1bc7",
+      "relative_path": "external/ipfs_datasets_py",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/__init__.py",
+      "checkout_kind": "populated_checkout",
+      "populated": true,
+      "declared_submodule": true,
+      "checked_out_commit": "",
+      "checked_out_commit_status": "unavailable",
+      "checked_out_commit_error_type": "GitdirPointer",
+      "pin_is_observed_head": false,
+      "module_origin": "external/ipfs_datasets_py/ipfs_datasets_py/__init__.py",
+      "qualification": "present"
+    },
+    {
+      "name": "ipfs_kit_py",
+      "declared_pin": "0007f735b90215fa611f39aa558eb512a493b8af",
+      "relative_path": "external/ipfs_kit_py",
+      "canonical_source_path": "external/ipfs_kit_py/ipfs_kit_py/__init__.py",
+      "checkout_kind": "populated_checkout",
+      "populated": true,
+      "declared_submodule": true,
+      "checked_out_commit": "",
+      "checked_out_commit_status": "unavailable",
+      "checked_out_commit_error_type": "GitdirPointer",
+      "pin_is_observed_head": false,
+      "module_origin": "external/ipfs_kit_py/ipfs_kit_py/__init__.py",
+      "qualification": "present"
+    }
+  ],
+  "callable_symbols": [
+    {
+      "owner": "ipfs_datasets_py",
+      "module": "ipfs_datasets_py.knowledge_graphs.extraction.extractor",
+      "symbol": "KnowledgeGraphExtractor.extract_knowledge_graph",
+      "signature": "(self, text: str, extraction_temperature: float = 0.7, structure_temperature: float = 0.5) -> ipfs_datasets_py.knowledge_graphs.extraction.graph.KnowledgeGraph",
+      "qualification": "active",
+      "probe": "synthetic sentence, spacy/transformers/tracer/srl off, enhanced path not called"
+    },
+    {
+      "owner": "ipfs_datasets_py",
+      "module": "ipfs_datasets_py.knowledge_graphs.extraction.extractor",
+      "symbol": "KnowledgeGraphExtractor.extract_enhanced_knowledge_graph",
+      "signature": "(self, text: str, use_chunking: bool = True, extraction_temperature: float = 0.7, structure_temperature: float = 0.5) -> ipfs_datasets_py.knowledge_graphs.extraction.graph.KnowledgeGraph",
+      "qualification": "unsupported",
+      "probe": "not called"
+    },
+    {
+      "owner": "ipfs_datasets_py",
+      "module": "ipfs_datasets_py.processors.legal_scrapers.legal_dataset_api",
+      "symbol": "search_us_code_corpus_from_parameters",
+      "signature": "(parameters: 'Dict[str, Any]', *, tool_version: 'str' = '1.0.0') -> 'Dict[str, Any]'",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "probe": "empty parameters refuse before corpus setup"
+    },
+    {
+      "owner": "ipfs_kit_py",
+      "module": "ipfs_kit_py.core.service_router",
+      "symbol": "ServiceRouter.dispatch",
+      "signature": "(self, operation: 'str', request: 'Any', *, context: 'DispatchContext | None' = None) -> 'Any'",
+      "qualification": "callable",
+      "unsupported_operation_qualification": "unsupported",
+      "unbound_operation_qualification": "unavailable"
+    },
+    {
+      "owner": "ipfs_accelerate_py",
+      "module": "ipfs_accelerate_py.llm_router",
+      "symbol": "generate_text",
+      "signature": "",
+      "qualification": "unavailable",
+      "reason": "declared checkout has no llm_router.py; an unrelated site-packages copy is not the pin"
+    },
+    {
+      "owner": "first_party",
+      "module": "integrations.ipfs_accelerate.routers",
+      "symbol": "pinned_grok47_dispatch_kwargs",
+      "signature": "() -> dict[str, Any]",
+      "qualification": "callable",
+      "provider": "grok_cli",
+      "model_name": "grok-4.7",
+      "allow_cross_provider_fallback": false
+    },
+    {
+      "owner": "first_party",
+      "module": "integrations.private_storage",
+      "symbol": "store_private_artifact",
+      "signature": "(data: 'bytes', *, access: 'Any', tenant_id: 'str', case_id: 'str', artifact_kind: 'str', revision: 'str', principal_id: 'str | None' = None, key: 'bytes | None' = None, key_id: 'str | None' = None, key_provider: 'InjectedCaseKeyProvider | None' = None, backend: 'Any' = None, backend_name: 'str | None' = None, pin_content: 'bool' = True, replicate: 'Callable[[bytes], None] | None' = None, journal: 'Callable[[Mapping[str, Any]], None] | None' = None) -> 'dict[str, Any]'",
+      "qualification": "active"
+    }
+  ],
+  "mediator_hooks": [
+    {
+      "hook": "LegalClassificationHook",
+      "mediator_attribute": "legal_classifier",
+      "owner": "mediator/legal_hooks.py",
+      "method": "classify_complaint",
+      "signature": "(self, complaint_text: str) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_grounded_legal_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "StatuteRetrievalHook",
+      "mediator_attribute": "statute_retriever",
+      "owner": "mediator/legal_hooks.py",
+      "method": "retrieve_statutes",
+      "signature": "(self, classification: Dict[str, Any]) -> List[Dict[str, str]]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_grounded_legal_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "SummaryJudgmentHook",
+      "mediator_attribute": "summary_judgment",
+      "owner": "mediator/legal_hooks.py",
+      "method": "generate_requirements",
+      "signature": "(self, classification: Dict[str, Any], statutes: List[Dict[str, str]]) -> Dict[str, List[str]]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_grounded_legal_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "QuestionGenerationHook",
+      "mediator_attribute": "question_generator",
+      "owner": "mediator/legal_hooks.py",
+      "method": "generate_questions",
+      "signature": "(self, requirements: Dict[str, List[str]], classification: Dict[str, Any], provenance_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_grounded_legal_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "EvidenceStorageHook",
+      "mediator_attribute": "evidence_storage",
+      "owner": "mediator/evidence_hooks.py",
+      "method": "store_evidence",
+      "signature": "(self, data: bytes, evidence_type: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_private_evidence_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "EvidenceStateHook",
+      "mediator_attribute": "evidence_state",
+      "owner": "mediator/evidence_hooks.py",
+      "method": "upsert_evidence_record",
+      "signature": "(self, user_id: str, evidence_info: Dict[str, Any], complaint_id: Optional[str] = None, claim_type: Optional[str] = None, claim_element_id: Optional[str] = None, claim_element: Optional[str] = None, description: Optional[str] = None) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_private_evidence_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "EvidenceAnalysisHook",
+      "mediator_attribute": "evidence_analysis",
+      "owner": "mediator/evidence_hooks.py",
+      "method": "analyze_evidence_for_claim",
+      "signature": "(self, user_id: str, claim_type: str) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_private_evidence_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "ClaimSupportHook",
+      "mediator_attribute": "claim_support",
+      "owner": "mediator/claim_support_hooks.py",
+      "method": "get_claim_support_gaps",
+      "signature": "(self, user_id: 'str', claim_type: 'Optional[str]' = None, required_support_kinds: 'Optional[List[str]]' = None) -> 'Dict[str, Any]'",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_claim_support_and_legal_authority",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "LegalAuthoritySearchHook",
+      "mediator_attribute": "legal_authority_search",
+      "owner": "mediator/legal_authority_hooks.py",
+      "method": "lookup_bounded_corpus",
+      "signature": "(self, **kwargs: Any) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_claim_support_and_legal_authority",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "LegalAuthorityStorageHook",
+      "mediator_attribute": "legal_authority_storage",
+      "owner": "mediator/legal_authority_hooks.py",
+      "method": "store_acquired_authority",
+      "signature": "(self, authority_data: Dict[str, Any], user_id: str, complaint_id: Optional[str] = None, claim_type: Optional[str] = None) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_claim_support_and_legal_authority",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "LegalAuthorityAnalysisHook",
+      "mediator_attribute": "legal_authority_analysis",
+      "owner": "mediator/legal_authority_hooks.py",
+      "method": "analyze_authorities_for_claim",
+      "signature": "(self, user_id: str, claim_type: str) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_claim_support_and_legal_authority",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "WebEvidenceSearchHook",
+      "mediator_attribute": "web_evidence_search",
+      "owner": "mediator/web_evidence_hooks.py",
+      "method": "search_for_evidence",
+      "signature": "(self, keywords: List[str], domains: Optional[List[str]] = None, max_results: int = 20) -> Dict[str, List[Dict[str, Any]]]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_web_evidence_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    },
+    {
+      "hook": "WebEvidenceIntegrationHook",
+      "mediator_attribute": "web_evidence_integration",
+      "owner": "mediator/web_evidence_hooks.py",
+      "method": "discover_and_store_evidence",
+      "signature": "(self, keywords: List[str], domains: Optional[List[str]] = None, user_id: Optional[str] = None, claim_type: Optional[str] = None, min_relevance: float = 0.5) -> Dict[str, Any]",
+      "qualification": "callable",
+      "effect_qualification": "unavailable",
+      "lifecycle_workflow": "qualify_web_evidence_hooks",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook"
+    }
+  ],
+  "registered_operations": [
+    {
+      "operation": "acquire_legal_sources",
+      "owner": "mediator.legal_authority_hooks.LegalAuthoritySearchHook",
+      "handler_enabled": false,
+      "qualification": "unavailable",
+      "lifecycle_workflow": "dispatch_public_mediator_operation",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook",
+      "qualification_note": "Static handler_enabled stays false. A successful effect is the workspace dispatch receipt, not this flag."
+    },
+    {
+      "operation": "ingest_private_evidence",
+      "owner": "mediator.evidence_hooks.EvidenceStorageHook",
+      "handler_enabled": false,
+      "qualification": "unavailable",
+      "lifecycle_workflow": "dispatch_public_mediator_operation",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook",
+      "qualification_note": "Static handler_enabled stays false. A successful effect is the workspace dispatch receipt, not this flag."
+    },
+    {
+      "operation": "refresh_grounding",
+      "owner": "mediator.mediator.Mediator.refresh_verified_legal_dependencies",
+      "handler_enabled": false,
+      "qualification": "unavailable",
+      "lifecycle_workflow": "dispatch_public_mediator_operation",
+      "lifecycle_entry": "ComplaintWorkspaceService.exercise_lifecycle_hook",
+      "qualification_note": "Static handler_enabled stays false. A successful effect is the workspace dispatch receipt, not this flag."
+    }
+  ],
+  "adapter_probes": {
+    "knowledge_graph": {
+      "sentence": "Ada met Bob at the office.",
+      "method": "KnowledgeGraphExtractor.extract_knowledge_graph",
+      "qualification": "active",
+      "enhanced_called": false,
+      "entity_count": 0
+    },
+    "legal_search": {
+      "symbol": "search_us_code_corpus_from_parameters",
+      "parameters": {},
+      "status": "error",
+      "error": "query_vector is required",
+      "effect_qualification": "unavailable",
+      "network_requested": false
+    },
+    "private_storage": {
+      "symbol": "store_private_artifact",
+      "source": "synthetic-cimp-ux-02",
+      "qualification": "active",
+      "plaintext_left_backend": false,
+      "kit_network_enabled": false
+    }
+  },
+  "compatibility_decision": {
+    "decision_id": "cimp-ux-02-retain-declared-pins",
+    "policy": "exact_declared_pins",
+    "floating_pins": false,
+    "submodule_update": false,
+    "branch_or_tag_pins": false,
+    "adopted_newer_capabilities": [],
+    "deferred": [
+      {
+        "capability": "KnowledgeGraphExtractor.extract_enhanced_knowledge_graph",
+        "observed_on_pinned_datasets_checkout": true,
+        "qualification": "unsupported",
+        "reason": "The method is present and callable on the declared datasets checkout. It stays unsupported until a later task qualifies its dependency and effect path. This inventory does not move the datasets pin."
+      },
+      {
+        "capability": "site_packages_ipfs_accelerate_py",
+        "qualification": "unsupported",
+        "reason": "The declared accelerate checkout is an opaque gitlink and generate_text is absent there. A different installed copy is not adopted as the pin."
+      }
+    ]
+  },
+  "lifecycle_proof": {
+    "task_id": "CIMP-UX-56",
+    "schema": "complaint-ux-hook-lifecycle@1",
+    "workspace_entry": "applications.complaint_workspace.ComplaintWorkspaceService.exercise_lifecycle_hook",
+    "runtime_identity": "complaint-hook-runtime:hook_execution_context_receipt_v1",
+    "bindings": [
+      "source_id",
+      "content_hash",
+      "runtime_id",
+      "owner_id",
+      "case_id",
+      "consent_generation",
+      "revision",
+      "session_id",
+      "session_revision"
+    ],
+    "hooks": [
+      {
+        "hook": "LegalClassificationHook",
+        "workflow": "qualify_grounded_legal_hooks",
+        "required": true
+      },
+      {
+        "hook": "StatuteRetrievalHook",
+        "workflow": "qualify_grounded_legal_hooks",
+        "required": true
+      },
+      {
+        "hook": "SummaryJudgmentHook",
+        "workflow": "qualify_grounded_legal_hooks",
+        "required": true
+      },
+      {
+        "hook": "QuestionGenerationHook",
+        "workflow": "qualify_grounded_legal_hooks",
+        "required": true
+      },
+      {
+        "hook": "EvidenceStorageHook",
+        "workflow": "qualify_private_evidence_hooks",
+        "required": true
+      },
+      {
+        "hook": "EvidenceStateHook",
+        "workflow": "qualify_private_evidence_hooks",
+        "required": true
+      },
+      {
+        "hook": "EvidenceAnalysisHook",
+        "workflow": "qualify_private_evidence_hooks",
+        "required": true
+      },
+      {
+        "hook": "ClaimSupportHook",
+        "workflow": "qualify_claim_support_and_legal_authority",
+        "required": true
+      },
+      {
+        "hook": "LegalAuthoritySearchHook",
+        "workflow": "qualify_claim_support_and_legal_authority",
+        "required": true
+      },
+      {
+        "hook": "LegalAuthorityStorageHook",
+        "workflow": "qualify_claim_support_and_legal_authority",
+        "required": true
+      },
+      {
+        "hook": "LegalAuthorityAnalysisHook",
+        "workflow": "qualify_claim_support_and_legal_authority",
+        "required": true
+      },
+      {
+        "hook": "WebEvidenceSearchHook",
+        "workflow": "qualify_web_evidence_hooks",
+        "required": true
+      },
+      {
+        "hook": "WebEvidenceIntegrationHook",
+        "workflow": "qualify_web_evidence_hooks",
+        "required": true
+      }
+    ],
+    "registered_operations": [
+      "acquire_legal_sources",
+      "ingest_private_evidence",
+      "refresh_grounding"
+    ],
+    "unsupported_optional": [
+      {
+        "hook": "KnowledgeGraphExtractor.extract_enhanced_knowledge_graph",
+        "qualification": "unsupported",
+        "activation": false,
+        "reason": "An unsupported optional extractor is not a completed hook activation."
+      }
+    ],
+    "missing_capability": "unavailable_dependency_failure",
+    "baseline_defect_preserved": "authenticated_backend_with_existing_stale_workspace_header",
+    "pixels_observed_by_this_task": false,
+    "metadata_is_not_success": true
+  }
+}

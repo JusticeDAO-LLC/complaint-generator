@@ -71,6 +71,7 @@
         .topbar-row,
         .surface-links,
         .cta-row,
+        .quiet-cta-group,
         .resume-actions {
             display: flex;
             flex-wrap: wrap;
@@ -239,6 +240,18 @@
             color: var(--ink);
         }
 
+        .quiet-cta-group {
+            align-items: center;
+        }
+
+        .quiet-cta {
+            min-height: 42px;
+            padding: 0 14px;
+            background: transparent;
+            box-shadow: none;
+            color: var(--accent-deep);
+        }
+
         .hero-points {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -345,6 +358,13 @@
             color: var(--info-ink);
         }
 
+        .recommended-step.is-primary-guidance {
+            margin-top: 16px;
+            background: linear-gradient(180deg, #e7f3eb, #f5fbf7);
+            border: 1px solid rgba(33, 77, 60, 0.16);
+            color: var(--forest);
+        }
+
         .recommended-step strong {
             display: block;
             margin-bottom: 8px;
@@ -358,6 +378,31 @@
 
         .resume-actions {
             margin-top: 14px;
+        }
+
+        .session-technical-details {
+            margin-top: 14px;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(33, 77, 60, 0.14);
+            background: rgba(255, 255, 255, 0.58);
+        }
+
+        .session-technical-details summary {
+            cursor: pointer;
+            padding: 14px 16px;
+            color: var(--forest);
+            font-size: 14px;
+            font-weight: 800;
+        }
+
+        .session-technical-details .resume-grid {
+            margin: 0;
+            padding: 0 14px 14px;
+        }
+
+        .session-technical-details .recommended-step {
+            margin: 0 14px 14px;
+            background: rgba(233, 240, 255, 0.72);
         }
 
         .section {
@@ -433,6 +478,7 @@
             .topbar-row,
             .surface-links,
             .cta-row,
+            .quiet-cta-group,
             .resume-actions {
                 flex-direction: column;
             }
@@ -495,8 +541,10 @@
                 </p>
                 <div class="cta-row">
                     <a class="primary-cta" id="homepage-open-intake" href="/home">Start Secure Intake</a>
-                    <a class="secondary-cta" id="homepage-open-workspace" href="/workspace">Resume Complaint</a>
-                    <a class="secondary-cta" id="homepage-open-review" href="/claim-support-review">Review Support First</a>
+                    <span class="quiet-cta-group" aria-label="Returning user shortcuts">
+                        <a class="secondary-cta quiet-cta" id="homepage-open-workspace" href="/workspace">Resume Complaint</a>
+                        <a class="secondary-cta quiet-cta" id="homepage-open-review" href="/claim-support-review">Review Support First</a>
+                    </span>
                 </div>
                 <div class="hero-points">
                     <div class="hero-point">
@@ -518,34 +566,12 @@
                 <div class="resume-header">
                     <div>
                         <span class="eyebrow">Continue From This Device</span>
-                        <h2 class="resume-title">Resume an existing complaint</h2>
-                        <p class="resume-copy">If this browser already has a complaint session, the best next step appears here.</p>
+                        <h2 class="resume-title">Your next safest step</h2>
+                        <p class="resume-copy">If this browser already has a complaint session, start with the plain-language recommendation below. Technical session details stay tucked away.</p>
                     </div>
                     <span class="status-badge" id="homepage-session-badge">Loading</span>
                 </div>
-                <div class="resume-grid">
-                    <div class="metric">
-                        <span class="metric-label">Identity</span>
-                        <span class="metric-value" id="homepage-did">Checking session...</span>
-                        <span class="metric-detail" id="homepage-session-status">Connecting to the complaint workspace on this device.</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">MCP Tools</span>
-                        <span class="metric-value" id="homepage-tool-count">0</span>
-                        <span class="metric-detail">Browser actions available through the complaint workspace.</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">Intake Progress</span>
-                        <span class="metric-value" id="homepage-intake-count">0</span>
-                        <span class="metric-detail">Answered: <strong id="homepage-answered-count">0</strong></span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">Case Support</span>
-                        <span class="metric-value" id="homepage-supported-count">0</span>
-                        <span class="metric-detail">Evidence items: <strong id="homepage-evidence-count">0</strong></span>
-                    </div>
-                </div>
-                <div class="recommended-step">
+                <div class="recommended-step is-primary-guidance">
                     <strong>Recommended next step</strong>
                     <span id="homepage-next-step">Open secure intake to create an account, or resume the complaint workspace from this device.</span>
                 </div>
@@ -553,15 +579,40 @@
                     <strong>Current complaint readiness</strong>
                     <span id="homepage-complaint-readiness-summary">The complaint record has not been reviewed on this device yet.</span>
                 </div>
-                <div class="recommended-step" id="homepage-ui-readiness-panel">
-                    <strong>Current UI readiness</strong>
-                    <span id="homepage-ui-readiness-summary">No actor/critic verdict is cached on this device yet. Run UX Audit from the workspace before trusting the client flow.</span>
-                </div>
                 <div class="resume-actions">
                     <a class="resume-link" id="homepage-resume-link" href="/workspace">Open Workspace</a>
                     <a class="resume-link" id="homepage-resume-review" href="/claim-support-review">Open Review</a>
                     <a class="resume-link" id="homepage-resume-builder" href="/document">Open Builder</a>
                 </div>
+                <details class="session-technical-details" id="homepage-session-technical-details">
+                    <summary>Show session details for operators</summary>
+                    <div class="resume-grid">
+                        <div class="metric">
+                            <span class="metric-label">Identity</span>
+                            <span class="metric-value" id="homepage-did">Checking session...</span>
+                            <span class="metric-detail" id="homepage-session-status">Connecting to the complaint workspace on this device.</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">MCP Tools</span>
+                            <span class="metric-value" id="homepage-tool-count">0</span>
+                            <span class="metric-detail">Browser actions available through the complaint workspace.</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Intake Progress</span>
+                            <span class="metric-value" id="homepage-intake-count">0</span>
+                            <span class="metric-detail">Answered: <strong id="homepage-answered-count">0</strong></span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Case Support</span>
+                            <span class="metric-value" id="homepage-supported-count">0</span>
+                            <span class="metric-detail">Evidence items: <strong id="homepage-evidence-count">0</strong></span>
+                        </div>
+                    </div>
+                    <div class="recommended-step" id="homepage-ui-readiness-panel">
+                        <strong>Current UI readiness</strong>
+                        <span id="homepage-ui-readiness-summary">No actor/critic verdict is cached on this device yet. Run UX Audit from the workspace before trusting the client flow.</span>
+                    </div>
+                </details>
             </aside>
         </section>
 
@@ -730,7 +781,7 @@
                 if (answered < 6) {
                     return {
                         href: '/workspace',
-                        label: answered > 0 ? 'Resume Complaint' : 'Open Guided Workspace',
+                        label: answered > 0 ? 'Resume Intake' : 'Open Guided Workspace',
                         detail: 'Continue the guided intake so the complaint has a complete factual record before drafting.',
                     };
                 }
@@ -794,6 +845,7 @@
 
             async function hydrateHomepageSession() {
                 const badge = document.getElementById('homepage-session-badge');
+                const primaryCta = document.getElementById('homepage-open-intake');
                 const workspaceLink = document.getElementById('homepage-open-workspace');
                 const resumeLink = document.getElementById('homepage-resume-link');
                 const readinessSummaryNode = document.getElementById('homepage-complaint-readiness-summary');
@@ -845,6 +897,13 @@
                         badge.textContent = 'Connected';
                     }
                     setHrefForIds(['homepage-nav-intake', 'homepage-open-intake'], buildHomepageSurfaceUrl('/home', context));
+                    if (primaryCta && countAnswers(payload) > 0) {
+                        primaryCta.href = buildHomepageSurfaceUrl('/workspace', context);
+                        primaryCta.textContent = 'Resume Intake';
+                    } else if (primaryCta) {
+                        primaryCta.href = buildHomepageSurfaceUrl('/home', context);
+                        primaryCta.textContent = 'Start Secure Intake';
+                    }
                     setHrefForIds(['homepage-nav-workspace', 'homepage-route-workspace'], buildHomepageSurfaceUrl('/workspace', context));
                     setHrefForIds(['homepage-nav-review', 'homepage-open-review', 'homepage-resume-review', 'homepage-route-review'], buildHomepageSurfaceUrl('/claim-support-review', context));
                     setHrefForIds(['homepage-nav-builder', 'homepage-resume-builder', 'homepage-route-builder'], buildHomepageSurfaceUrl('/document', context));
@@ -878,6 +937,10 @@
                     if (workspaceLink) {
                         workspaceLink.href = '/workspace';
                         workspaceLink.textContent = 'Resume Complaint';
+                    }
+                    if (primaryCta) {
+                        primaryCta.href = '/home';
+                        primaryCta.textContent = 'Start Secure Intake';
                     }
                     setGateForIds(['homepage-nav-builder', 'homepage-resume-builder', 'homepage-route-builder'], false, 'Builder locked. Start intake and capture the core facts before drafting.');
                     if (!readiness) {

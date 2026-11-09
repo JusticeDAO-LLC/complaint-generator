@@ -1,0 +1,94 @@
+{
+  "schema_version": "complaint-generator.mediator-grounding-baseline-receipt.v1",
+  "task_id": "CIMP-MGND-01",
+  "product_acceptance": false,
+  "all_new_campaign_behavior_works": false,
+  "live_grok_call": false,
+  "source_generation": {
+    "name": "cimp-mgnd-01-public-control-owners",
+    "algorithm": "sha256",
+    "digest": "e027bdd52b81168e2018f519226c8c13b72317d54e8215afc8ea43eb3e31f484",
+    "files": [
+      {
+        "path": "applications/complaint_cli.py",
+        "sha256": "e0b6991395ac66aba2da4ede3667a5a676d76b724c68d8e72f269cd0bccc10bc",
+        "bytes": 81352
+      },
+      {
+        "path": "applications/complaint_workspace.py",
+        "sha256": "a557badff45bf2bf6e2c7c266fd1a30a2b4449c36a4e6160ec580c398a8c2331",
+        "bytes": 653078
+      },
+      {
+        "path": "mediator/workflow_service.py",
+        "sha256": "149d16006667de83401d292fdc4b3e45302d0510743ca26db9890dfb5c23b012",
+        "bytes": 38554
+      }
+    ]
+  },
+  "observations": [
+    {
+      "id": "MGND-BASE-CHAT",
+      "classification": "characterization_mechanic",
+      "counts_as_characterization_pass": true,
+      "product_acceptance": false,
+      "observation": "On source generation cimp-mgnd-01-public-control-owners, chat exited 0 for a fresh passphrase-protected TerminalComplaintWorkspaceService, max_turns 2, and a 45 second deadline. No stdin wait was used. Passing this mechanic does not mean the new campaign behavior works."
+    },
+    {
+      "id": "MGND-BASE-WHY",
+      "classification": "characterization_mechanic",
+      "counts_as_characterization_pass": true,
+      "product_acceptance": false,
+      "observation": "The real /why command returned command, display, stored_as_answer false, and awaiting_user true, and it was not stored as an answer. On this generation the metadata did not include objective_id, target_id, or why_it_matters."
+    },
+    {
+      "id": "MGND-BASE-RESUME",
+      "classification": "characterization_mechanic",
+      "counts_as_characterization_pass": true,
+      "product_acceptance": false,
+      "observation": "A fresh service unlocked the same passphrase and resumed the encrypted session with the same narrative and knowledge-graph bytes. The ciphertext frame did not contain the synthetic narrative, edit text, or passphrase."
+    },
+    {
+      "id": "MGND-BASE-NO-LIVE-GROK",
+      "classification": "characterization_mechanic",
+      "counts_as_characterization_pass": true,
+      "product_acceptance": false,
+      "observation": "No live Grok call occurred. ipfs_accelerate_py.cli_runtime.grok_invocation_observation could not be imported (ModuleNotFoundError), so this run persisted local-only policy and did not discover a provider. A synthetic transport was not invoked and cannot verify live Grok identity."
+    },
+    {
+      "id": "MGND-GAP-WHY-TARGETS",
+      "classification": "observed_gap",
+      "counts_as_characterization_pass": false,
+      "product_acceptance": false,
+      "observation": "On this generation /why did not carry objective_id, target_id, or why_it_matters. The command still returned awaiting_user rather than a stalled worker. A later inquiry explanation may add those fields; the baseline does not require them to stay absent."
+    },
+    {
+      "id": "MGND-GAP-SPANS",
+      "classification": "observed_gap",
+      "counts_as_characterization_pass": false,
+      "product_acceptance": false,
+      "observation": "The shared interview projection was absent. Entity count, user-assertion count, and narrative UTF-8 span matches were all 0. That is a grounding gap on this generation. A later fix may populate spans; this receipt does not require the gap to remain."
+    },
+    {
+      "id": "MGND-GAP-DEPENDENCY-SOURCE",
+      "classification": "observed_gap",
+      "counts_as_characterization_pass": false,
+      "product_acceptance": false,
+      "observation": "No dependency graph was present, so node count and sourced-node count were 0. Missing dependency and source coverage is a gap, classified apart from the characterization pass. A later graph does not invalidate this receipt."
+    },
+    {
+      "id": "MGND-GAP-EDIT-GRAPH",
+      "classification": "observed_gap",
+      "counts_as_characterization_pass": false,
+      "product_acceptance": false,
+      "observation": "/edit recorded the replacement in terminal answer state. The shared knowledge graph did not contain that replacement because the projection was absent. The edit-versus-graph gap is separate from the command having run. A later shared-graph update may close it."
+    },
+    {
+      "id": "MGND-GAP-ROUTER",
+      "classification": "dependency_unavailable",
+      "counts_as_characterization_pass": false,
+      "product_acceptance": false,
+      "observation": "Native observed-router types were unavailable in this worker (ModuleNotFoundError). The characterization used persisted local-only policy, made zero synthetic router calls, and did not start a provider. This limitation is not a characterization failure and is not evidence that a live Grok route works."
+    }
+  ]
+}

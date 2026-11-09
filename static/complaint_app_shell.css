@@ -1,11 +1,17 @@
+.cg-app-shell-active {
+    padding-right: 332px;
+}
+
 .cg-app-shell {
-    position: relative;
-    width: 300px;
-    max-width: calc(100% - 40px);
-    max-height: none;
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    width: 316px;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
     overflow: auto;
-    z-index: 10;
-    margin: 16px 20px 20px auto;
+    z-index: 1000;
+    margin: 0;
     border-radius: 24px;
     border: 1px solid rgba(148, 163, 184, 0.35);
     background:
@@ -18,6 +24,42 @@
 
 .cg-app-shell__inner {
     padding: 18px 18px 20px;
+}
+
+.cg-app-shell__mode-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.cg-app-shell__mode-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: #ecfeff;
+    border: 1px solid #bae6fd;
+    color: #0e7490;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.cg-app-shell__mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
 }
 
 .cg-app-shell__eyebrow {
@@ -274,10 +316,175 @@
     line-height: 1.5;
 }
 
+.cg-app-shell__draft-rail {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid #d1d5db;
+    background: #f8fafc;
+}
+
+.cg-app-shell__draft-rail.is-warn {
+    border-color: #fdba74;
+    background: #fff7ed;
+}
+
+.cg-app-shell__draft-flow-grid {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.cg-app-shell__draft-step {
+    display: block;
+    min-height: 36px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    text-decoration: none;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.cg-app-shell__draft-step.is-disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.cg-skip-link {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    z-index: 40;
+    transform: translateY(-200%);
+    padding: 8px 12px;
+    background: #0f172a;
+    color: #f8fafc;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.cg-skip-link:focus {
+    transform: none;
+}
+
+.cg-case-context {
+    position: relative;
+    z-index: 30;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    align-items: baseline;
+    margin: 0;
+    padding: 12px 16px;
+    background: #0f172a;
+    color: #f8fafc;
+    font-size: 16px;
+    line-height: 1.4;
+}
+
+.cg-case-context__label {
+    color: #e2e8f0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.cg-error-summary {
+    margin: 12px 16px;
+    padding: 12px 14px;
+    border: 2px solid #9a3412;
+    border-radius: 12px;
+    background: #fff7ed;
+    color: #7c2d12;
+}
+
+.cg-error-summary h2 {
+    margin: 0 0 8px;
+    font-size: 16px;
+}
+
+.cg-error-summary a {
+    color: #7c2d12;
+    font-weight: 700;
+}
+
+.cg-state-empty,
+.cg-state-loading,
+.cg-state-error {
+    margin: 0 0 8px;
+    font-size: 16px;
+    line-height: 1.4;
+}
+
+.cg-state-empty {
+    color: #1e293b;
+    background: #f8fafc;
+}
+
+.cg-state-loading {
+    color: #1e3a8a;
+    background: #eff6ff;
+}
+
+.cg-state-error {
+    padding: 8px 10px;
+    background: #fef2f2;
+    color: #7f1d1d;
+}
+
+input:focus,
+textarea:focus,
+select:focus,
+button:focus,
+a:focus,
+summary:focus,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+    outline: 3px solid #082f49;
+    outline-offset: 2px;
+}
+
 @media (max-width: 1180px) {
+    .cg-app-shell-active {
+        padding-right: 0;
+    }
+
     .cg-app-shell {
+        position: static;
+        width: auto;
+        max-width: calc(100% - 24px);
+        max-height: none;
+        margin: 16px;
+    }
+}
+
+@media (max-width: 720px) {
+    .cg-case-context {
+        position: sticky;
+        top: 0;
+    }
+
+    #cases-main,
+    #workspace-main {
+        min-height: 160vh;
+    }
+
+    .cg-app-shell-active {
+        padding-right: 0;
+    }
+
+    .cg-app-shell {
+        position: static;
         width: auto;
         max-width: none;
-        margin: 16px;
+        margin: 8px;
     }
 }

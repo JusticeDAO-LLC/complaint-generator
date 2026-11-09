@@ -232,6 +232,8 @@
             }
         }
     </style>
+    <script src="/static/chat_entry_utils.js"></script>
+    <script src="/static/profile_data.js"></script>
     <script>
         function readResultsContext() {
             const params = new URLSearchParams(window.location.search || '');
@@ -344,7 +346,12 @@
                 type: "POST",
                 contentType: 'application/json',
                 url: "/load_profile",
-                data: '{"request": {"hashed_username" : "' + username + '", "hashed_password": "' + password + '"}}',
+                data: JSON.stringify({
+                    request: {
+                        hashed_username: username,
+                        hashed_password: password,
+                    }
+                }),
                 dataType: 'json',
                 async: false,
                 success: function(data) {
@@ -384,7 +391,10 @@
             profile = load_profile(hashed_username, hashed_password);
             testdata = profile["data"];
             testdata = JSON.parse(testdata);
-            $("#profile_data").html(JSON.stringify(testdata, null, 2));
+            sanitized = window.ProfileDataPage && window.ProfileDataPage.sanitizeProfileData
+                ? window.ProfileDataPage.sanitizeProfileData(testdata)
+                : testdata;
+            $("#profile_data").text(JSON.stringify(sanitized, null, 2));
             updateResultsWorkflowLinks();
         });
     </script>
@@ -401,17 +411,6 @@
                         <div class="brand-subtitle">A cleaner view of the stored complaint record and the data currently available to downstream surfaces.</div>
                     </div>
                 </div>
-            </div>
-            <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
-                <a class="surface-link" href="/">Landing</a>
-                <a class="surface-link" href="/home">Account</a>
-                <a class="surface-link" id="results-nav-chat" href="/chat">Chat</a>
-                <a class="surface-link" id="results-nav-profile" href="/profile">Profile</a>
-                <a class="surface-link" id="results-nav-results" href="/results">Results</a>
-                <a class="surface-link" id="results-nav-review" href="/claim-support-review">Review</a>
-                <a class="surface-link" id="results-nav-builder" href="/document">Builder</a>
-                <a class="surface-link" id="results-nav-trace" href="/document/optimization-trace">Trace</a>
-                <a class="surface-link" href="/mlwysiwyg">Editor</a>
             </div>
         </header>
 
@@ -439,6 +438,18 @@
                 </div>
             </aside>
         </section>
+
+        <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
+            <a class="surface-link" href="/">Landing</a>
+            <a class="surface-link" href="/home">Account</a>
+            <a class="surface-link" id="results-nav-chat" href="/chat">Chat</a>
+            <a class="surface-link" id="results-nav-profile" href="/profile">Profile</a>
+            <a class="surface-link" id="results-nav-results" href="/results">Results</a>
+            <a class="surface-link" id="results-nav-review" href="/claim-support-review">Review</a>
+            <a class="surface-link" id="results-nav-builder" href="/document">Builder</a>
+            <a class="surface-link" id="results-nav-trace" href="/document/optimization-trace">Trace</a>
+            <a class="surface-link" href="/mlwysiwyg">Editor</a>
+        </div>
 
         <section class="results-card" style="margin-top: 18px;">
             <div id="Err"></div>

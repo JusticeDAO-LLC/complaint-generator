@@ -207,6 +207,9 @@ class RetrievalOrchestrator:
         claim_type: Optional[str] = None,
         complaint_type: Optional[str] = None,
         jurisdiction: Optional[str] = None,
+        claim_element_text: Optional[str] = None,
+        required_support_kinds: Optional[Iterable[str]] = None,
+        temporal_context: Optional[str] = None,
         max_queries: int = 4,
     ) -> Dict[str, Any]:
         decomposition = self.decompose_query(
@@ -220,10 +223,21 @@ class RetrievalOrchestrator:
         query_terms: Set[str] = set()
         for item in decomposed_queries:
             query_terms.update(self._tokenize(item))
+        element_terms = set(self._tokenize(str(claim_element_text or '')))
+        temporal_terms = set(self._tokenize(str(temporal_context or '')))
 
         return {
             **decomposition,
             'query_terms': query_terms,
+            'claim_element_text': str(claim_element_text or ''),
+            'claim_element_terms': element_terms,
+            'required_support_kinds': {
+                str(item or '').strip().lower()
+                for item in (required_support_kinds or [])
+                if str(item or '').strip()
+            },
+            'temporal_context': str(temporal_context or ''),
+            'temporal_terms': temporal_terms,
         }
 
     def _infer_jurisdiction(self, record: NormalizedRetrievalRecord) -> str:
@@ -236,6 +250,108 @@ class RetrievalOrchestrator:
         if source_name in {'us_code', 'federal_register'}:
             return 'federal'
         return ''
+
+    def _score_enrichment_signals(
+        self,
+        record: NormalizedRetrievalRecord,
+        query_context: Optional[Dict[str, Any]],
+    ) -> Tuple[float, Dict[str, float], List[str]]:
+        metadata = dict(record.metadata or {})
+        record_text = self._record_text(record)
+        text_terms = set(self._tokenize(record_text))
+        context = query_context or {}
+
+        element_terms = set(context.get('claim_element_terms') or set())
+        element_overlap = len(element_terms & text_terms)
+        element_fit_weight = min(0.18, element_overlap * 0.035)
+        if element_fit_weight <= 0 and metadata.get('claim_element_id'):
+            element_fit_weight = 0.04
+
+        quality_score = metadata.get('quality_score', metadata.get('data_quality_score', metadata.get('source_quality_score', 0.0)))
+        try:
+            normalized_quality = max(0.0, min(1.0, float(quality_score or 0.0)))
+        except (TypeError, ValueError):
+            normalized_quality = 0.0
+        source_quality_weight = round(normalized_quality * 0.12, 6)
+        quality_tier = str(metadata.get('quality_tier') or '').strip().lower()
+        if quality_tier in {'high', 'strong', 'excellent', 'verified'}:
+            source_quality_weight = max(source_quality_weight, 0.10)
+        elif quality_tier in {'low', 'weak'}:
+            source_quality_weight = min(source_quality_weight, 0.03)
+
+        authority_class = str(
+            metadata.get('authority_class')
+            or metadata.get('authority_family')
+            or metadata.get('authority_type')
+            or record.source_type
+            or ''
+        ).strip().lower()
+        authority_class_weight = 0.0
+        if authority_class in {'statute', 'regulation', 'primary', 'mandatory_authority'}:
+            authority_class_weight = 0.12
+        elif authority_class in {'case_law', 'binding_case', 'precedent'}:
+            authority_class_weight = 0.09
+        elif authority_class in {'guidance', 'secondary', 'persuasive_authority'}:
+            authority_class_weight = 0.04
+
+        temporal_terms = set(context.get('temporal_terms') or set())
+        temporal_text = ' '.join([
+            record_text,
+            str(metadata.get('effective_date') or ''),
+            str(metadata.get('published_date') or ''),
+            str(metadata.get('temporal_scope') or ''),
+            str(metadata.get('date') or ''),
+        ])
+        temporal_record_terms = set(self._tokenize(temporal_text))
+        temporal_overlap = len(temporal_terms & temporal_record_terms)
+        temporal_weight = min(0.10, temporal_overlap * 0.025)
+        if re.search(r'\b(19|20)\d{2}\b', str(context.get('temporal_context') or '')) and re.search(r'\b(19|20)\d{2}\b', temporal_text):
+            temporal_weight = max(temporal_weight, 0.04)
+
+        graph_weight = 0.0
+        graph_summary = metadata.get('graph_trace_summary', {}) if isinstance(metadata.get('graph_trace_summary'), dict) else {}
+        support_quality = metadata.get('support_quality_summary', {}) if isinstance(metadata.get('support_quality_summary'), dict) else {}
+        path_quality_tier = str(metadata.get('path_quality_tier') or support_quality.get('dominant_quality_tier') or '').strip().lower()
+        if graph_summary:
+            graph_weight += min(0.06, int(graph_summary.get('traced_link_count', 0) or graph_summary.get('graph_count', 0) or 1) * 0.02)
+        if path_quality_tier in {'strong_support', 'strong', 'high'}:
+            graph_weight += 0.08
+        elif path_quality_tier in {'moderate_support', 'moderate'}:
+            graph_weight += 0.04
+        elif path_quality_tier in {'weak_support', 'structurally_missing'}:
+            graph_weight -= 0.03
+        graph_weight = max(-0.03, min(0.12, graph_weight))
+
+        archive_weight = 0.0
+        content_origin = str(metadata.get('content_origin') or '').strip().lower()
+        artifact_family = str(metadata.get('artifact_family') or '').strip().lower()
+        if record.source_type == 'web_archive' or content_origin == 'historical_archive_capture' or artifact_family == 'archived_web_page':
+            archive_weight = 0.08
+        elif content_origin == 'live_web_capture':
+            archive_weight = 0.03
+
+        factors = {
+            'claim_element_fit_weight': round(element_fit_weight, 6),
+            'source_quality_weight': round(source_quality_weight, 6),
+            'authority_class_weight': round(authority_class_weight, 6),
+            'temporal_relevance_weight': round(temporal_weight, 6),
+            'graph_signal_weight': round(graph_weight, 6),
+            'archive_signal_weight': round(archive_weight, 6),
+        }
+        explanations: List[str] = []
+        if element_overlap:
+            explanations.append(f'claim-element fit matched {element_overlap} term(s)')
+        if source_quality_weight:
+            explanations.append(f'source quality contributed {source_quality_weight:.2f}')
+        if authority_class_weight:
+            explanations.append(f'authority class {authority_class or record.source_type} contributed {authority_class_weight:.2f}')
+        if temporal_weight:
+            explanations.append(f'temporal relevance contributed {temporal_weight:.2f}')
+        if graph_weight:
+            explanations.append(f'graph/support signal contributed {graph_weight:.2f}')
+        if archive_weight:
+            explanations.append(f'archive signal contributed {archive_weight:.2f}')
+        return sum(factors.values()), factors, explanations
 
     def _score_record(
         self,
@@ -271,6 +387,8 @@ class RetrievalOrchestrator:
                     query_weight += 0.05
             query_weight = min(query_weight, 0.30)
 
+        enrichment_weight, enrichment_breakdown, _ = self._score_enrichment_signals(record, query_context)
+
         fusion_weight = 0.0
         fusion_key = ''
         fusion_cluster = None
@@ -303,12 +421,14 @@ class RetrievalOrchestrator:
             + jurisdiction_weight
             + query_weight
             + fusion_weight
+            + enrichment_weight
         )
         return composite_score, {
             'source_weight': round(source_weight, 6),
             'jurisdiction_weight': round(jurisdiction_weight, 6),
             'query_weight': round(query_weight, 6),
             'fusion_weight': round(fusion_weight, 6),
+            **enrichment_breakdown,
         }
 
     def _annotate_record(
@@ -320,12 +440,26 @@ class RetrievalOrchestrator:
         fusion_context: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> NormalizedRetrievalRecord:
         metadata = dict(record.metadata or {})
+        enrichment_keys = {
+            'claim_element_fit_weight',
+            'source_quality_weight',
+            'authority_class_weight',
+            'temporal_relevance_weight',
+            'graph_signal_weight',
+            'archive_signal_weight',
+        }
+        enrichment_explanation = self._score_enrichment_signals(record, query_context)[2]
         metadata.update({
             'orchestrator_composite_score': round(composite_score, 6),
             'orchestrator_source_weight': breakdown.get('source_weight', 0.0),
             'orchestrator_jurisdiction_weight': breakdown.get('jurisdiction_weight', 0.0),
             'orchestrator_query_weight': breakdown.get('query_weight', 0.0),
             'orchestrator_fusion_weight': breakdown.get('fusion_weight', 0.0),
+            'orchestrator_ranking_factors': {
+                key: breakdown.get(key, 0.0)
+                for key in sorted(enrichment_keys)
+            },
+            'orchestrator_ranking_explanation': enrichment_explanation,
         })
 
         if query_context:

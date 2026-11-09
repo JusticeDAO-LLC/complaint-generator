@@ -109,11 +109,11 @@ class Proposition(ABC):
 
     @abstractmethod
     def __str__(self) -> str:
-        raise NotImplementedError
+        """Return the canonical text used to identify this proposition in a model."""
 
     @abstractmethod
     def evaluate(self, model: Dict[str, Any]) -> bool:
-        raise NotImplementedError
+        """Evaluate this proposition against the truth assignments in ``model``."""
 
 
 @dataclass(frozen=True)

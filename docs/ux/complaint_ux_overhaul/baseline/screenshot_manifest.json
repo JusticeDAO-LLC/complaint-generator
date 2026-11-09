@@ -1,0 +1,291 @@
+{
+  "schema": "complaint-ux-synthetic-visual-baseline@1",
+  "application_base_commit": "6f27c60c3b49b8bad49088bd46e788fa31c646eb",
+  "synthetic_data_only": true,
+  "provider_invoked": false,
+  "mock_api_used": false,
+  "screenshots": [
+    {
+      "id": "01-home-desktop",
+      "path": "01-home-desktop.png",
+      "route": "/",
+      "state": "public_entry",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "dom_checks": {
+        "main_visible": true
+      },
+      "sha256": "a449512c029db6e15affd95d0befe96f9f9ff371ae9950f1959f13f3652b74ef",
+      "bytes": 357002,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    },
+    {
+      "id": "02-workspace-desktop",
+      "path": "02-workspace-desktop.png",
+      "route": "/workspace",
+      "state": "authenticated_backend_with_existing_stale_workspace_header",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "dom_checks": {
+        "adaptive_narrative_present": true
+      },
+      "sha256": "1a9ac6b6dfa301ab2ed1aaf53ca3697c0c44f88f4bfbc5f4428f18931e9e7ba5",
+      "bytes": 273615,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    },
+    {
+      "id": "03-mediator-question-desktop",
+      "path": "03-mediator-question-desktop.png",
+      "route": "/workspace",
+      "state": "actual_pending_question_and_why",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "dom_checks": {
+        "pending": true,
+        "why_not_answer": true
+      },
+      "sha256": "812501466ebd301af6e7cd2544edc1a84546ad15daa609f90a260748920ad8a4",
+      "bytes": 436536,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    },
+    {
+      "id": "04-mediator-question-mobile",
+      "path": "04-mediator-question-mobile.png",
+      "route": "/workspace",
+      "state": "same_actual_pending_question",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "dom_checks": {
+        "pending": true
+      },
+      "sha256": "bde08ac38ed57a27735ccf4c50834c0601ea554171cd281c5d46697920f49e4e",
+      "bytes": 150169,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    },
+    {
+      "id": "05-evidence-composer-desktop",
+      "path": "05-evidence-composer-desktop.png",
+      "route": "/workspace",
+      "state": "actual_evidence_composer_unsaved",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "dom_checks": {
+        "form_present": true,
+        "synthetic_title": true
+      },
+      "sha256": "c0853943933dc166808981506ff0eec388a20011b4bfb870513060d11ce74e1a",
+      "bytes": 472398,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    },
+    {
+      "id": "06-evidence-composer-mobile",
+      "path": "06-evidence-composer-mobile.png",
+      "route": "/workspace",
+      "state": "same_actual_evidence_composer_unsaved",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "dom_checks": {
+        "form_present": true
+      },
+      "sha256": "58dd6975f8438cc4bf0a2fd5ea8a760cca87a106737fe90ed3b65f97026fe595",
+      "bytes": 91606,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    },
+    {
+      "id": "07-draft-desktop",
+      "path": "07-draft-desktop.png",
+      "route": "/workspace",
+      "state": "actual_draft_not_generated_readiness_visible",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "dom_checks": {
+        "draft_panel_visible": true
+      },
+      "sha256": "a58e4d8a0269fb7bb484c5acde4466f09ea42a870edbc30de2c4e702ee5ec916",
+      "bytes": 375801,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    },
+    {
+      "id": "08-cases-owner-desktop",
+      "path": "08-cases-owner-desktop.png",
+      "route": "/cases",
+      "state": "actual_owner_case_and_pending_lawyer_invitation",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "dom_checks": {
+        "case_selected": true,
+        "pending_invitation": true
+      },
+      "sha256": "4dd238936beceeb6fcb077400a567695a52af64e188c74f06d6a0f194aae80ef",
+      "bytes": 101049,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    },
+    {
+      "id": "09-lawyer-workspace-desktop",
+      "path": "09-lawyer-workspace-desktop.png",
+      "route": "/lawyer-workspace",
+      "state": "actual_assigned_lawyer_scope_content_not_shared",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "dom_checks": {
+        "lawyer_workspace_present": true
+      },
+      "sha256": "a9da87718026d31eec8083b385e0584d6714f4894c2697deccded85034b0e8dc",
+      "bytes": 74391,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    },
+    {
+      "id": "10-correspondence-owner-desktop",
+      "path": "10-correspondence-owner-desktop.png",
+      "route": "/case-messages",
+      "state": "actual_durable_conversation_message",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "dom_checks": {
+        "message_visible": true
+      },
+      "sha256": "935314293fb854bce3c0bd260828a53f7138fb32b4ac502f17f28985dab4359b",
+      "bytes": 119706,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    },
+    {
+      "id": "11-correspondence-lawyer-mobile",
+      "path": "11-correspondence-lawyer-mobile.png",
+      "route": "/case-messages",
+      "state": "actual_authorized_recipient_conversation",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "dom_checks": {
+        "message_visible": true
+      },
+      "sha256": "9ed66ff031bbd564321f5d681f3feba040c901f6db9f0b17ed1671c40f541416",
+      "bytes": 81520,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    },
+    {
+      "id": "12-admin-accounts-desktop",
+      "path": "12-admin-accounts-desktop.png",
+      "route": "/admin",
+      "state": "actual_operational_admin_metadata_only",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "dom_checks": {
+        "directory_visible": true,
+        "account_rows": true
+      },
+      "sha256": "74699f369b435c1999c27f45e576a2754a3ef78484faca619e943b06cfa571b7",
+      "bytes": 131999,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    },
+    {
+      "id": "13-admin-accounts-mobile",
+      "path": "13-admin-accounts-mobile.png",
+      "route": "/admin",
+      "state": "same_actual_operational_admin_metadata_only",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "dom_checks": {
+        "directory_visible": true
+      },
+      "sha256": "f64c565253f9a3fef6d378180d311dd11944e3b7f6639bacc3297bcf3c7da1a8",
+      "bytes": 73948,
+      "synthetic": true,
+      "diagnostic_test_panels_mounted": false
+    }
+  ],
+  "cleanup": [
+    {
+      "owned_count": 13,
+      "remaining_pids": [],
+      "cleaned": true,
+      "elapsed_seconds": 0.169
+    },
+    {
+      "owned_count": 7,
+      "remaining_pids": [],
+      "cleaned": true,
+      "elapsed_seconds": 0.1781
+    }
+  ],
+  "observed_limits": [
+    "Lawyer assignment is accepted through real UI; owner review envelope is not shared in this baseline, so closed/unavailable content is not depicted as opened.",
+    "The existing workspace header can still show No case selected/access denied after actual backend authentication and case-context bootstrap; the functional pending inquiry below is real.",
+    "Evidence screenshots show genuine unsaved form, not successful upload, annotation, classifier, or replication.",
+    "Draft view is a real blocked/not-generated state; no generated complaint is fabricated.",
+    "All cases, actors, source text, credentials, keys and messages are newly authored synthetic fixtures."
+  ],
+  "runtime": {
+    "node": {
+      "path": "/home/barberb/ipfs_datasets_py/.venv/lib/python3.12/site-packages/playwright/driver/node",
+      "sha256": "5796fd9700e83170bc7ddfdf7f18858c794a9f91cb39dd6f9e95060b292f2563"
+    },
+    "chromium": {
+      "path": "/home/barberb/.cache/ms-playwright/chromium_headless_shell-1200/chrome-headless-shell-linux64/chrome-headless-shell",
+      "sha256": "20ffc88be1c6f7dc8351bebfaca965ff9a07617bddf696f0b67ef85e5868b29a"
+    },
+    "transport": "actual_same_origin_http_to_asgi_over_pinned_cdp_pipe",
+    "inherited_network_denial": {
+      "af_unix": {
+        "opened": true,
+        "errno": 0
+      },
+      "af_inet": {
+        "opened": false,
+        "errno": 1
+      },
+      "af_inet6": {
+        "opened": false,
+        "errno": 1
+      },
+      "af_unix_only": true,
+      "seccomp": {
+        "Seccomp": "2",
+        "Seccomp_filters": "1"
+      }
+    }
+  },
+  "actual_route_counts": {
+    "same_origin": 63,
+    "external_aborted": 0
+  },
+  "completed": true,
+  "screenshot_count": 13
+}

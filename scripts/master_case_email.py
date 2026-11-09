@@ -4,16 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ipfs_datasets_py.processors.legal_data.email_agentic_search import search_email_corpus_agentic
-from ipfs_datasets_py.processors.legal_data.email_workspace import (
-    build_email_workspace_corpus as build_email_graphrag_artifacts,
-    canonical_email_corpus_paths,
-    search_email_workspace_corpus as search_email_graphrag_duckdb,
-)
+from complaint_generator.email_agentic_search import search_email_corpus_agentic
+from integrations.ipfs_datasets.legal_data import load_legal_symbol
+
+build_email_graphrag_artifacts = load_legal_symbol("build_email_workspace_corpus", module="email_workspace")
+canonical_email_corpus_paths = load_legal_symbol("canonical_email_corpus_paths", module="email_workspace")
+search_email_graphrag_duckdb = load_legal_symbol("search_email_workspace_corpus", module="email_workspace")
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

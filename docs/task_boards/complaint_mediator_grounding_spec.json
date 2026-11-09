@@ -1,0 +1,1859 @@
+{
+  "baseline_commit": "b1ec63b3d0cc38f9e3ff2572e6a4b2d1f29eb984",
+  "campaign": {
+    "board_namespace": "complaint-mediator-grounding",
+    "board_relative": "docs/task_boards/complaint_mediator_grounding_task_board.md",
+    "plan_relative": "docs/task_boards/complaint_mediator_grounding_formal_work_plan.json",
+    "spec_relative": "docs/task_boards/complaint_mediator_grounding_spec.json"
+  },
+  "created_at": "2026-10-24T06:03:59.446161+00:00",
+  "execution_policy": {
+    "automatic_fallback": false,
+    "context_exclude": [
+      ".complaint_workspace/sessions/**",
+      "data/**",
+      "output/**",
+      "statefiles/**",
+      "exports/**",
+      "secrets/**",
+      "evidence/**",
+      "uploads/**",
+      "attachments/**",
+      ".env*",
+      "*.key",
+      "*.pem",
+      "workspace/**",
+      "artifacts/**"
+    ],
+    "deployment": false,
+    "development_inputs": "Repository source, declared canonical SDK owners and new synthetic fixtures only",
+    "implementation_provider_scope": "The user authorized Grok 4.7 implementation through the Native supervisor; offline_default/live_exceptions restrict tests and product canaries, not that implementation provider process.",
+    "implementation_timeout_seconds": 900,
+    "initial_execution_scope": "Run only the baseline-ready characterization first, inspect genuine implementation/validation progress, then continue this separate reviewed DAG with pool1.",
+    "initial_lanes": 1,
+    "initial_ready_task": "CIMP-MGND-01",
+    "live_exceptions": [],
+    "manual_holds_respected": true,
+    "max_agent_turns": 64,
+    "max_task_attempts": 3,
+    "merge_target": "isolated local mediator-grounding campaign integration branch",
+    "native_task_source_profile": "explicit legacy-markdown projection of the native FormalWorkPlan",
+    "offline_default": true,
+    "optional_future_live_qualification": "Any later synthetic live Grok or actual node/replica qualification must be separately authorized, bounded and labeled; none is required by these development tasks.",
+    "product_inference": "Explicit persisted owner/case consent plus purpose/data-class minimization; local-private mode never sends raw case data remotely. Synthetic test transport is not live Grok qualification.",
+    "protected_state": "Old completed 58-task campaign state, counters, claims, history, keys, private user trees and designated SSH832620 are outside this campaign; no task may read/mutate them.",
+    "provider_role": "grok-only",
+    "qualification_scope": "Do not rerun the old entire repository/83-module release closure inside a 900-second task. Each task has one focused module; final cross-path acceptance is bounded and old qualifications remain historical.",
+    "remote_push": false,
+    "required_evidence": [
+      "Current source/command/test identities",
+      "Nonempty bounded behavioral cases with zero required skips",
+      "Real public service/terminal and graph/state assertions",
+      "Typed tool/result/error and subprocess exit metadata",
+      "Honest source/proof/storage authority boundaries"
+    ],
+    "runtime_wait_semantics": "awaiting_user/paused is an application outcome, never permission for a development worker to wait on stdin or ignore expired claims/provider/validation stalls.",
+    "stop_semantics": "Reuse current finite stop states. Unknown, refused, source-unavailable, proof-unavailable, timeout, cancelled, capped and saturated outcomes retain unresolved reasons and never imply legal sufficiency.",
+    "upstream_checkout_policy": "Use only declared pinned proper A/Data/Kit clones with their canonical source origins; no dependency installation, arbitrary branch integration or nested CommonCrawl fetch/reset/update. Upstream source changes require separate review and source-bound evidence.",
+    "validation_timeout_seconds": 900,
+    "worktree_pool_max_entries": 1
+  },
+  "findings": [
+    {
+      "finding": {
+        "classification": "source_inspected_integration_gap",
+        "id": "MGND-WHY",
+        "lines": [
+          396,
+          403,
+          251,
+          259
+        ],
+        "observation": "Shared pending inquiry drops objective/target/reason/expected update fields. Existing explanation renderer/publisher exists, but publisher has no production call site in the inspected tree. Characterize and wire the actual flow, not another renderer.",
+        "path": "mediator/workflow_service.py",
+        "related": [
+          {
+            "lines": [
+              1024,
+              1044
+            ],
+            "path": "applications/complaint_workspace.py"
+          }
+        ]
+      },
+      "stream": "mediator"
+    },
+    {
+      "finding": {
+        "classification": "source_inspected_integration_gap",
+        "id": "MGND-EDIT",
+        "lines": [
+          736,
+          749,
+          1027
+        ],
+        "observation": "Terminal /edit mutates answer/history controls and saves without invoking canonical graph correction; existing KG/Mediator correction machinery should be connected.",
+        "path": "applications/complaint_cli.py"
+      },
+      "stream": "mediator"
+    },
+    {
+      "finding": {
+        "classification": "source_inspected_integration_gap",
+        "id": "MGND-ACQUIRE",
+        "lines": [
+          13873,
+          13876,
+          13897
+        ],
+        "observation": "Verified law collection explicitly reads local stored authorities and starts no corpus/search request; terminal controls expose no source acquisition/admission action.",
+        "path": "mediator/mediator.py",
+        "related": [
+          {
+            "lines": [
+              104
+            ],
+            "path": "applications/complaint_cli.py"
+          }
+        ]
+      },
+      "stream": "mediator"
+    },
+    {
+      "finding": {
+        "classification": "source_inspected_activation_prerequisite",
+        "id": "MGND-PRIVATE-HOOK",
+        "lines": [
+          402,
+          451,
+          473,
+          637,
+          688
+        ],
+        "observation": "Legacy evidence raw add_bytes and plaintext DuckDB hook lifecycles are separate from encrypted snapshot/private-artifact owners. Newly activated private hooks must route through encrypted APIs and safe derived-index lifecycle; no existing user data was inspected.",
+        "path": "mediator/evidence_hooks.py",
+        "related": [
+          {
+            "lines": [
+              3213,
+              3235
+            ],
+            "path": "applications/complaint_workspace.py"
+          },
+          {
+            "lines": [
+              1407,
+              1415
+            ],
+            "path": "integrations/ipfs_datasets/storage.py"
+          }
+        ]
+      },
+      "stream": "storage"
+    },
+    {
+      "finding": {
+        "classification": "implemented_safety_boundary_to_preserve",
+        "id": "MGND-LEGACY-MODEL-LAW",
+        "lines": [
+          323,
+          340,
+          427
+        ],
+        "observation": "Legacy LLM statute/requirement outputs exist, but structured adapter treats unsourced strings as unresolved. Do not promote them to actual governing law when wiring new hooks.",
+        "path": "mediator/legal_hooks.py"
+      },
+      "stream": "mediator"
+    },
+    {
+      "finding": {
+        "classification": "source_inspected_activation_prerequisite",
+        "id": "MGND-RETRIEVAL",
+        "observation": "Supplied claim lists/retrieval confidence nominate support candidates; require exact source/element binding before promotion.",
+        "path": "mediator/integrations/graph_tools.py",
+        "symbols": [
+          "GraphRetrievalAugmentor.build_evidence_payloads"
+        ]
+      },
+      "stream": "mediator"
+    },
+    {
+      "finding": {
+        "classification": "source_inspected_capability_boundary",
+        "id": "MGND-NEW-DATA",
+        "observation": "Current definition/context/scope/review owners and qualified training owners emit conditional engineering evidence with separate authority flags. They are not governing law, legal meaning review, trained generalization or proofs.",
+        "path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/autoformal"
+      },
+      "stream": "formal"
+    },
+    {
+      "finding": {
+        "classification": "passed_scoped_synthetic_baseline",
+        "id": "MGND-BASELINE-2",
+        "live_grok_identity_verified": false,
+        "observation": "Existing coherent graph/unresolved-stop and actual terminal encrypted cold-resume checks passed on b1ec. This is no completion evidence for the new tasks.",
+        "receipt": {
+          "path": "/tmp/complaint-mgr-mediator-audit-20261024-mdi0p631/receipt.json",
+          "sha256": "656ea7ba394989450f6daa0238a3215a39d9b3592e687253483f39c9ae2a30b3"
+        },
+        "tests": 2
+      },
+      "stream": "baseline"
+    }
+  ],
+  "goals": [
+    {
+      "id": "goal.mgnd.baseline",
+      "subgoals": [
+        {
+          "id": "subgoal.mgnd.baseline.public",
+          "title": "Measure real synthetic terminal behavior"
+        },
+        {
+          "id": "subgoal.mgnd.baseline.owners",
+          "title": "Bind source, owners and acceptance boundaries"
+        }
+      ],
+      "title": "Characterize the published mediator workflow without borrowing old task completion"
+    },
+    {
+      "id": "goal.mgnd.hooks",
+      "subgoals": [
+        {
+          "id": "subgoal.mgnd.hooks.context",
+          "title": "Bind hook context and operation contracts"
+        },
+        {
+          "id": "subgoal.mgnd.hooks.trace",
+          "title": "Record idempotent transitions and failure states"
+        }
+      ],
+      "title": "Run bounded host-owned mediator hooks with truthful receipts"
+    },
+    {
+      "id": "goal.mgnd.facts",
+      "subgoals": [
+        {
+          "id": "subgoal.mgnd.facts.extraction",
+          "title": "Use canonical extraction and immutable assertion envelopes"
+        },
+        {
+          "id": "subgoal.mgnd.facts.correction",
+          "title": "Connect public edits to append-only graph corrections"
+        },
+        {
+          "id": "subgoal.mgnd.facts.revision",
+          "title": "Invalidate dependent support and preserve graph artifacts"
+        }
+      ],
+      "title": "Maintain a source-bound factual KG through public corrections"
+    },
+    {
+      "id": "goal.mgnd.law",
+      "subgoals": [
+        {
+          "id": "subgoal.mgnd.law.acquisition",
+          "title": "Select explicit context and acquire bounded source candidates"
+        },
+        {
+          "id": "subgoal.mgnd.law.admission",
+          "title": "Admit source/version/treatment evidence independently of models"
+        },
+        {
+          "id": "subgoal.mgnd.law.refresh",
+          "title": "Expose acquisition and reconcile dependencies through the public flow"
+        }
+      ],
+      "title": "Acquire applicable law and refresh the law-derived dependency graph"
+    },
+    {
+      "id": "goal.mgnd.formal",
+      "subgoals": [
+        {
+          "id": "subgoal.mgnd.formal.ir",
+          "title": "Bind canonical LegalIR stages to current source"
+        },
+        {
+          "id": "subgoal.mgnd.formal.definitions",
+          "title": "Reuse current Data definition and scope owners"
+        },
+        {
+          "id": "subgoal.mgnd.formal.proof",
+          "title": "Keep proof and model eligibility states explicit"
+        }
+      ],
+      "title": "Attach source-bound LegalIR and conditional definition/proof evidence"
+    },
+    {
+      "id": "goal.mgnd.router",
+      "subgoals": [
+        {
+          "id": "subgoal.mgnd.router.purpose",
+          "title": "Bind purpose, minimization and per-case consent"
+        },
+        {
+          "id": "subgoal.mgnd.router.observations",
+          "title": "Preserve route identity and bounded invocation receipts"
+        }
+      ],
+      "title": "Use Grok 4.7 only for declared inference purposes and recorded consent"
+    },
+    {
+      "id": "goal.mgnd.storage",
+      "subgoals": [
+        {
+          "id": "subgoal.mgnd.storage.hooks",
+          "title": "Route private hook bytes and derived indexes safely"
+        },
+        {
+          "id": "subgoal.mgnd.storage.migration",
+          "title": "Migrate only explicitly selected legacy synthetic artifacts"
+        },
+        {
+          "id": "subgoal.mgnd.storage.durability",
+          "title": "Commit complete snapshots and verify ciphertext replicas"
+        }
+      ],
+      "title": "Seal legacy hook artifacts and verify encrypted durability"
+    },
+    {
+      "id": "goal.mgnd.interview",
+      "subgoals": [
+        {
+          "id": "subgoal.mgnd.interview.why",
+          "title": "Preserve host-bound explanations and distinct graph sources"
+        },
+        {
+          "id": "subgoal.mgnd.interview.handoff",
+          "title": "Turn unresolved gaps into bounded next actions"
+        },
+        {
+          "id": "subgoal.mgnd.interview.resume",
+          "title": "Resume corrected research/evidence state without replaying effects"
+        }
+      ],
+      "title": "Explain and resume a grounded interview with finite stopping"
+    },
+    {
+      "id": "goal.mgnd.operations",
+      "subgoals": [
+        {
+          "id": "subgoal.mgnd.operations.health",
+          "title": "Distinguish user waits from worker stalls and recover safely"
+        },
+        {
+          "id": "subgoal.mgnd.operations.acceptance",
+          "title": "Exercise public synthetic closure and document limits"
+        }
+      ],
+      "title": "Observe a separate Native campaign and prove the new public journey"
+    }
+  ],
+  "initial_status": "All 44 new CIMP-MGND tasks pending; existing 58 completed task receipts and this source/synthetic audit do not satisfy this campaign.",
+  "privacy_dependency_findings": [
+    {
+      "id": "MGND-PRIVATE-LEGACY-HOOKS",
+      "observation": "Encrypted snapshots/private artifact owner exists; legacy raw evidence and derived DuckDB persistence require explicit private routing before hook activation.",
+      "status": "integration_pending"
+    },
+    {
+      "id": "MGND-REMOTE-PURPOSE",
+      "observation": "Recorded Grok consent is not blanket authorization for archive/web tools or another case. Gate each new remote purpose/data class.",
+      "status": "integration_pending"
+    }
+  ],
+  "provider": {
+    "allow_fallback": false,
+    "model": "grok-4.7",
+    "provider": "grok_cli",
+    "router": "ipfs_accelerate_py.llm_router"
+  },
+  "purpose": "Extend the published b1ec mediator with the concrete missing public hook/grounding connections. Reuse the completed intake foundation while separating user facts, public legal sources, applicability, conditional IR, actual proof and encrypted durability.",
+  "schema_version": "complaint-generator.mediator-grounding-spec.v1",
+  "success_criteria": [
+    "Actual terminal questions and explanations retain current factual/requirement/source target identities across encrypted cold resume.",
+    "Public edits revise the immutable factual ledger and invalidate affected support without rewriting governing law.",
+    "Explicit applicable context drives bounded source acquisition, independent admission and current law-derived dependency refresh.",
+    "Current Data definition/IR/model owners retain independent assumptions/review/engineering/proof authority boundaries.",
+    "Grok4.7 purpose/identity/consent and bounded failures are observable without live-provider test calls or fallback.",
+    "Private hook bytes, graph artifacts and derived indexes have explicit encrypted/ephemeral lifecycle and truthful ciphertext durability.",
+    "Finite unresolved next actions preserve user waits while Native implementation progress/health/recovery remains monitored.",
+    "The separate Native plan completes only through genuine accepted validation/merge/callback evidence; no old58 remapping or fabricated completion."
+  ],
+  "tasks": [
+    {
+      "acceptance": [
+        "Add only this one characterization module and a small source-pinned observation receipt; do not change product behavior in this task.",
+        "Invoke the actual terminal command/service with a new private passphrase fixture and explicit fake observed-router transport. Record that no live Grok call occurred.",
+        "Measure narrative assertion spans/KG, current dependency/source gaps, real /why metadata, /edit versus shared graph state, and encrypted fresh-service resume. Classify observed gaps separately from the passing characterization mechanics.",
+        "Keep observations compatible with later fixes: do not require a known defect to remain broken. The receipt names the observed source generation and must never claim all new campaign behavior works.",
+        "Use short terminal deadlines and no stdin wait in the development worker; output only bounded synthetic diagnostic metadata.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [],
+      "goal_id": "goal.mgnd.baseline",
+      "id": "CIMP-MGND-01",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nFirst task only: demonstrate the real public control path and write an honest baseline. Reuse the existing terminal/private fixture patterns. The prior two synthetic passes are historical starting evidence, not this task's completion.\n\nExact starting pointers: read only applications/complaint_cli.py:TerminalComplaintWorkspaceService/chat, applications/complaint_workspace.py:ComplaintWorkspaceService.run_intake_chat_turn/apply_shared_interview, mediator/workflow_service.py:_inquiry_from_question/export_session_projection, and the synthetic fixture patterns in tests/test_tui_interview_acceptance.py:_block_network_and_provider_subprocesses/_service plus tests/test_tui_router_trace.py:terminal_service/test_actual_shared_cli_saves_invocation_with_encrypted_cold_resume. Create a fresh TerminalComplaintWorkspaceService(root_dir=tmp_path), call initialize_private_keys(protection=\"passphrase\", passphrase=an authored test value), ensure_private_case_key, and bind the test CLI service to that owned instance. Use an explicit synthetic observed-router transport or persisted local-only policy, never discovery of a real provider. Invoke real chat with bounded input/max_turns, inspect its public session/projection, and create a fresh service for encrypted resume. Keep this task to tests/test_cimp_mgnd_01.py and docs/task_boards/complaint_mediator_grounding_baseline_receipt.json. Do not edit the pre-existing audit JSON, product modules, old tests, spec, plan or boards.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-01",
+      "subgoal_id": "subgoal.mgnd.baseline.public",
+      "submodules": [],
+      "targets": [
+        "docs/task_boards/complaint_mediator_grounding_baseline_receipt.json",
+        "tests/test_cimp_mgnd_01.py"
+      ],
+      "title": "Characterize actual chat grounding, edit and resume gaps",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_01.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Record exact checked-out A/Data/Kit identities and canonical source paths for the APIs named in this specification; distinguish committed opaque gitlinks from populated checkouts.",
+        "Probe a bounded actual invocation for the selected KG/legal/logic/private-storage seams, not merely module import; unavailable optional paths yield typed records without installing dependencies.",
+        "Record enhanced feature flags and the actually enabled path. No global enable-all change, Wikipedia enrichment, model setup, scraping or network call is allowed.",
+        "Treat the new Data training/definition owners as conditional source or engineering capabilities, never semantic or proof authority.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-01"
+      ],
+      "goal_id": "goal.mgnd.baseline",
+      "id": "CIMP-MGND-02",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nUse a compact explicit owner table and tiny authored inputs. This inventory augments existing capability metadata; do not redesign discovery or crawl source trees.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-02",
+      "subgoal_id": "subgoal.mgnd.baseline.owners",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/capabilities.py",
+        "integrations/ipfs_datasets/loader.py",
+        "docs/task_boards/complaint_mediator_grounding_owner_inventory.json",
+        "tests/test_cimp_mgnd_02.py"
+      ],
+      "title": "Probe declared current SDK owner capabilities",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_02.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Define a versioned contract separating user assertions, extracted candidates, retrieved public law, applicable requirements, corroborating evidence, conditional IR and actual proof results.",
+        "Carry owner/case/source/version/span/hash and graph revision references without turning user statements or retrieval scores into governing law.",
+        "Preserve old assertion, dependency and stop contracts; this is a small explicit integration contract, not replacement graphs or a new supervisor framework.",
+        "Examples reject spoofed verified/satisfied flags and preserve unknown source, edition, applicability and meaning decisions.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-01",
+        "CIMP-MGND-02"
+      ],
+      "goal_id": "goal.mgnd.baseline",
+      "id": "CIMP-MGND-03",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nDocument and type only the new cross-hook handoff fields needed by this campaign. Existing source admission and immutable assertion envelopes remain authoritative.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-03",
+      "subgoal_id": "subgoal.mgnd.baseline.owners",
+      "submodules": [],
+      "targets": [
+        "mediator/integrations/contracts.py",
+        "docs/task_boards/complaint_mediator_grounding_contracts.md",
+        "tests/test_cimp_mgnd_03.py"
+      ],
+      "title": "Specify factual, legal, support and proof roles",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_03.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Provide a small set of authored narratives, complete public-law source bytes, dates/jurisdictions and evidence markers for later focused modules.",
+        "Fixtures create all session/key/index/receipt paths under their private temporary root; block provider executables and remote sockets while preserving subprocess class interfaces.",
+        "Expose real public service/terminal factories and genuine source-record admission helpers; never seed a satisfied legal graph, FakeBackend state or fabricated Native completion.",
+        "Fixtures label missing-authority, contradiction, unknown, cancellation and storage-outage cases without pretending a fake transport is a live route observation.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-01",
+        "CIMP-MGND-03"
+      ],
+      "goal_id": "goal.mgnd.baseline",
+      "id": "CIMP-MGND-04",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nKeep fixtures small and importable by the new modules. No real sessions or global backend mutation survives teardown.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-04",
+      "subgoal_id": "subgoal.mgnd.baseline.owners",
+      "submodules": [],
+      "targets": [
+        "tests/mgnd_fixtures.py",
+        "tests/test_cimp_mgnd_04.py"
+      ],
+      "title": "Build reusable guarded synthetic case fixtures",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_04.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Add a small host-owned context for the newly activated legal/evidence operations: operation id, owner/case/session, graph revision, legal-context identity, consent/purpose and deadline.",
+        "Reject wrong case, stale revision, missing purpose and changed source/context bindings before effectful dispatch.",
+        "Reuse existing intake request/revision/consent checks; do not force legacy callers onto unreviewed new behavior.",
+        "Context/public receipts contain opaque identifiers and hashes, not private prompts, raw source passages or keys.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-03",
+        "CIMP-MGND-04"
+      ],
+      "goal_id": "goal.mgnd.hooks",
+      "id": "CIMP-MGND-05",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nImplement the context value/validation seam only; no legal search, evidence publication or provider call yet.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-05",
+      "subgoal_id": "subgoal.mgnd.hooks.context",
+      "submodules": [],
+      "targets": [
+        "mediator/hook_runtime.py",
+        "mediator/mediator.py",
+        "tests/test_cimp_mgnd_05.py"
+      ],
+      "title": "Bind new hook execution contexts to current case revisions",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_05.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "This task declares schemas, operation registry and disabled handler bindings only. Effectful acquisition/ingestion/refresh must refuse until the persisted operation consent and encrypted private artifact/index prerequisites are implemented and verified; registration alone never enables dispatch or writes.",
+        "Negative tests prove no provider/backend/storage action on registration, missing consent, unavailable key/private store, or an unready derived-index boundary.",
+        "Define bounded request/result schemas for acquire_legal_sources, ingest_private_evidence and refresh_grounding alongside the existing extraction/question roles.",
+        "Each result declares candidate/source/support/proof status explicitly with bounded source references; unknown or extra effect-bearing fields fail closed.",
+        "Only host-owned targets may be selected; a model cannot supply arbitrary tools, destinations, file paths, provider commands or satisfied-node edits.",
+        "An operation registry maps to existing canonical owners with declared prerequisites and no implicit unbounded chain.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-05"
+      ],
+      "goal_id": "goal.mgnd.hooks",
+      "id": "CIMP-MGND-06",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nAdd a narrow dispatcher for these three operations only. Keep model proposals separate from host-authorized execution.\n\nThis is the early contract/registry seam, not activation: keep effectful handlers disabled or returning typed prerequisite-unavailable until the later consent and encrypted storage/index tasks are satisfied. Do not dispatch or persist case data in this task.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-06",
+      "subgoal_id": "subgoal.mgnd.hooks.context",
+      "submodules": [],
+      "targets": [
+        "mediator/hook_runtime.py",
+        "mediator/workflow_service.py",
+        "tests/test_cimp_mgnd_06.py"
+      ],
+      "title": "Declare typed legal and evidence hook operations",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_06.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Record ordered operation/request/revision/outcome receipts for successful, empty, denied, malformed, timeout, cancelled and unavailable results.",
+        "Preserve empty source search versus source failure versus rejected admission; no generic success receipt hides a failed stage.",
+        "Use safe error codes/types and bounded counts; adversarial error text containing fixture secrets is not logged or returned publicly.",
+        "No fallback provider, retry loop or raw private content is introduced by diagnostics.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-06"
+      ],
+      "goal_id": "goal.mgnd.hooks",
+      "id": "CIMP-MGND-07",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nConnect the new dispatcher outcome records to existing sanitized mediator/router logs, without logging tool payloads.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-07",
+      "subgoal_id": "subgoal.mgnd.hooks.trace",
+      "submodules": [],
+      "targets": [
+        "mediator/hook_runtime.py",
+        "mediator/mediator.py",
+        "tests/test_cimp_mgnd_07.py"
+      ],
+      "title": "Record bounded sanitized hook outcomes",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_07.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Bind effect receipts to current source/context preimages and accepted graph revisions.",
+        "Identical replay returns the same accepted result without duplicate source/evidence/support records; changed preimages or stale graph revisions are refused.",
+        "A late cancelled/stale result cannot mutate the current graph, pending inquiry or saved case.",
+        "Record candidate acquisition separately from admitted source/graph effect; receipt existence alone is not durability or proof.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-07"
+      ],
+      "goal_id": "goal.mgnd.hooks",
+      "id": "CIMP-MGND-08",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nImplement idempotent operation acceptance using existing transaction/revision owners; do not create a second session database.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-08",
+      "subgoal_id": "subgoal.mgnd.hooks.trace",
+      "submodules": [],
+      "targets": [
+        "mediator/hook_runtime.py",
+        "mediator/workflow_service.py",
+        "tests/test_cimp_mgnd_08.py"
+      ],
+      "title": "Make hook effects replay-safe and graph-bound",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_08.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Exercise the actual selected Data KnowledgeGraphExtractor path on authored text with external enrichment/model auto-download disabled.",
+        "Preserve local extraction fallback/unavailable provenance; schema-valid model/extractor output remains a candidate until exact user-source binding is checked.",
+        "Do not promote legal text, retrieved graph claims or Wikidata/Wikipedia facts to user assertions.",
+        "Record which enabled path ran; generic import availability does not count as the extractor executing.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-02",
+        "CIMP-MGND-05",
+        "CIMP-MGND-28"
+      ],
+      "goal_id": "goal.mgnd.facts",
+      "id": "CIMP-MGND-09",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nReuse prepare_private_extraction and the current Data KG owner. Make only the missing role/provenance handoff changes.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-09",
+      "subgoal_id": "subgoal.mgnd.facts.extraction",
+      "submodules": [
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/graphs.py",
+        "complaint_phases/knowledge_graph.py",
+        "tests/test_cimp_mgnd_09.py"
+      ],
+      "title": "Connect declared KG extraction to factual candidate roles",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_09.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Carry exact source bytes/hash, source kind, message/answer identity and UTF-8 spans for accepted facts and relationships.",
+        "Cover non-ASCII, repeated phrases, unknown/refused answers, and a legal passage presented as narrative; missing/conflicting spans remain deficient.",
+        "Preserve record distinctions between user fact, extraction hypothesis, relationship and supporting evidence.",
+        "Do not repair an unbound source using a model claim or silently normalize offsets into a different source generation.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-09"
+      ],
+      "goal_id": "goal.mgnd.facts",
+      "id": "CIMP-MGND-10",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nExtend existing user_assertion.v1 envelope use at the real hook boundaries; avoid a parallel provenance schema.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-10",
+      "subgoal_id": "subgoal.mgnd.facts.extraction",
+      "submodules": [],
+      "targets": [
+        "complaint_phases/knowledge_graph.py",
+        "integrations/ipfs_datasets/types.py",
+        "tests/test_cimp_mgnd_10.py"
+      ],
+      "title": "Preserve exact factual source spans and assertion identity",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_10.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Add the missing public correction handoff to existing process_denoising_answer factual_action/supersedes machinery with stable assertion/event ids.",
+        "Reject missing, cross-case or stale targets; replay of the same correction event is idempotent.",
+        "Retain original and replacement source envelopes and explicit supersession/retraction lineage; do not overwrite old factual evidence.",
+        "Return the actual new graph/session revisions and affected support targets rather than a display-only edit.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-08",
+        "CIMP-MGND-10"
+      ],
+      "goal_id": "goal.mgnd.facts",
+      "id": "CIMP-MGND-11",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nUse existing KG supersede_assertion/retract_assertion and mediator transition code. Do not implement another correction engine.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-11",
+      "subgoal_id": "subgoal.mgnd.facts.correction",
+      "submodules": [],
+      "targets": [
+        "mediator/workflow_service.py",
+        "mediator/mediator.py",
+        "tests/test_cimp_mgnd_11.py"
+      ],
+      "title": "Expose a revision-safe public factual correction operation",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_11.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Replace the display/history-only /edit path with the public correction operation for the last eligible accepted answer, bound to its stable source target.",
+        "Actual chat /edit changes the shared factual graph and corresponding revision while preserving old assertion/history records.",
+        "Preserve an unrelated pending question; reopen/reselect it only when its bound target is affected. Stale concurrent edits are refused.",
+        "Encrypted cold resume sees the corrected graph and original audit lineage, not mismatched intake_answers and shared_interview state.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-11"
+      ],
+      "goal_id": "goal.mgnd.facts",
+      "id": "CIMP-MGND-12",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nFix the concrete _apply_edit/control-loop wiring gap. Original terminal controls and privacy prompts remain usable.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-12",
+      "subgoal_id": "subgoal.mgnd.facts.correction",
+      "submodules": [],
+      "targets": [
+        "applications/complaint_cli.py",
+        "applications/complaint_workspace.py",
+        "tests/test_cimp_mgnd_12.py"
+      ],
+      "title": "Route terminal edit through canonical graph correction",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_12.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Superseding/retracting a fact invalidates only dependent support/proof-cache references and reopens the affected inquiry targets.",
+        "GraphRetrievalAugmentor supports_claims/retrieval confidence stays a candidate nomination until exact claim/requirement/source-span binding is rechecked.",
+        "Unrelated graph identities and support remain stable; contradictory facts remain visible without becoming satisfied legal requirements.",
+        "Evidence supports factual allegations without changing the governing legal requirement text or source identity.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-11"
+      ],
+      "goal_id": "goal.mgnd.facts",
+      "id": "CIMP-MGND-13",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nReuse existing invalidate_dependents and epistemic support builders. Scope the fix to the nomination-to-support handoff.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-13",
+      "subgoal_id": "subgoal.mgnd.facts.revision",
+      "submodules": [],
+      "targets": [
+        "complaint_phases/knowledge_graph.py",
+        "complaint_phases/dependency_graph.py",
+        "mediator/integrations/graph_tools.py",
+        "tests/test_cimp_mgnd_13.py"
+      ],
+      "title": "Invalidate factual dependents without promoting retrieval nominations",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_13.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Persist factual graph/revision provenance through the existing automatic-private-artifact owner and reload it under the same owner/case binding.",
+        "Ciphertext storage ids are distinct from plaintext source/assertion ids; no plaintext CID, cache or JSON fallback is allowed.",
+        "Wrong key/case/corrupt bytes fail without overwriting the last committed graph.",
+        "Actual roundtrip preserves assertion states, relationships, invalidations and unresolved conflicts.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-10",
+        "CIMP-MGND-13"
+      ],
+      "goal_id": "goal.mgnd.facts",
+      "id": "CIMP-MGND-14",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nWire the factual graph artifact into the existing encrypted case transaction, not a second graph store.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-14",
+      "subgoal_id": "subgoal.mgnd.facts.revision",
+      "submodules": [
+        "external/ipfs_datasets_py",
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/graphs.py",
+        "applications/complaint_workspace.py",
+        "tests/test_cimp_mgnd_14.py"
+      ],
+      "title": "Persist factual revisions through canonical private graph artifacts",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_14.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Build a bounded legal acquisition request only after explicit jurisdiction, applicable-law date and claim candidate selection.",
+        "Unknown/ambiguous jurisdiction, uncertain date or unsupported claim produces a targeted inquiry and no guessed jurisdiction/corpus default.",
+        "Separate event, applicable-law, filing-reference and retrieval dates; a law-query date cannot satisfy a factual chronology gap.",
+        "Requests carry claim/requirement targets and public-law query terms; raw case narrative is not needed to fetch a citation.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-03",
+        "CIMP-MGND-06"
+      ],
+      "goal_id": "goal.mgnd.law",
+      "id": "CIMP-MGND-15",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nReuse intake_legal_selection, legal_context_questions and existing corpus program contracts; do not add heuristic governing law.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-15",
+      "subgoal_id": "subgoal.mgnd.law.acquisition",
+      "submodules": [],
+      "targets": [
+        "integrations/ipfs_datasets/legal.py",
+        "mediator/mediator.py",
+        "tests/test_cimp_mgnd_15.py"
+      ],
+      "title": "Bind acquisition plans to explicit legal context",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_15.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use the declared Data local/corpus parameter APIs with explicit context, per-operation deadline/result/byte bounds and allowed backends.",
+        "Local-first acquisition can work without model inference; remote acquisition must pass the purpose/data-class gate before dispatch.",
+        "Return complete owned source text/locator/version/retrieval provenance as candidates; search hit/snippet/relevance alone is not applicability or proof.",
+        "Empty, unavailable, timeout and missing-edition results remain distinct and resumable; do not initialize CommonCrawl or download corpora.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-15",
+        "CIMP-MGND-28"
+      ],
+      "goal_id": "goal.mgnd.law",
+      "id": "CIMP-MGND-16",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nConnect existing search_us_code_corpus_from_parameters, search_state_law_corpus_from_parameters, search_federal_register_corpus_from_parameters and search_court_rules_corpus_from_parameters as declared by actual capability inventory.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-16",
+      "subgoal_id": "subgoal.mgnd.law.acquisition",
+      "submodules": [
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/legal.py",
+        "mediator/legal_authority_hooks.py",
+        "tests/test_cimp_mgnd_16.py"
+      ],
+      "title": "Acquire bounded canonical legal-source candidates",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_16.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Pass acquired candidates through canonical source storage/admission and _collect_verified_legal_requirements before adding legal dependency nodes.",
+        "Recompute source/authority/span hashes from owned bytes and preserve authority version, jurisdiction/date and source locator.",
+        "Reject caller verified/applicable/support_eligible flags, independently substituted metadata text and model-invented citations.",
+        "Record acquisition and admission as separate outcomes; legal-source absence leaves a nonempty unresolved dependency graph.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-08",
+        "CIMP-MGND-16",
+        "CIMP-MGND-32"
+      ],
+      "goal_id": "goal.mgnd.law",
+      "id": "CIMP-MGND-17",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nReuse add_authority/upsert_authority, extract_source_bound_rule_candidates and existing source-record bounds. Do not seed legal nodes or replace source admission.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-17",
+      "subgoal_id": "subgoal.mgnd.law.admission",
+      "submodules": [],
+      "targets": [
+        "mediator/legal_authority_hooks.py",
+        "mediator/mediator.py",
+        "integrations/ipfs_datasets/logic.py",
+        "tests/test_cimp_mgnd_17.py"
+      ],
+      "title": "Admit acquired authorities through stored source records",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_17.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Admit only the selected edition/effective interval for the explicit legal context; overlapping/unknown versions remain unresolved.",
+        "Retain treatment records from canonical and metadata layers; adverse/superseding/repealing treatment cannot be erased by an empty alias.",
+        "Do not replace retrieval time with applicable-law time or mix two versions sharing an authority id.",
+        "A changed treatment/version invalidates affected legal support without modifying user facts.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-17"
+      ],
+      "goal_id": "goal.mgnd.law",
+      "id": "CIMP-MGND-18",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nExtend the newly acquired-source handoff only, using existing temporal/treatment validators.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-18",
+      "subgoal_id": "subgoal.mgnd.law.admission",
+      "submodules": [],
+      "targets": [
+        "integrations/ipfs_datasets/legal.py",
+        "complaint_phases/legal_graph.py",
+        "complaint_phases/dependency_graph.py",
+        "tests/test_cimp_mgnd_18.py"
+      ],
+      "title": "Preserve legal editions and adverse treatment across acquisition",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_18.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Add a deliberate terminal/service legal-research action for the current source gap; it is not stored as a factual answer.",
+        "Invoke the typed bounded acquisition/admission operation through the same authorized private case transaction.",
+        "Show retrieved/admitted/rejected/unavailable counts and a resumable next action without saying that research proves the complaint.",
+        "Do not research automatically on every status/resume command or dispatch duplicate work when the action is replayed.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-17",
+        "CIMP-MGND-28",
+        "CIMP-MGND-31"
+      ],
+      "goal_id": "goal.mgnd.law",
+      "id": "CIMP-MGND-19",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nClose the missing public stored-authority acquisition path. Choose one concise control and document it; preserve existing chat invocation and controls.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-19",
+      "subgoal_id": "subgoal.mgnd.law.refresh",
+      "submodules": [],
+      "targets": [
+        "applications/complaint_cli.py",
+        "applications/complaint_workspace.py",
+        "mediator/workflow_service.py",
+        "tests/test_cimp_mgnd_19.py"
+      ],
+      "title": "Expose a public legal-research action in the terminal workflow",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_19.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "After admitted acquisition, jurisdiction/date/version/treatment change or source outage, call refresh_verified_legal_dependencies and re-read current source admission.",
+        "Preserve unaffected nodes and user facts; invalidate/recompute affected requirements, support/proof identities and question targets.",
+        "Source outage after a previously available source cannot leave satisfied stale law or replace the whole graph with success-empty.",
+        "Exercise this through the public service inquiry/research flow rather than a manually classified or satisfied fixture graph.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-18",
+        "CIMP-MGND-19"
+      ],
+      "goal_id": "goal.mgnd.law",
+      "id": "CIMP-MGND-20",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nConnect source/context effect receipts to the existing reconciliation owner with one atomic case revision.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-20",
+      "subgoal_id": "subgoal.mgnd.law.refresh",
+      "submodules": [],
+      "targets": [
+        "mediator/mediator.py",
+        "complaint_phases/dependency_graph.py",
+        "applications/complaint_workspace.py",
+        "tests/test_cimp_mgnd_20.py"
+      ],
+      "title": "Refresh current legal dependencies after source or context changes",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_20.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Build current source-bound compiler requests from admitted law and separately bound factual premises using compile_canonical_legal_ir.",
+        "Retain parse/elaboration/formalization/bridge/source-map identities and unresolved assumptions; preserve UTF-8 source correspondence.",
+        "Malformed/unsupported input or absent compiler capability yields typed unavailable/failed stage evidence, not a fabricated IR success.",
+        "Emitted formal text or a compilable AST does not establish governing-law meaning or prove a claim.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-17"
+      ],
+      "goal_id": "goal.mgnd.formal",
+      "id": "CIMP-MGND-21",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nWire the mediator handoff to the existing canonical compiler pipeline and source maps; do not reimplement the compiler.",
+      "priority": "P1",
+      "source_candidate_id": "MGND-21",
+      "subgoal_id": "subgoal.mgnd.formal.ir",
+      "submodules": [
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/logic.py",
+        "mediator/mediator.py",
+        "tests/test_cimp_mgnd_21.py"
+      ],
+      "title": "Carry admitted source identities into canonical LegalIR stages",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_21.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Add a thin first-party adapter to legal_source_sampling_review_context.prepare/validate/record_response/validate_response/summarize and contextual definition binding/review prepare/validate owners.",
+        "Bind whole source/context/attachment populations and explicit declaration/request hashes; no copied historical artifact implementation.",
+        "Preserve separate candidate, source review and meaning review states, including unreviewed supporting sources.",
+        "Context preparation/replay grants no applicability, truth, training, graph or proof authority.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-21"
+      ],
+      "goal_id": "goal.mgnd.formal",
+      "id": "CIMP-MGND-22",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nImplement only the context/binding adapter with tiny authored inputs and actual owner validators.",
+      "priority": "P1",
+      "source_candidate_id": "MGND-22",
+      "subgoal_id": "subgoal.mgnd.formal.definitions",
+      "submodules": [
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/definition_evidence.py",
+        "tests/test_cimp_mgnd_22.py"
+      ],
+      "title": "Attach current source-sampling context and contextual definition evidence",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_22.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use legal_norm_definition_evidence_v1.prepare_norm_definition_evidence_v1/validate_norm_definition_evidence_v1 and legal_norm_scope_correspondence_v1.prepare_norm_scope_correspondence_v1/validate_norm_scope_correspondence_v1.",
+        "Preserve occurrence/span/entity/edition identities and distinguish a governing definition from two separate asserted uses.",
+        "Conflicting or absent definition/scope evidence remains an explicit unresolved dependency rather than a model-filled binding.",
+        "Forward conditional evidence to the relevant requirement without changing the admitted legal text or satisfying its proof.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-22"
+      ],
+      "goal_id": "goal.mgnd.formal",
+      "id": "CIMP-MGND-23",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nAdd only source-bound definition/scope records and links using the current Data owners.",
+      "priority": "P1",
+      "source_candidate_id": "MGND-23",
+      "subgoal_id": "subgoal.mgnd.formal.definitions",
+      "submodules": [
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/definition_evidence.py",
+        "mediator/claim_support_hooks.py",
+        "tests/test_cimp_mgnd_23.py"
+      ],
+      "title": "Bind norm definitions and scope correspondence to source evidence",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_23.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use legal_norm_interpretation_review_v1 prepare_norm_review_evidence_v1/build_norm_review_subject_v1/assess_norm_reviews_v1/validate_norm_review_assessment_v1 and legal_bound_variable_definition_v1 prepare/validate APIs.",
+        "Keep source/edition/meaning/context permissions independent; unsigned or unprovided reviews cannot be synthesized by Grok or a fixture.",
+        "Retain alternatives, explicit assumptions and bound-variable carrier/scope correspondence under source-pinned hashes.",
+        "Generated conditional Lean remains unbuilt/unproved unless an actual declared prover result exists.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-23"
+      ],
+      "goal_id": "goal.mgnd.formal",
+      "id": "CIMP-MGND-24",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nReuse exact current review/variable owners. Test their negative authority boundary as well as tiny valid conditional envelopes.",
+      "priority": "P1",
+      "source_candidate_id": "MGND-24",
+      "subgoal_id": "subgoal.mgnd.formal.definitions",
+      "submodules": [
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/definition_evidence.py",
+        "mediator/claim_support_hooks.py",
+        "tests/test_cimp_mgnd_24.py"
+      ],
+      "title": "Preserve independent norm review and bound-variable decisions",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_24.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use generate_bound_legal_ir_proof_obligations and route_bound_legal_ir_proof with exact current source, premise, requirement and assumption identities.",
+        "Preserve proved/disproved/unknown/timeout/unavailable/cancelled distinctions; no solver, generated Lean or review packet becomes a proved result.",
+        "Only an actual verified proof result with matching current bindings may support the corresponding proof field; factual assertion and legal sufficiency remain separate.",
+        "Changing a premise/definition/source or adverse treatment invalidates replay_satisfied_element_proof/proof_cache_identity.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-21",
+        "CIMP-MGND-24"
+      ],
+      "goal_id": "goal.mgnd.formal",
+      "id": "CIMP-MGND-25",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nConnect existing proof owners to the new definition handoff; no external prover install, network service or fake proof receipt.",
+      "priority": "P1",
+      "source_candidate_id": "MGND-25",
+      "subgoal_id": "subgoal.mgnd.formal.proof",
+      "submodules": [
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/logic.py",
+        "mediator/claim_support_hooks.py",
+        "complaint_phases/dependency_graph.py",
+        "tests/test_cimp_mgnd_25.py"
+      ],
+      "title": "Connect proof obligations and truthful available/unavailable outcomes",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_25.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Describe optional legal_compact_content_persistent_v1 load/score and predicate_training_v1.inspect/checkpoint identity using exact qualified source-space/conditioning/policy/checkpoint metadata.",
+        "Predicate objective/training preparation and numerical qualification are engineering evidence; candidate output cannot select governing law, satisfy a definition review or prove an element.",
+        "Missing/incompatible model/checkpoint/runtime yields an asserted unavailable/ineligible result with zero required skips.",
+        "No train_compact_content_persistent_v1, training, optimizer, model download, restore or numerical fit is run by mandatory development checks.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-02",
+        "CIMP-MGND-25"
+      ],
+      "goal_id": "goal.mgnd.formal",
+      "id": "CIMP-MGND-26",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nProvide a small eligibility/provenance adapter for the newly published owners, using metadata/negative controls. Do not start a modeling programme.",
+      "priority": "P1",
+      "source_candidate_id": "MGND-26",
+      "subgoal_id": "subgoal.mgnd.formal.proof",
+      "submodules": [
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/definition_evidence.py",
+        "integrations/ipfs_datasets/logic.py",
+        "tests/test_cimp_mgnd_26.py"
+      ],
+      "title": "Gate qualified model outputs as candidates rather than authority",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_26.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Pin inference owner ipfs_accelerate_py.llm_router, provider grok_cli and model grok-4.7 with local/cross-provider fallback disabled.",
+        "Declare extraction, question proposal and any new explanation/candidate purpose with bounded allowed inputs/outputs; model proposals cannot invoke tools or mark requirements satisfied.",
+        "Local extraction, citation acquisition and deterministic source/graph checks do not cause an unnecessary model dispatch.",
+        "Route diagnostics distinguish requested/selected/observed identity; a synthetic transport never verifies live model/build identity.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-02",
+        "CIMP-MGND-05"
+      ],
+      "goal_id": "goal.mgnd.router",
+      "id": "CIMP-MGND-27",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nExtend the existing purpose/typed intake boundary, not a new LLM client.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-27",
+      "subgoal_id": "subgoal.mgnd.router.purpose",
+      "submodules": [
+        "external/ipfs_accelerate_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "mediator/hook_runtime.py",
+        "integrations/ipfs_datasets/llm.py",
+        "backends/llm_router_backend.py",
+        "tests/test_cimp_mgnd_27.py"
+      ],
+      "title": "Declare Grok inference purposes at the hook boundary",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_27.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Read persisted owner/case policy before loading any remote provider or submitting a new hook query.",
+        "Consent for Grok raw-intake processing does not silently authorize unrelated web/archive providers, tools or case data classes.",
+        "Minimize purpose-specific prompts/queries and preserve local-private mode; unknown/missing consent refuses effectful remote dispatch.",
+        "Revocation is rechecked before accepting late results, and a different case cannot reuse consent or invocation binding.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-27"
+      ],
+      "goal_id": "goal.mgnd.router",
+      "id": "CIMP-MGND-28",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nReuse existing policy/context builders and revocation tests. Distinguish public-law citation-only queries from private facts rather than copying the whole complaint into search.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-28",
+      "subgoal_id": "subgoal.mgnd.router.purpose",
+      "submodules": [],
+      "targets": [
+        "mediator/hook_runtime.py",
+        "integrations/ipfs_datasets/llm.py",
+        "applications/complaint_workspace.py",
+        "tests/test_cimp_mgnd_28.py"
+      ],
+      "title": "Apply per-case consent and minimization to all new remote operations",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_28.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use the current Native observed generation/capture seam, with no fallback/substitution and denied tool execution, for new hook purposes.",
+        "Timeout/cancellation/quota/malformed output produces bounded safe receipts and leaves the pending case revision recoverable.",
+        "Cancellation reaps only the owned child before returning; a late answer cannot be accepted after revocation/revision change.",
+        "Required tests use explicit fake observation types and real process ownership fixtures; they make no live Grok claim.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-07",
+        "CIMP-MGND-27"
+      ],
+      "goal_id": "goal.mgnd.router",
+      "id": "CIMP-MGND-29",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nExtend current cancellation/observation bindings narrowly for hook requests; preserve the qualified default Native constructor and resource owners.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-29",
+      "subgoal_id": "subgoal.mgnd.router.observations",
+      "submodules": [
+        "external/ipfs_accelerate_py"
+      ],
+      "targets": [
+        "backends/llm_router_backend.py",
+        "integrations/ipfs_datasets/llm.py",
+        "mediator/hook_runtime.py",
+        "tests/test_cimp_mgnd_29.py"
+      ],
+      "title": "Preserve observed route identity and bounded cancellation",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_29.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Associate each real/fake-labeled invocation receipt with purpose, request, case/session and accepted graph revision in the encrypted transaction.",
+        "Cold resume and /status preserve existing associations without inventing an invocation or rerunning provider work.",
+        "Receipts are bounded and sanitized; fixture prompts, law passages, keys, environment values and native tool arguments do not leak publicly.",
+        "Duplicate progress-display/receipt handling cannot repeat a provider call.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-08",
+        "CIMP-MGND-28",
+        "CIMP-MGND-29"
+      ],
+      "goal_id": "goal.mgnd.router",
+      "id": "CIMP-MGND-30",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nReuse existing router_trace persistence; add only the new operation association fields.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-30",
+      "subgoal_id": "subgoal.mgnd.router.observations",
+      "submodules": [],
+      "targets": [
+        "applications/complaint_cli.py",
+        "applications/complaint_workspace.py",
+        "mediator/hook_runtime.py",
+        "tests/test_cimp_mgnd_30.py"
+      ],
+      "title": "Persist private invocation associations without replay dispatch",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_30.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Before enabling new public evidence ingestion, pass private bytes through store_automatic_private_artifact/store_private_artifact and expected owner/case/key bindings.",
+        "Legacy EvidenceStorageHook raw add_bytes is not used for private evidence; public legal corpora remain explicitly public and separate.",
+        "Ciphertext is produced before public hash/cache/pin/index/replica operations; missing key/storage failure never writes plaintext or a simulated durable CID.",
+        "Real encrypted roundtrip and wrong-key/case controls preserve provenance without treating local deterministic ids as remote durability.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-05",
+        "CIMP-MGND-28"
+      ],
+      "goal_id": "goal.mgnd.storage",
+      "id": "CIMP-MGND-31",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nInject the existing private artifact context into newly activated hook paths. Do not replace the Kit encryption owner.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-31",
+      "subgoal_id": "subgoal.mgnd.storage.hooks",
+      "submodules": [
+        "external/ipfs_kit_py",
+        "external/ipfs_datasets_py"
+      ],
+      "targets": [
+        "mediator/evidence_hooks.py",
+        "integrations/ipfs_datasets/storage.py",
+        "applications/complaint_workspace.py",
+        "tests/test_cimp_mgnd_31.py"
+      ],
+      "title": "Route private evidence hook bytes through encrypted storage",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_31.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Audit only newly created synthetic hook database rows and route private derived text/indexes to an encrypted durable owner or owned ephemeral rebuildable index.",
+        "Owner/case-local interview-db naming and mode bits alone are not claimed as encryption; prevent persistent plaintext private facts/previews in the enabled path.",
+        "Index rebuild/close/crash behavior is bounded and cannot publish plaintext fallback files or mix two cases.",
+        "Separate public-law source cache from private support/claim associations and preserve honest persistence-unavailable results.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-31"
+      ],
+      "goal_id": "goal.mgnd.storage",
+      "id": "CIMP-MGND-32",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nScope changes to constructor/storage lifecycle and selected private columns, not a rewrite of all hook query code.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-32",
+      "subgoal_id": "subgoal.mgnd.storage.hooks",
+      "submodules": [],
+      "targets": [
+        "mediator/evidence_hooks.py",
+        "mediator/claim_support_hooks.py",
+        "mediator/legal_authority_hooks.py",
+        "applications/complaint_workspace.py",
+        "tests/test_cimp_mgnd_32.py"
+      ],
+      "title": "Contain private derived hook indexes and caches",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_32.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Expose an explicit single-case migration preflight/commit for synthetic legacy private hook artifacts with source preimage and destination bindings.",
+        "No automatic scan, import or rewrite of existing sessions, user trees, campaign artifacts or historical qualifiers is allowed.",
+        "Interrupted/wrong-key/corrupt/aliased-source migration preserves original bytes and last valid encrypted head; plaintext retirement occurs only after verified commit under the selected retention policy.",
+        "Migration receipt says what was encrypted or remains pending; mode changes or a local copy do not establish encryption/durability.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-31",
+        "CIMP-MGND-32"
+      ],
+      "goal_id": "goal.mgnd.storage",
+      "id": "CIMP-MGND-33",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nReuse existing legacy-session migration and retention owners for one declared artifact class; no broad disk discovery.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-33",
+      "subgoal_id": "subgoal.mgnd.storage.migration",
+      "submodules": [],
+      "targets": [
+        "integrations/private_storage.py",
+        "applications/complaint_workspace.py",
+        "tests/test_cimp_mgnd_33.py"
+      ],
+      "title": "Migrate explicitly selected legacy hook artifacts safely",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_33.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Include current factual/legal graph revisions, source references, conditional IR/proof statuses, hook receipts, pending inquiry and stop policy in one canonical encrypted snapshot transaction.",
+        "Expected-revision conflict, interrupted write or corrupted candidate does not replace the prior readable head.",
+        "Cold read preserves exact source/graph/receipt bindings without reextracting narrative or replaying hooks/model calls.",
+        "Declare external public-law/ephemeral-index dependencies honestly; snapshot existence does not claim all remote replicas exist.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-14",
+        "CIMP-MGND-26",
+        "CIMP-MGND-30",
+        "CIMP-MGND-32"
+      ],
+      "goal_id": "goal.mgnd.storage",
+      "id": "CIMP-MGND-34",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nExtend assemble/persist/load interview snapshot using current owners and bounded schemas.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-34",
+      "subgoal_id": "subgoal.mgnd.storage.durability",
+      "submodules": [
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "applications/complaint_workspace.py",
+        "integrations/ipfs_datasets/storage.py",
+        "tests/test_cimp_mgnd_34.py"
+      ],
+      "title": "Commit complete grounded snapshots atomically",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_34.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use publish_encrypted_replicas/reconcile_encrypted_replicas/restore_encrypted_replicas/restore_encrypted_workspace and count_verified_ciphertext_replicas.",
+        "Only authenticated ciphertext readback with current object/key/case/version binding counts; acknowledgements, local CIDs and fixture providers are labeled accurately.",
+        "Offline/corrupt/stale/partial replicas preserve local committed state and truthful unavailable/degraded durability counts.",
+        "Tests use owned ciphertext-directory fixtures and no live node/provider; live durability remains a separate optional qualification.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-34"
+      ],
+      "goal_id": "goal.mgnd.storage",
+      "id": "CIMP-MGND-35",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nAttach existing Kit durability receipts to the complete grounded snapshot; no custom crypto or replication daemon.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-35",
+      "subgoal_id": "subgoal.mgnd.storage.durability",
+      "submodules": [
+        "external/ipfs_kit_py"
+      ],
+      "targets": [
+        "integrations/ipfs_datasets/storage.py",
+        "applications/complaint_workspace.py",
+        "tests/test_cimp_mgnd_35.py"
+      ],
+      "title": "Verify encrypted replica durability and restore bindings",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_35.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Carry host-selected objective/target/revision/why/expected-answer/update/source references from the actual question into pending_inquiry and encrypted projection.",
+        "Do not replace missing objective/target fields with invented ids or model-authored graph references.",
+        "Actual service /why uses this metadata; repeated /why does not store an answer, alter graph/session revision or dispatch a provider.",
+        "Cold resume preserves the same explanation and target bindings; legacy thin snapshots receive explicit unknown grounding rather than false restored detail.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-06",
+        "CIMP-MGND-10"
+      ],
+      "goal_id": "goal.mgnd.interview",
+      "id": "CIMP-MGND-36",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nFix the _inquiry_from_question/export_session_projection/public /why metadata gap using the existing renderer and selection contract.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-36",
+      "subgoal_id": "subgoal.mgnd.interview.why",
+      "submodules": [],
+      "targets": [
+        "mediator/workflow_service.py",
+        "applications/complaint_workspace.py",
+        "tests/test_cimp_mgnd_36.py"
+      ],
+      "title": "Preserve actual inquiry grounding through shared projection",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_36.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Display the current question's factual target separately from the law-derived requirement and admitted authority citation/version/span references.",
+        "Show user assertion/corroboration/candidate/applicability/proof states without equating them or presenting a retrieval score as proof.",
+        "Unknown authority, source outage, contradiction and missing definition/review are understandable with a relevant next action.",
+        "Rendering stays bounded, accessible in narrow ASCII/no-color terminals and does not expose private content in diagnostic receipts.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-20",
+        "CIMP-MGND-36"
+      ],
+      "goal_id": "goal.mgnd.interview",
+      "id": "CIMP-MGND-37",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nExtend the existing /why formatter and public payload only where new grounding fields need presentation; do not rebuild a UI.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-37",
+      "subgoal_id": "subgoal.mgnd.interview.why",
+      "submodules": [],
+      "targets": [
+        "complaint_phases/denoiser.py",
+        "applications/complaint_cli.py",
+        "applications/complaint_workspace.py",
+        "tests/test_cimp_mgnd_37.py"
+      ],
+      "title": "Render factual versus law-derived question support clearly",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_37.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Reuse existing stopping states and target dispositions to distinguish awaiting user, source research, evidence request, review, unavailable provider and no-progress.",
+        "An empty question pool, plateau, turn cap, skipped/unknown answer or completed hook cannot establish factual/legal/proof/filing sufficiency.",
+        "When answerable questions saturate but legal/evidence dependencies remain open, publish a concrete authorized research/evidence/review action with bounded attempts and resumable context.",
+        "Budget/no-progress exhaustion terminates the operation honestly; it does not busy-loop, wait for developer stdin or claim a stalled worker is an awaiting-user session.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-25",
+        "CIMP-MGND-37"
+      ],
+      "goal_id": "goal.mgnd.interview",
+      "id": "CIMP-MGND-38",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nConnect new hook outcomes to project_stopping_policy/evaluate_interview_stop rather than adding another stop engine.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-38",
+      "subgoal_id": "subgoal.mgnd.interview.handoff",
+      "submodules": [],
+      "targets": [
+        "complaint_phases/denoiser.py",
+        "mediator/workflow_service.py",
+        "applications/complaint_workspace.py",
+        "tests/test_cimp_mgnd_38.py"
+      ],
+      "title": "Offer finite source/evidence next actions without false completion",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_38.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Actual chat control flow captures narrative, performs correction/research action, pauses and resumes in a fresh service/process with identical pending inquiry and graph revisions.",
+        "Preserve old and new factual sources, current legal edition/proof state, consent and operation receipts under encryption.",
+        "Stale concurrent answer/edit/research requests are rejected without changing the accepted state.",
+        "EOF/Ctrl-C/quit retain documented exit semantics and a recoverable pending operation without duplicate extraction or dispatch.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-12",
+        "CIMP-MGND-34",
+        "CIMP-MGND-38"
+      ],
+      "goal_id": "goal.mgnd.interview",
+      "id": "CIMP-MGND-39",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nExercise the real public terminal and session service with authored inputs and owned temporary keys.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-39",
+      "subgoal_id": "subgoal.mgnd.interview.resume",
+      "submodules": [],
+      "targets": [
+        "applications/complaint_cli.py",
+        "applications/complaint_workspace.py",
+        "mediator/workflow_service.py",
+        "tests/test_cimp_mgnd_39.py"
+      ],
+      "title": "Resume corrections and research across real terminal sessions",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_39.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Cover malformed/late model proposal, consent revocation, wrong key, legal-source outage, interrupted snapshot and corrupt replica through actual public operations.",
+        "Each case preserves the last valid graph/head, pending inquiry and safe error code with no fake legal completion.",
+        "Required operations have bounded deadlines and owned child cleanup; no provider/network or unrelated process is touched.",
+        "Resume is possible or the exact nonrecoverable boundary is stated; unavailable capability is an asserted outcome, not a skipped case.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-29",
+        "CIMP-MGND-35",
+        "CIMP-MGND-39"
+      ],
+      "goal_id": "goal.mgnd.interview",
+      "id": "CIMP-MGND-40",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nAdd only focused adverse regressions for newly wired paths using shared guarded fixtures.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-40",
+      "subgoal_id": "subgoal.mgnd.interview.resume",
+      "submodules": [],
+      "targets": [
+        "applications/complaint_workspace.py",
+        "mediator/hook_runtime.py",
+        "tests/test_cimp_mgnd_40.py"
+      ],
+      "title": "Cover adverse hook and storage outcomes in the public flow",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_40.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Exercise generic campaign artifact selection for this spec/plan/board namespace using isolated synthetic control-plane state and actual public Native read/status seams.",
+        "Bind health observations to the new plan/CID/source generation and retain old completed 58-task artifacts as immutable historical baseline.",
+        "Assert pinned Grok4.7 route, implement/resource caps, pool1 and no fallback; no provider starts in tests.",
+        "Characterization/manual metadata does not grant completion; only genuine accepted Native validation/merge/callback can close tasks.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-02",
+        "CIMP-MGND-04"
+      ],
+      "goal_id": "goal.mgnd.operations",
+      "id": "CIMP-MGND-41",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nRoot supplies the small campaign-artifacts selector. Add focused tests/integration adjustments only if needed; do not recreate the supervisor or use production campaign state.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-41",
+      "subgoal_id": "subgoal.mgnd.operations.health",
+      "submodules": [
+        "external/ipfs_accelerate_py"
+      ],
+      "targets": [
+        "integrations/ipfs_accelerate/improvement_runner.py",
+        "integrations/ipfs_accelerate/improvement_plan.py",
+        "tests/test_cimp_mgnd_41.py"
+      ],
+      "title": "Observe the separate campaign without mutating the old 58-task state",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_41.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Report claim/worker/provider/validation/merge liveness separately from application awaiting_user and paused interview states.",
+        "Use existing Native monitor/recovery owners for typed timeout/stall reconciliation; no claim edits, forced task completion, attempt refunds or silent provider retry.",
+        "Synthetic recovery test proves bounded observation, preserved accounting/ownership and no duplicate dispatch or leaked children.",
+        "A worker cannot wait on stdin for the user's complaint or block indefinitely on provider progress.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-07",
+        "CIMP-MGND-41"
+      ],
+      "goal_id": "goal.mgnd.operations",
+      "id": "CIMP-MGND-42",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nExtend only campaign-scoped health projection and tests; preserve existing Native constructor, scheduler and cleanup policy.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-42",
+      "subgoal_id": "subgoal.mgnd.operations.health",
+      "submodules": [
+        "external/ipfs_accelerate_py"
+      ],
+      "targets": [
+        "integrations/ipfs_accelerate/improvement_runner.py",
+        "tests/test_cimp_mgnd_42.py"
+      ],
+      "title": "Bound worker health and recovery while preserving legitimate user waits",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_42.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Use actual chat/service entrypoints for narrative\u2192source-bound factual KG\u2192explicit legal context\u2192source acquisition/admission\u2192dependency refresh\u2192question /why\u2192correction\u2192encrypted cold resume.",
+        "Assert source spans/versions, separate factual/legal identities, current support/proof outcomes, real graph effects and zero hidden skips.",
+        "Cover a clean success-to-review path and explicit unknown/contradiction/source-unavailable paths; no manually satisfied nodes or caller classification shortcuts.",
+        "Run only this bounded acceptance module, not the entire repository or old 83-module release closure; attach current source/test/case/result identities.",
+        "Fake observed inference and fixture ciphertext providers remain labeled synthetic; no live Grok, numerical training, legal advice or remote durability qualification is claimed.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-40",
+        "CIMP-MGND-42"
+      ],
+      "goal_id": "goal.mgnd.operations",
+      "id": "CIMP-MGND-43",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nWrite a small nonrecursive end-to-end acceptance module over the integrated new public paths. It is not Native completion authority.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-43",
+      "subgoal_id": "subgoal.mgnd.operations.acceptance",
+      "submodules": [],
+      "targets": [
+        "tests/mgnd_fixtures.py",
+        "tests/test_cimp_mgnd_43.py"
+      ],
+      "title": "Prove the new grounded public journey with synthetic source evidence",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_43.py --run-llm --run-network --run-heavy"
+      ]
+    },
+    {
+      "acceptance": [
+        "Document the canonical chat command, consent modes, legal/evidence actions, /why, correction, pause/resume, source/proof limits and encrypted storage/durability distinctions.",
+        "Define pre-completion versus post-Native-callback audit contracts: this task's validation remains self-pending and never manufactures its own completion.",
+        "Require the separate new plan's actual accepted task/CID/goal/subgoal evidence and current-source public acceptance; report unavailable/blocked work explicitly.",
+        "Old 58-task receipts remain historical scoped evidence; do not remap them to new task ids or call this a fresh old-release qualification.",
+        "Docs and contract tests are small, nonrecursive, source-bound and have no provider/state/publication authority.",
+        "The focused module collects nonempty meaningful cases and passes with zero required skips using synthetic private fixtures; failures/unavailability remain truthful."
+      ],
+      "depends_on": [
+        "CIMP-MGND-24",
+        "CIMP-MGND-33",
+        "CIMP-MGND-35",
+        "CIMP-MGND-43"
+      ],
+      "goal_id": "goal.mgnd.operations",
+      "id": "CIMP-MGND-44",
+      "implementation_prompt": "Implement only this bounded task in the supplied isolated checkout. Budget: 64 agent turns and 900 seconds; stop with a typed limitation if a prerequisite is absent. Inspect only declared targets, their direct owners and synthetic fixtures; no full-repository analysis. Reuse existing first-party adapters and task-declared pinned upstream APIs. No dependency installation, model download, training, paid test inference, live provider canary, real complaint/session/evidence/secret reads, external publication, or other campaign/state/process changes. Never weaken an assertion, add a required skip, fake a backend completion, manually satisfy a legal node, synthesize a Native receipt, or call a provider to obtain test evidence. Use temporary private HOME/session trees, class-preserving provider guards and bounded cleanup. Any fake transport is explicitly synthetic and cannot verify live Grok identity. Keep an awaiting_user interview distinct from a stalled worker. Run the one declared focused module; the trusted supervisor owns sealed validation and completion. If worker dependencies are unavailable, preserve meaningful tests and report the limitation for the host validator; do not vendor or bypass it.\n\nDeliver operator guidance and a pure completion-contract evaluator with focused tests. Root performs the actual post-callback audit outside the task; no private campaign reads inside tests.",
+      "priority": "P0",
+      "source_candidate_id": "MGND-44",
+      "subgoal_id": "subgoal.mgnd.operations.acceptance",
+      "submodules": [],
+      "targets": [
+        "docs/task_boards/complaint_mediator_grounding_operator_guide.md",
+        "docs/task_boards/complaint_mediator_grounding_completion_contract.json",
+        "tests/test_cimp_mgnd_44.py"
+      ],
+      "title": "Document grounded operations and audit campaign completion honestly",
+      "validation_commands": [
+        "HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m pytest -q tests/test_cimp_mgnd_44.py --run-llm --run-network --run-heavy"
+      ]
+    }
+  ],
+  "title": "Mediator grounding, source-bound law and private terminal workflow",
+  "upstream_pins": {
+    "ipfs_accelerate_py": "947f873e407efd9b12c551a5e69a9b62819b9c4e",
+    "ipfs_datasets_py": "b857f28462bfbb9cbf02232a79cdefcaa1ef1bc7",
+    "ipfs_kit_py": "0007f735b90215fa611f39aa558eb512a493b8af",
+    "mike": "91c8b8bc13c8bc57528121352e067c3ea2828726"
+  },
+  "verified_upstream_apis": [
+    {
+      "module": "ipfs_datasets_py.knowledge_graphs.extraction.extractor",
+      "notes": "Disable external enrichment/downloads; extraction is candidate evidence.",
+      "symbols": [
+        "KnowledgeGraphExtractor",
+        "KnowledgeGraphExtractor.extract_knowledge_graph"
+      ],
+      "verified": "Canonical source and existing first-party adapter inspected; actual path probe is MGND-02/09"
+    },
+    {
+      "module": "ipfs_datasets_py.knowledge_graphs",
+      "notes": "Reuse canonical public KG client; no raw private graph publication.",
+      "symbols": [
+        "Client",
+        "GraphTarget"
+      ],
+      "verified": "Existing public API adapter and prior scoped current-Data117 tests; new campaign probe remains pending"
+    },
+    {
+      "module": "ipfs_datasets_py.processors.legal_scrapers.legal_dataset_api",
+      "notes": "Explicit jurisdiction/date, bounded local-first acquisition; hits are candidates.",
+      "symbols": [
+        "search_state_law_corpus_from_parameters",
+        "search_us_code_corpus_from_parameters",
+        "search_federal_register_corpus_from_parameters",
+        "search_court_rules_corpus_from_parameters"
+      ],
+      "verified": "Source signatures/first-party adapter inspected"
+    },
+    {
+      "module": "integrations.ipfs_datasets.logic",
+      "notes": "Reuse current Data compiler/source-map/prover adapters; unavailable is not proved.",
+      "symbols": [
+        "compile_canonical_legal_ir",
+        "generate_bound_legal_ir_proof_obligations",
+        "route_bound_legal_ir_proof",
+        "proof_cache_identity",
+        "replay_satisfied_element_proof"
+      ],
+      "verified": "Current canonical first-party owner definitions inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.autoformal.legal_source_sampling_review_context",
+      "notes": "Complete pinned context/review population, no semantic authority.",
+      "symbols": [
+        "prepare",
+        "validate",
+        "record_response",
+        "validate_response",
+        "summarize"
+      ],
+      "verified": "Current b857 source owner inspected by SDK audit"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.autoformal.legal_source_sampling_context_definition_binding_v2",
+      "notes": "Distinct contextual envelope; preserve source population.",
+      "symbols": [
+        "prepare",
+        "validate"
+      ],
+      "verified": "Current b857 source owner inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.autoformal.legal_source_sampling_context_definition_review_v2",
+      "notes": "Separate context/review evidence, no legal proof.",
+      "symbols": [
+        "prepare",
+        "validate"
+      ],
+      "verified": "Current b857 source owner inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.autoformal.legal_norm_definition_evidence_v1",
+      "notes": "Conditional source/definition correspondence only.",
+      "symbols": [
+        "prepare_norm_definition_evidence_v1",
+        "validate_norm_definition_evidence_v1"
+      ],
+      "verified": "Current b857 source definitions inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.autoformal.legal_norm_scope_correspondence_v1",
+      "notes": "No meaning/applicability/proof shortcut.",
+      "symbols": [
+        "prepare_norm_scope_correspondence_v1",
+        "validate_norm_scope_correspondence_v1"
+      ],
+      "verified": "Current b857 source definitions inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.autoformal.legal_norm_interpretation_review_v1",
+      "notes": "Require independently provided decisions; no invented reviewers.",
+      "symbols": [
+        "prepare_norm_review_evidence_v1",
+        "build_norm_review_subject_v1",
+        "assess_norm_reviews_v1",
+        "validate_norm_review_assessment_v1"
+      ],
+      "verified": "Current b857 source owner inspected by SDK audit"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.autoformal.legal_bound_variable_definition_v1",
+      "notes": "Carrier/scope evidence remains conditional.",
+      "symbols": [
+        "prepare_bound_variable_definition_v1",
+        "validate_bound_variable_definition_v1"
+      ],
+      "verified": "Current b857 source definitions inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.formalization.autoencoder.legal_compact_content_persistent_v1",
+      "notes": "Optional qualified model eligibility only; no training/restore/download in this campaign's required tests.",
+      "symbols": [
+        "load_compact_content_persistent_v1",
+        "score_compact_content_persistent_v1"
+      ],
+      "verified": "Current b857 public source definitions inspected"
+    },
+    {
+      "module": "ipfs_datasets_py.logic.formalization.autoencoder.legal_compact_content_predicate_training_v1",
+      "notes": "Engineering checkpoint identity cannot supply law or proof.",
+      "symbols": [
+        "inspect",
+        "checkpoint_sha256"
+      ],
+      "verified": "Current b857 public source definitions inspected"
+    },
+    {
+      "module": "integrations.ipfs_datasets.storage",
+      "notes": "Encrypt before public storage; count only actual authenticated ciphertext readback.",
+      "symbols": [
+        "store_automatic_private_artifact",
+        "store_private_artifact",
+        "retrieve_private_artifact",
+        "publish_encrypted_replicas",
+        "reconcile_encrypted_replicas",
+        "restore_encrypted_replicas",
+        "restore_encrypted_workspace"
+      ],
+      "verified": "Canonical Kit-backed first-party facade inspected by storage audit"
+    }
+  ]
+}

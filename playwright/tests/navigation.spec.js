@@ -46,6 +46,30 @@ async function waitForWorkspaceReady(page) {
   }
 }
 
+async function revealAllIntakeFields(page) {
+  const toggle = page.locator('#intake-show-all-button');
+  if (await toggle.count()) {
+    const pressed = await toggle.getAttribute('aria-pressed');
+    if (pressed !== 'true') {
+      await toggle.click();
+    }
+  }
+  await expect(page.locator('#intake-party_name')).toBeVisible({ timeout: 10000 });
+}
+
+async function expectScreenshotBudget(locator, { label, maxRenderedHeight, maxScrollHeight = maxRenderedHeight }) {
+  const metrics = await locator.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      renderedHeight: Math.ceil(rect.height),
+      scrollHeight: Math.ceil(node.scrollHeight),
+    };
+  });
+  expect(metrics.renderedHeight, `${label} rendered height should stay within screenshot budget`).toBeLessThanOrEqual(maxRenderedHeight);
+  expect(metrics.scrollHeight, `${label} scroll height should stay within screenshot budget`).toBeLessThanOrEqual(maxScrollHeight);
+  return metrics;
+}
+
 test.describe('website surface navigation', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
@@ -58,7 +82,7 @@ test.describe('website surface navigation', () => {
 
     await expect(page.locator('h1').first()).toContainText(/Lex Publicus Complaint Generator/i);
     await expect(page.locator('body')).toContainText(/Build your complaint one step at a time/i);
-    await expect(page.locator('body')).toContainText(/Resume an existing complaint/i);
+    await expect(page.locator('body')).toContainText(/Your next safest step/i);
     await expect(page.locator('body')).toContainText(/Three Simple Steps/i);
     await expect(page.locator('body')).toContainText(/Choose Your Next Step/i);
     await expect(page.locator('#homepage-nav-workspace')).toBeVisible();
@@ -144,6 +168,9 @@ test.describe('website surface navigation', () => {
     await page.goto('/chat');
     await expect(page.locator('#chat-nav-builder')).toBeVisible();
     await expect(page.locator('#chat-nav-review')).toBeVisible();
+    await expect(page.locator('#chat-nav-workspace')).toBeVisible();
+    await expect(page.locator('[data-surface-nav="primary"]')).not.toContainText(/Trace|SDK|Dashboards/i);
+    await expect(page.locator('#chat-advanced-nav')).toContainText(/Advanced tools/i);
 
     await page.goto('/results');
     await expect(page.locator('#results-nav-builder')).toBeVisible();
@@ -152,15 +179,55 @@ test.describe('website surface navigation', () => {
     await page.goto('/document');
     await expect(page.locator('#builder-nav-review')).toBeVisible();
     await expect(page.locator('#builder-nav-workspace')).toBeVisible();
-    await expect(page.locator('#cg-app-shell a[href*="/mlwysiwyg"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/ipfs-datasets/sdk-playground"]').first()).toBeVisible();
+    await expect(page.locator('[data-surface-nav="primary"]')).not.toContainText(/Profile|Trace|SDK|Dashboards/i);
+    await expect(page.locator('#builder-advanced-nav')).toContainText(/Advanced tools/i);
+    await expect(page.locator('#builder-nav-trace')).toHaveAttribute('href', /\/document\/optimization-trace/);
 
     await page.goto('/claim-support-review');
     await expect(page.locator('#review-nav-builder')).toBeVisible();
     await expect(page.locator('#review-nav-workspace')).toBeVisible();
-    await expect(page.locator('#cg-app-shell a[href*="/mlwysiwyg"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/ipfs-datasets/sdk-playground"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/dashboards"]').first()).toBeVisible();
+    await expect(page.locator('[data-surface-nav="primary"]')).not.toContainText(/Profile|Trace|SDK|Dashboards/i);
+    await expect(page.locator('#review-advanced-nav')).toContainText(/Advanced tools/i);
+    await expect(page.locator('#review-nav-trace')).toHaveAttribute('href', /\/document\/optimization-trace/);
+  });
+
+  test('client and operator personas gate advanced controls consistently', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('complaintGenerator.did', 'did:key:nav-persona-gates');
+      window.localStorage.removeItem('complaintGenerator.shellMode');
+    });
+
+    await page.goto('/chat?shell_mode=client');
+    await expect(page.locator('#cg-app-shell')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#cg-app-shell')).toContainText(/Client mode/i);
+    await expect(page.locator('#cg-app-shell')).toContainText(/Technical tools hidden in client mode/i);
+    await expect(page.locator('#cg-app-shell-advanced-nav')).toHaveCount(0);
+
+    await page.goto('/chat?shell_mode=operator');
+    await expect(page.locator('#cg-app-shell')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#cg-app-shell')).toContainText(/Operator mode/i);
+    await expect(page.locator('#cg-app-shell-advanced-nav')).toBeVisible();
+    await expect(page.locator('#cg-app-shell')).toContainText(/MCP tools/i);
+
+    await page.goto('/workspace?shell_mode=client');
+    await waitForWorkspaceReady(page);
+    await expect(page.locator('body')).toHaveAttribute('data-workspace-shell-mode', 'client');
+    await page.locator('[data-tab-target="docket"]').click();
+    await expect(page.locator('#docket-advanced-operations')).toBeHidden();
+    await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
+    await expect(page.locator('#integrations-technical-reference')).toBeHidden();
+    await expect(page.locator('#integrations-operator-workbench-card')).toBeHidden();
+    await expect(page.locator('#integrations-operator-panels')).toBeHidden();
+
+    await page.goto('/workspace?shell_mode=operator');
+    await waitForWorkspaceReady(page);
+    await expect(page.locator('body')).toHaveAttribute('data-workspace-shell-mode', 'operator');
+    await page.locator('[data-tab-target="docket"]').click();
+    await expect(page.locator('#docket-advanced-operations')).toBeVisible();
+    await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
+    await expect(page.locator('#integrations-technical-reference')).toBeVisible();
+    await expect(page.locator('#integrations-operator-workbench-card')).toBeVisible();
+    await expect(page.locator('#integrations-operator-panels')).toBeVisible();
   });
 
   test('profile and results surfaces explain stored complaint state clearly', async ({ page }, testInfo) => {
@@ -171,6 +238,8 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('body')).toContainText(/Connected workflow/i);
     await expect(page.locator('#profile_data')).toBeVisible();
     await expect(page.locator('#chat_history')).toBeVisible();
+    await expect(page.locator('#profile_data')).not.toContainText(/demo-password|playwright-token/i);
+    await expect(page.locator('#profile_data')).toContainText(/\[redacted\]/i);
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Profile/i);
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Results/i);
     await expect(page.locator('#profile-open-chat')).toHaveAttribute('href', '/chat');
@@ -189,6 +258,8 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('body')).toContainText(/stored complaint data/i);
     await expect(page.locator('body')).toContainText(/Stored complaint results/i);
     await expect(page.locator('#profile_data')).toBeVisible();
+    await expect(page.locator('#profile_data')).not.toContainText(/demo-password|playwright-token/i);
+    await expect(page.locator('#profile_data')).toContainText(/\[redacted\]/i);
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Review/i);
     await expect(page.locator('[data-surface-nav="primary"]')).toContainText(/Builder/i);
     await expect(page.locator('#results-open-chat')).toHaveAttribute('href', '/chat');
@@ -212,15 +283,24 @@ test.describe('website surface navigation', () => {
     await page.goto(handoffUrl);
 
     await expect(page).toHaveTitle(/Lex Publicus Chat App/i);
-    await expect(page.locator('h1').first()).toContainText(/Tell the story before the pleading/i);
+    await expect(page.locator('.hero h1')).toContainText(/Tell the story before the pleading/i);
     await expect(page.locator('body')).toContainText(/What to focus on in the interview|Complaint narrative chat/i);
     await expect(page.locator('#chat-context-card')).toBeVisible();
     await expect(page.locator('#chat-context-summary')).toContainText(/did:key:handoff-demo/i);
     await expect(page.locator('#chat-context-summary')).toContainText(/Jordan Example alleges retaliation/i);
-    await expect(page.locator('#chat-context-prefill')).toContainText(/Prepared mediator prompt/i);
+    await expect(page.locator('#chat-context-prefill')).toContainText(/Prepared question/i);
     await expect(page.locator('#chat-context-return-link')).toHaveAttribute('href', /\/workspace\?target_tab=review/);
     await expect(page.locator('#chat-form input')).toHaveValue(/Mediator, help turn this into testimony-ready narrative/i);
-    await expect(page.locator('[aria-label="Chat next steps"]')).toBeVisible();
+    const chatLayoutOrder = await page.evaluate(() => {
+      const form = document.querySelector('#chat-form');
+      const guidance = document.querySelector('.hero');
+      return {
+        formTop: form ? form.getBoundingClientRect().top : 0,
+        guidanceTop: guidance ? guidance.getBoundingClientRect().top : 0,
+      };
+    });
+    expect(chatLayoutOrder.formTop).toBeLessThan(chatLayoutOrder.guidanceTop);
+    await expect(page.locator('[aria-label="Additional chat destinations"]')).toBeVisible();
     await expect(page.locator('#chat-meta-workspace')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
     await expect(page.locator('#chat-nav-profile')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
     await expect(page.locator('#chat-nav-results')).toHaveAttribute('href', /user_id=did%3Akey%3Ahandoff-demo/);
@@ -242,6 +322,44 @@ test.describe('website surface navigation', () => {
     });
   });
 
+  test('document-scoped chat puts the selected filing context first', async ({ page }) => {
+    const context = {
+      scope: 'selected_document',
+      docket_item_id: 'doc-termination-notice',
+      title: 'Termination notice filed March 10',
+      document_type: 'order',
+      source: 'Docket import',
+      labels: ['Adverse action', 'Deadline'],
+      router_mode: 'llm_router / multimodal_router',
+    };
+    const params = new URLSearchParams({
+      source: 'workspace-docket',
+      user_id: 'did:key:docket-chat-demo',
+      prefill_message: 'What deadline or response does this order create?',
+      chat_context: JSON.stringify(context),
+      return_to: '/workspace?target_tab=docket',
+    });
+
+    await page.goto(`/chat?${params.toString()}`);
+
+    await expect(page.locator('#cg-app-shell')).toHaveCount(0);
+    await expect(page.locator('[data-surface-nav="primary"]')).toBeHidden();
+    await expect(page.locator('#chat-selected-filing-hero')).toBeVisible();
+    await expect(page.locator('#chat-selected-filing-badge')).toContainText(/Selected filing attached/i);
+    await expect(page.locator('#chat-selected-filing-title')).toContainText(/Termination notice filed March 10/i);
+    await expect(page.locator('#chat-selected-filing-source')).toContainText(/Docket import/i);
+    await expect(page.locator('#chat-selected-filing-type')).toContainText(/order/i);
+    await expect(page.locator('#chat-selected-filing-scope')).toContainText(/llm_router \/ multimodal_router/i);
+    await expect(page.locator('#chat-selected-filing-question')).toContainText(/What deadline or response does this order create/i);
+    await expect(page.locator('#chat-selected-filing-persistence')).toContainText(/nothing is saved as a label, annotation, deadline, or answer/i);
+    await expect(page.locator('#chat-selected-filing-return-link')).toHaveAttribute('href', /\/workspace\?target_tab=docket/);
+    await expect(page.locator('.hero')).toBeHidden();
+    await expect(page.locator('#chat-active-context-title')).toContainText(/Termination notice filed March 10/i);
+    await expect(page.locator('#chat-grounding-preview')).toBeVisible();
+    await expect(page.locator('#chat-grounding-document')).toContainText(/Termination notice filed March 10/i);
+    await expect(page.locator('#chat-form input')).toHaveValue(/What deadline or response does this order create/i);
+  });
+
   test('chat next-step actions preserve complaint context across workflow handoffs', async ({ page }) => {
     const handoffUrl = '/chat?source=workspace'
       + '&user_id=did:key:chat-step-demo'
@@ -250,7 +368,7 @@ test.describe('website surface navigation', () => {
       + '&return_to=%2Fworkspace%3Ftarget_tab%3Dreview';
 
     await page.goto(handoffUrl);
-    await expect(page.locator('[aria-label="Chat next steps"]')).toBeVisible();
+    await expect(page.locator('[aria-label="Additional chat destinations"]')).toBeVisible();
     await page.locator('#chat-open-profile').click();
     await expect(page).toHaveURL(/\/profile\?/);
     await expect(page.locator('#profile-context-card')).toBeVisible();
@@ -312,6 +430,7 @@ test.describe('website surface navigation', () => {
     await page.goto('/workspace');
     await waitForWorkspaceReady(page);
 
+    await revealAllIntakeFields(page);
     await page.locator('#intake-party_name').fill('Jordan Example');
     await page.locator('#intake-opposing_party').fill('Acme Corporation');
     await page.locator('#intake-protected_activity').fill('Reported discrimination to HR');
@@ -369,6 +488,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('body')).toContainText(/Operator Review Surface/i);
 
     await page.goto('/document?user_id=did:key:builder-nav-demo&claim_type=retaliation');
+    await page.locator('#builder-advanced-nav > summary').click();
     await page.locator('#builder-nav-trace').click();
     await expect(page).toHaveURL(/\/document\/optimization-trace\?/);
     await expect(page).toHaveURL(/user_id=did%3Akey%3Abuilder-nav-demo/);
@@ -467,6 +587,8 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#review-nav-review')).toHaveAttribute('href', /user_id=did%3Akey%3Areview-nav-demo/);
     await expect(page.locator('#review-nav-builder')).toHaveAttribute('href', /user_id=did%3Akey%3Areview-nav-demo/);
     await expect(page.locator('#review-nav-trace')).toHaveAttribute('href', /user_id=did%3Akey%3Areview-nav-demo/);
+    await page.locator('#review-advanced-nav > summary').click();
+    await expect(page.locator('#review-nav-profile')).toBeVisible();
     await page.locator('#review-nav-profile').click();
     await expect(page).toHaveURL(/\/profile\?/);
     await expect(page).toHaveURL(/user_id=did%3Akey%3Areview-nav-demo/);
@@ -494,6 +616,7 @@ test.describe('website surface navigation', () => {
     await page.goto('/workspace');
     await waitForWorkspaceReady(page);
 
+    await revealAllIntakeFields(page);
     await page.locator('#intake-party_name').fill('Jane Doe');
     await page.locator('#intake-opposing_party').fill('Acme Corporation');
     await page.locator('#intake-protected_activity').fill('Reported discrimination to HR');
@@ -544,8 +667,48 @@ test.describe('website surface navigation', () => {
   });
 
   test('dashboard hub and every mounted shell route are reachable in the JS stub surface', async ({ page }) => {
-    await page.goto('/dashboards');
+    await page.goto('/dashboards?user_id=did:key:nav-dashboard-user');
     await expect(page.locator('body')).toContainText(/Unified Dashboard Hub/i);
+    await expect(page.getByRole('heading', { name: 'Start your complaint' })).toBeVisible();
+    await expect(page.locator('#dashboard-entry-paths')).toContainText(/Step 2: Evidence/);
+    await expect(page.locator('#dashboard-entry-paths')).toContainText(/Step 3: Review/);
+    await expect(page.getByRole('heading', { name: 'Manage your profile' })).toBeVisible();
+    await expect(page.locator('#dashboard-recommended-action-panel')).toBeVisible();
+    await expect(page.locator('#dashboard-recommended-action-panel')).toContainText(/Step 1: Intake/i);
+    await expect(page.locator('#dashboard-recommended-action-link')).toHaveText(/Start Intake Questions/i);
+    await expect(page.locator('.progress-rule-strip')).toHaveCount(0);
+    await expect(page.locator('.hero-stepper .stepper-step')).toHaveCount(0);
+    await expect(page.locator('#dashboard-stage-progress')).toHaveCount(0);
+    await expect(page.locator('#dashboard-entry-paths .stage-control')).toHaveCount(3);
+    await expect(page.locator('#dashboard-utility-paths .entry-card')).toHaveCount(1);
+    await expect(page.locator('#dashboard-entry-paths .stage-control').first()).toHaveAttribute('data-path-state', 'current');
+    await expect(page.locator('#dashboard-entry-paths .stage-control').first()).toContainText(/Step 1: Intake/);
+    await expect(page.locator('#dashboard-entry-paths .stage-control').first()).toContainText(/Start Intake Questions/);
+    await expect(page.locator('#dashboard-entry-paths .stage-control').nth(1)).toHaveAttribute('data-path-state', 'locked');
+    await expect(page.locator('#dashboard-entry-paths .stage-control').nth(1)).toContainText(/Step 2: Evidence/);
+    await expect(page.locator('#dashboard-entry-paths .stage-control').nth(1)).toContainText(/To unlock/);
+    await expect(page.locator('#dashboard-entry-paths .stage-control').nth(1)).toContainText(/Complete Step 1: Intake to unlock Evidence/);
+    await expect(page.locator('#dashboard-entry-paths .stage-control').nth(1).locator('button.stage-control-action')).toBeDisabled();
+    await expect(page.locator('#dashboard-entry-paths .stage-control').nth(1).locator('button.stage-control-action')).toHaveText(/Disabled: complete Step 1 first/);
+    await expect(page.locator('#dashboard-entry-paths .stage-control').nth(2)).toHaveAttribute('data-path-state', 'locked');
+    await expect(page.locator('#dashboard-entry-paths .stage-control').nth(2)).toContainText(/Step 3: Review/);
+    await expect(page.locator('#dashboard-entry-paths .stage-control').nth(2)).toContainText(/To unlock/);
+    await expect(page.locator('#dashboard-entry-paths .stage-control').nth(2)).toContainText(/Add a docket file to unlock Review/);
+    await expect(page.locator('#dashboard-entry-paths .stage-control').nth(2).locator('button.stage-control-action')).toBeDisabled();
+    await expect(page.locator('#dashboard-entry-paths .stage-control').nth(2).locator('button.stage-control-action')).toHaveText(/Disabled: add a docket file/);
+    await expect(page.locator('#dashboard-utility-paths .entry-card').first()).toHaveAttribute('data-path-state', 'utility');
+    await expect(page.locator('#dashboard-utility-paths .entry-card').first()).toContainText(/Optional/);
+    await expect(page.locator('.entry-card .primary-action')).toHaveCount(0);
+    await expect(page.locator('#dashboard-entry-paths .jump-link')).toHaveCount(0);
+    await expect(page.locator('#dashboard-entry-paths summary')).toHaveCount(0);
+    await expect(page.locator('#dashboard-subsection-index')).toContainText(/Saved complaint/i);
+    await expect(page.locator('#dashboard-subsection-index')).toContainText(/Ask document question/i);
+    await expect(page.getByText('4 tool groups', { exact: true })).toBeVisible();
+    await expect(page.getByText('5 admin consoles', { exact: true })).toBeVisible();
+    await expect(page.locator('#dashboard-recommended-action-link')).toHaveAttribute('href', /user_id=did%3Akey%3Anav-dashboard-user/);
+    await expect(page.locator('body')).not.toContainText(/Admin Dashboard Error|IPFS Datasets MCP Dashboard Clean|IPFS Datasets MCP Dashboard Final/i);
+    await expect(page.locator('body')).not.toContainText(/31 MCP tools|did:key:nav-dashboard-user/i);
+    await expect(page.locator('#dashboard-advanced-tools > summary')).toContainText(/Advanced Operations/);
 
     for (const [route, heading] of dashboardRoutes) {
       await page.goto(route);
@@ -612,6 +775,7 @@ test.describe('website surface navigation', () => {
     await expect(page.locator('#shortcut-review-button')).toBeDisabled();
     await expect(page.locator('#shortcut-review-button')).toHaveAttribute('title', /Finish more intake and save at least one targeted evidence item/i);
 
+    await revealAllIntakeFields(page);
     await page.locator('#intake-party_name').fill('Jane Doe');
     await page.locator('#intake-opposing_party').fill('Acme Corporation');
     await page.locator('#intake-protected_activity').fill('Reported discrimination to HR');
@@ -631,7 +795,7 @@ test.describe('website surface navigation', () => {
     await expect(page).toHaveURL(/\/chat\?/);
     await expect(page.locator('#chat-context-card')).toBeVisible();
     await expect(page.locator('#chat-context-summary')).toContainText(/Jane Doe alleges retaliation/i);
-    await expect(page.locator('#chat-context-prefill')).toContainText(/Prepared mediator prompt/i);
+    await expect(page.locator('#chat-context-prefill')).toContainText(/Prepared question/i);
     await expect(page.locator('#chat-form input')).toHaveValue(/Mediator, help turn this into testimony-ready narrative/i);
     await page.goto('/workspace');
     await expect(page.locator('#case-synopsis')).toHaveValue(/Jane Doe alleges retaliation/i);
@@ -739,12 +903,16 @@ test.describe('website surface navigation', () => {
       window.localStorage.setItem('complaintGenerator.did', 'did:key:nav-workspace-mobile');
     });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/workspace');
+    await page.goto('/workspace?shell_mode=operator');
     await waitForWorkspaceReady(page, { requireIntakeVisible: false });
+    await expect(page.locator('body')).toHaveAttribute('data-workspace-shell-mode', 'operator');
 
     await page.getByRole('button', { name: 'CLI + MCP', exact: true }).click();
     await expect(page.locator('#integrations-start-readiness-button')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('#integrations-start-export-button')).toBeVisible();
+    await expect(page.locator('#integrations-technical-reference summary')).toContainText(/Advanced package, CLI, MCP, and browser SDK reference/i);
+    await expect(page.locator('#integrations-technical-reference')).not.toHaveAttribute('open', '');
+    await expect(page.locator('#integrations-operator-panels')).not.toHaveAttribute('open', '');
     await expect(page.locator('#feature-coverage-list')).toContainText(/Actor\/Critic UI optimizer/i);
     await expect(page.locator('#tool-list')).toContainText(/complaint\.optimize_ui/i);
 
@@ -753,10 +921,325 @@ test.describe('website surface navigation', () => {
       scrollWidth: node.scrollWidth,
     }));
     expect(panelMetrics.scrollWidth).toBeLessThanOrEqual(panelMetrics.clientWidth + 2);
+    await expectScreenshotBudget(page.locator('[data-tab-panel="integrations"]'), {
+      label: 'mobile integrations panel',
+      maxRenderedHeight: 7200,
+      maxScrollHeight: 7200,
+    });
 
     const screenshotPath = testInfo.outputPath('workspace-integrations-mobile.png');
     await page.locator('[data-tab-panel="integrations"]').screenshot({ path: screenshotPath });
     await testInfo.attach('workspace-integrations-mobile', {
+      path: screenshotPath,
+      contentType: 'image/png',
+    });
+  });
+
+  test('workspace Docket shell stays full-width and actionable on mobile', async ({ page }, testInfo) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('complaintGenerator.did', 'did:key:nav-docket-mobile');
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/workspace');
+    await waitForWorkspaceReady(page);
+
+    await page.locator('[data-tab-target="docket"]').click();
+    const docketPanel = page.locator('[data-tab-panel="docket"]');
+    await expect(docketPanel).toHaveClass(/is-active/);
+    await expect(docketPanel).toHaveClass(/mobile-docket-view-documents/);
+    await expect(page.locator('#docket-current-task-title')).toBeVisible();
+    await expect(page.locator('#docket-mobile-show-documents')).toBeVisible();
+    await expect(page.locator('#docket-mobile-show-documents')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#docket-mobile-show-selected')).toBeDisabled();
+    await expect(page.locator('#docket-selected-rail')).toBeHidden();
+    await expect(page.locator('#docket-document-list')).toBeVisible();
+    await expect(page.locator('#docket-mobile-ask-chat-link')).toBeHidden();
+    await expect(page.locator('#docket-mobile-action-note')).toBeHidden();
+    await expect(page.locator('.docket-selected-card')).toBeHidden();
+    await expect(page.locator('.docket-action-bar.is-empty')).toBeHidden();
+    await expect(page.locator('.docket-loader-card .readiness-list')).toBeHidden();
+    await expect(page.locator('.docket-loader-card #docket-summary-chips')).toBeHidden();
+    await expect(page.locator('.docket-status-card')).toBeHidden();
+
+    const panelMetrics = await docketPanel.evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+        rectWidth: rect.width,
+        viewportWidth: window.innerWidth,
+      };
+    });
+    expect(panelMetrics.scrollWidth).toBeLessThanOrEqual(panelMetrics.clientWidth + 2);
+    expect(panelMetrics.rectWidth).toBeGreaterThanOrEqual(panelMetrics.viewportWidth - 56);
+    await expectScreenshotBudget(docketPanel, {
+      label: 'mobile docket empty panel',
+      maxRenderedHeight: 3600,
+      maxScrollHeight: 3600,
+    });
+
+    const screenshotPath = testInfo.outputPath('workspace-docket-mobile.png');
+    await docketPanel.screenshot({ path: screenshotPath });
+    await testInfo.attach('workspace-docket-mobile', {
+      path: screenshotPath,
+      contentType: 'image/png',
+    });
+  });
+
+  test('workspace Docket loaded document stays concise and actionable on mobile', async ({ page }, testInfo) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('complaintGenerator.did', 'did:key:nav-docket-mobile-loaded');
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/workspace');
+    await waitForWorkspaceReady(page);
+
+    await page.locator('[data-tab-target="evidence"]').click();
+    await page.locator('#evidence-kind').selectOption('document');
+    await page.locator('#evidence-claim-element').selectOption('causation');
+    await page.locator('#evidence-title').fill('Termination timeline email');
+    await page.locator('#evidence-source').fill('Inbox export');
+    await page.locator('#evidence-content').fill('Email records show the termination followed immediately after the HR complaint.');
+    await page.locator('#save-evidence-button').click();
+    await expect(page.locator('#workspace-status')).toContainText(/Evidence saved and support review refreshed/i, { timeout: 15000 });
+
+    await page.locator('[data-tab-target="docket"]').click();
+    const docketPanel = page.locator('[data-tab-panel="docket"]');
+    await expect(docketPanel).toHaveClass(/is-active/);
+    await expect(docketPanel).toHaveClass(/has-docket-items/);
+    await expect(docketPanel).toHaveClass(/mobile-docket-view-selected/);
+    await expect(page.locator('#docket-mobile-show-documents')).toBeVisible();
+    await expect(page.locator('#docket-mobile-show-documents')).toContainText(/^Back to Documents$/i);
+    await expect(page.locator('#docket-mobile-show-selected')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#docket-mobile-show-selected')).toBeDisabled();
+    await expect(page.locator('#docket-mobile-show-selected')).toBeHidden();
+    await expect(page.locator('#docket-mobile-context-status')).toBeVisible();
+    await expect(page.locator('#docket-mobile-context-status')).toContainText(/Working on: Termination timeline email/i);
+    await expect(page.locator('#docket-mobile-context-status')).toContainText(/1 document in this list/i);
+    await expect(page.locator('.docket-documents-card')).toBeHidden();
+    await expect(page.locator('[data-tab-panel="docket"] .stage-banner')).toBeHidden();
+    await expect(page.locator('#docket-current-task-title')).toBeHidden();
+    await expect(page.locator('#docket-selected-rail')).toBeVisible();
+    await expect(page.locator('#docket-selected-rail-label')).toContainText(/Selected document/i);
+    await expect(page.locator('#docket-selected-rail-title')).toContainText(/Termination timeline email/i);
+    await expect(page.locator('#docket-selected-rail-meta')).toContainText(/Source: Inbox export/i);
+    await expect(page.locator('#docket-selected-rail-meta')).toContainText(/Type: Document/i);
+    await expect(page.locator('#docket-selected-rail-badges')).toContainText(/Step 1: Current/i);
+    await expect(page.locator('#docket-selected-rail-badges')).toContainText(/Step 2: Locked/i);
+    await expect(page.locator('#docket-selected-rail-badges')).toContainText(/Step 3: Locked/i);
+    await expect(page.locator('#docket-selected-rail-badges')).toContainText(/Step 4: Locked/i);
+    await expect(page.locator('#docket-selected-rail-badges')).toBeHidden();
+    await expect(page.locator('#docket-mobile-ask-chat-link')).toBeVisible();
+    await expect(page.locator('#docket-mobile-step-ask')).toHaveClass(/is-current/);
+    await expect(page.locator('#docket-mobile-step-ask')).toHaveCount(1);
+    await expect(page.locator('#docket-mobile-step-ask')).toHaveAttribute('aria-current', 'step');
+    await expect(page.locator('#docket-mobile-step-ask')).toHaveAttribute('data-step-state', 'active');
+    await expect(page.locator('#docket-mobile-step-label')).toHaveAttribute('data-step-state', 'waiting');
+    await expect(page.locator('#docket-mobile-step-annotation')).toHaveAttribute('data-step-state', 'waiting');
+    await expect(page.locator('#docket-mobile-step-deadline')).toHaveAttribute('data-step-state', 'blocked');
+    await expect(page.locator('#docket-mobile-step-label')).toHaveClass(/is-locked-accordion/);
+    await expect(page.locator('#docket-mobile-step-annotation')).toHaveClass(/is-locked-accordion/);
+    await expect(page.locator('#docket-mobile-step-deadline')).toHaveClass(/is-locked-accordion/);
+    await expect(page.locator('#docket-mobile-step-deadline')).toHaveClass(/is-blocked/);
+    await expect(page.locator('#docket-mobile-step-ask .docket-mobile-step-heading')).toContainText(/Step 1: Start document chat/i);
+    await expect(page.locator('#docket-mobile-ask-chat-link')).toContainText(/^Open Chat$/i);
+    await expect(page.locator('#docket-mobile-ask-chat-link')).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(page.locator('#docket-mobile-ask-chat-link')).toHaveClass(/docket-mobile-primary-action/);
+    await expect(page.locator('#docket-mobile-label-button')).toHaveClass(/docket-mobile-secondary-action/);
+    await expect(page.locator('#docket-mobile-annotation-button')).toHaveClass(/docket-mobile-secondary-action/);
+    await expect(page.locator('#docket-mobile-deadline-button')).toHaveClass(/docket-mobile-deadline-action/);
+    await expect(page.locator('#docket-mobile-ask-scope')).toContainText(/Chatting about: Termination timeline email/i);
+    await expect(page.locator('#docket-mobile-ask-scope')).toContainText(/Questions will apply only to this document/i);
+    await expect(page.locator('#docket-mobile-ask-state')).toContainText(/Not started Next: ask at least one document-specific question/i);
+    await expect(page.locator('#docket-mobile-step1-state-contract')).toBeVisible();
+    await expect(page.locator('#docket-mobile-step1-current-state')).toContainText(/^not_started$/i);
+    await expect(page.locator('#docket-mobile-step1-first-unmet')).toContainText(/^ask one document-specific question first$/i);
+    await expect(page.locator('#docket-mobile-step1-persistence-mode')).toContainText(/^local_until_ready$/i);
+    await expect(page.locator('#docket-mobile-next-unlock')).toContainText(/Ask your first document-specific question to show Confirm this document is ready to label/i);
+    await expect(page.locator('#docket-mobile-step1-write-count')).toContainText(/Document updates captured: 0/i);
+    await expect(page.locator('#docket-mobile-step1-checklist')).toContainText(/Question asked: No/i);
+    await expect(page.locator('#docket-mobile-step1-checklist')).toContainText(/Create impact summary after the first chat question/i);
+    await expect(page.locator('#docket-mobile-step1-checklist')).toContainText(/Confirm ready to label/i);
+    await expect(page.locator('#docket-mobile-gate-summary')).toBeHidden();
+    await expect(page.locator('#docket-mobile-gate-summary')).toContainText(/0 of 3 complete: ask one document-specific question first/i);
+    await expect(page.locator('#docket-mobile-check-question')).toContainText(/Question asked: No/i);
+    await expect(page.locator('#docket-mobile-check-question')).toHaveAttribute('data-check-state', 'missing');
+    await expect(page.locator('#docket-mobile-check-impact')).toContainText(/Create impact summary after the first chat question/i);
+    await expect(page.locator('#docket-mobile-check-impact')).toBeHidden();
+    await expect(page.locator('#docket-mobile-check-impact')).toHaveAttribute('data-check-state', 'blocked');
+    await expect(page.locator('#docket-mobile-check-ready')).toBeDisabled();
+    await expect(page.locator('#docket-mobile-check-ready')).toBeHidden();
+    await expect(page.locator('#docket-mobile-check-ready')).toHaveAttribute('data-check-state', 'blocked');
+    await expect(page.locator('#docket-mobile-ask-feedback')).toBeHidden();
+    await expect(page.locator('#docket-mobile-ask-feedback')).toContainText(/The ready-to-label confirmation is disabled until the first unmet checklist item is complete/i);
+    await expect(page.locator('#docket-mobile-ask-persistence')).toBeHidden();
+    await expect(page.locator('#docket-mobile-ask-persistence')).toContainText(/Persistence mode: local draft only until ready confirmation/i);
+    await expect(page.locator('#docket-mobile-ready-label-button')).toBeHidden();
+    await expect(page.locator('#docket-mobile-ready-label-button')).toBeDisabled();
+    await expect(page.locator('#docket-mobile-ready-label-button')).toHaveAttribute('aria-describedby', 'docket-mobile-ready-disabled-reason');
+    await expect(page.locator('#docket-mobile-ready-label-button')).toContainText(/Next after chat: Confirm this document is ready to label/i);
+    await expect(page.locator('#docket-mobile-ready-disabled-reason')).toContainText(/After you use Open Chat and ask one document question, the ready-to-label confirmation appears here/i);
+    await expect(page.locator('#docket-mobile-save-status')).toContainText(/Persistence: local draft only until ready confirmation/i);
+    await expect(page.locator('#docket-mobile-save-status')).toHaveAttribute('data-save-state', 'idle');
+    await expect(page.locator('#docket-mobile-save-status')).toHaveAttribute('data-persistence-mode', 'local_until_ready');
+    await expect(page.locator('#docket-mobile-label-button')).toBeDisabled();
+    await expect(page.locator('#docket-mobile-label-button')).toBeHidden();
+    await expect(page.locator('#docket-mobile-label-button')).toContainText(/^Label Document$/i);
+    await expect(page.locator('#docket-mobile-label-summary')).toBeHidden();
+    await expect(page.locator('#docket-mobile-label-summary')).toContainText(/Locked: complete Step 1 first/i);
+    await expect(page.locator('#docket-mobile-label-state')).toContainText(/Locked Unlocks when Step 1 has an impact summary and ready-to-label confirmation/i);
+    await expect(page.locator('#docket-mobile-annotation-button')).toBeDisabled();
+    await expect(page.locator('#docket-mobile-annotation-button')).toBeHidden();
+    await expect(page.locator('#docket-mobile-annotation-button')).toContainText(/^Add Note or Date$/i);
+    await expect(page.locator('#docket-mobile-annotation-summary')).toBeHidden();
+    await expect(page.locator('#docket-mobile-annotation-summary')).toContainText(/Locked: complete Step 1 first/i);
+    await expect(page.locator('#docket-mobile-annotation-state')).toContainText(/Locked Unlocks when Step 1 has an impact summary and ready-to-label confirmation/i);
+    await expect(page.locator('#docket-mobile-deadline-button')).toBeDisabled();
+    await expect(page.locator('#docket-mobile-deadline-button')).toBeHidden();
+    await expect(page.locator('#docket-mobile-deadline-button')).toContainText(/^Deadline Needs Date$/i);
+    await expect(page.locator('#docket-mobile-deadline-button')).toHaveAttribute('aria-describedby', 'docket-mobile-deadline-state');
+    await expect(page.locator('#docket-mobile-deadline-summary')).toBeHidden();
+    await expect(page.locator('#docket-mobile-deadline-summary')).toContainText(/Locked: add a response date in Step 3 first/i);
+    await expect(page.locator('#docket-mobile-deadline-state')).toContainText(/Locked Unlocks when Step 3 saves a response date/i);
+    await expect(page.locator('#docket-mobile-action-note')).toBeHidden();
+    await expect(page.locator('.docket-loader-card')).toBeHidden();
+    await expect(page.locator('.docket-action-bar')).toBeHidden();
+    await expect(page.locator('.docket-selected-card')).toBeHidden();
+    await expect(page.locator('#docket-source-summary')).toBeHidden();
+    await expect(page.locator('#docket-mobile-technical-details')).toBeHidden();
+
+    const metrics = await docketPanel.evaluate((node) => {
+      const rail = document.querySelector('#docket-selected-rail');
+      const actions = document.querySelector('.docket-mobile-action-strip');
+      const rect = node.getBoundingClientRect();
+      const railRect = rail.getBoundingClientRect();
+      const actionsRect = actions.getBoundingClientRect();
+      const askStyle = getComputedStyle(document.querySelector('#docket-mobile-ask-chat-link'));
+      const selectedCardDisplay = getComputedStyle(document.querySelector('.docket-selected-card')).display;
+      const labelButtonDisplay = getComputedStyle(document.querySelector('#docket-mobile-label-button')).display;
+      const labelSummaryAfter = getComputedStyle(document.querySelector('#docket-mobile-step-label summary'), '::after').content;
+      const labelSummaryPointerEvents = getComputedStyle(document.querySelector('#docket-mobile-step-label summary')).pointerEvents;
+      const lockedAccordionCount = document.querySelectorAll('.docket-mobile-step.is-locked-accordion:not([open])').length;
+      const visibleStep1PanelCount = [...document.querySelectorAll('#docket-mobile-step-ask')]
+        .filter((node) => getComputedStyle(node).display !== 'none').length;
+      const selectedWriteRequestCount = performance.getEntriesByType('resource')
+        .filter((entry) => /ready_to_label|selected_document|docket.*write/i.test(entry.name)).length;
+      const visibleHeaderButtons = [...document.querySelectorAll('.docket-mobile-view-switch button')]
+        .filter((button) => getComputedStyle(button).display !== 'none');
+      return {
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+        rectWidth: rect.width,
+        viewportWidth: window.innerWidth,
+        railHeight: railRect.height,
+        railBottom: railRect.bottom,
+        actionsTop: actionsRect.top,
+        selectedCardDisplay,
+        labelButtonDisplay,
+        labelSummaryAfter,
+        labelSummaryPointerEvents,
+        lockedAccordionCount,
+        visibleStep1PanelCount,
+        selectedWriteRequestCount,
+        askColor: askStyle.color,
+        visibleHeaderButtonCount: visibleHeaderButtons.length,
+      };
+    });
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 2);
+    expect(metrics.rectWidth).toBeGreaterThanOrEqual(metrics.viewportWidth - 56);
+    expect(metrics.railHeight).toBeLessThanOrEqual(150);
+    expect(metrics.railBottom).toBeLessThanOrEqual(metrics.actionsTop);
+    expect(metrics.selectedCardDisplay).toBe('none');
+    expect(metrics.labelButtonDisplay).toBe('none');
+    expect(metrics.labelSummaryAfter).toContain('Locked');
+    expect(metrics.labelSummaryPointerEvents).toBe('none');
+    expect(metrics.lockedAccordionCount).toBeGreaterThanOrEqual(3);
+    expect(metrics.visibleStep1PanelCount).toBe(1);
+    expect(metrics.selectedWriteRequestCount).toBe(0);
+    expect(metrics.askColor).toBe('rgb(255, 255, 255)');
+    expect(metrics.visibleHeaderButtonCount).toBe(1);
+
+    await page.evaluate(() => {
+      const documents = (((workspaceSession || {}).review || {}).documents || []);
+      const firstDocument = documents[0];
+      if (firstDocument) {
+        firstDocument.question_count = 1;
+        firstDocument.impact_summary = '';
+        firstDocument.ready_to_label_saved = false;
+        firstDocument.selected_document_write_count = 0;
+      }
+      renderDocketLane(workspaceSession || {});
+    });
+    await expect(page.locator('#docket-mobile-step-ask')).toHaveClass(/is-current/);
+    await expect(page.locator('#docket-mobile-step-ask')).toHaveAttribute('data-step-state', 'active');
+    await expect(page.locator('#docket-mobile-step-label')).toHaveAttribute('data-step-state', 'waiting');
+    await expect(page.locator('#docket-mobile-step-annotation')).toHaveAttribute('data-step-state', 'waiting');
+    await expect(page.locator('#docket-mobile-step1-current-state')).toContainText(/^chat_started$/i);
+    await expect(page.locator('#docket-mobile-step1-first-unmet')).toContainText(/^create the impact summary from chat$/i);
+    await expect(page.locator('#docket-gate-presenter')).toHaveAttribute('data-current-state', 'chat_started');
+    await expect(page.locator('#docket-gate-presenter')).toHaveAttribute('data-ready-eligible', 'false');
+    await expect(page.locator('#docket-gate-primary-action')).toContainText(/Generate Impact Summary/i);
+    await expect(page.locator('#docket-gate-secondary-chat-link')).toContainText(/Open Chat/i);
+    await expect(page.locator('#docket-gate-write-count')).toContainText(/Document updates captured: 0/i);
+    await expect(page.locator('#docket-mobile-next-unlock')).toContainText(/Review the chat impact summary to turn on Confirm this document is ready to label/i);
+    await expect(page.locator('#docket-mobile-check-question')).toContainText(/Question asked: Yes \(1\)/i);
+    await expect(page.locator('#docket-mobile-check-question')).toHaveAttribute('data-check-state', 'complete');
+    await expect(page.locator('#docket-mobile-check-impact')).toBeVisible();
+    await expect(page.locator('#docket-mobile-check-impact')).toContainText(/Create impact summary from chat/i);
+    await expect(page.locator('#docket-mobile-check-impact')).toHaveAttribute('data-check-state', 'missing');
+    await expect(page.locator('#docket-mobile-check-ready')).toBeHidden();
+    await expect(page.locator('#docket-mobile-ready-label-button')).toBeVisible();
+    await expect(page.locator('#docket-mobile-ready-label-button')).toBeDisabled();
+    await expect(page.locator('#docket-mobile-ready-label-button')).toHaveAttribute('data-ready-visibility', 'guided');
+    await expect(page.locator('#docket-mobile-ready-label-button')).toContainText(/^Confirm this document is ready to label$/i);
+    await expect(page.locator('#docket-mobile-ready-disabled-reason')).toContainText(/Waiting for the chat impact summary before the ready-to-label confirmation can save/i);
+    await expect(page.locator('#docket-mobile-step1-write-count')).toContainText(/Document updates captured: 0/i);
+    await expect(page.locator('#docket-mobile-label-button')).toBeDisabled();
+    await expect(page.locator('#docket-mobile-annotation-button')).toBeDisabled();
+    const postChatMetrics = await docketPanel.evaluate((node) => {
+      const selectedWriteRequestCount = performance.getEntriesByType('resource')
+        .filter((entry) => /ready_to_label|selected_document|docket.*write/i.test(entry.name)).length;
+      const readyRect = document.querySelector('#docket-mobile-ready-label-button').getBoundingClientRect();
+      return {
+        scrollWidth: node.scrollWidth,
+        clientWidth: node.clientWidth,
+        selectedWriteRequestCount,
+        readyButtonHeight: readyRect.height,
+      };
+    });
+    expect(postChatMetrics.scrollWidth).toBeLessThanOrEqual(postChatMetrics.clientWidth + 2);
+    expect(postChatMetrics.readyButtonHeight).toBeGreaterThanOrEqual(40);
+    expect(postChatMetrics.selectedWriteRequestCount).toBe(0);
+
+    await page.evaluate(() => document.getElementById('docket-gate-primary-action').click());
+    await expect(page.locator('#workspace-status')).toContainText(/Impact summary generated locally\. No selected-document write has been sent\./i);
+    await expect(page.locator('#docket-gate-presenter')).toHaveAttribute('data-current-state', 'impact_summary_ready');
+    await expect(page.locator('#docket-gate-presenter')).toHaveAttribute('data-ready-eligible', 'true');
+    await expect(page.locator('#docket-gate-ready-action')).toContainText(/Confirm this document is ready to label/i);
+    await expect(page.locator('#docket-gate-write-count')).toContainText(/Document updates captured: 0/i);
+
+    await page.locator('#docket-mobile-show-documents').click();
+    await expect(docketPanel).toHaveClass(/mobile-docket-view-documents/);
+    await expect(page.locator('.docket-documents-card')).toBeVisible();
+    await expect(page.locator('#docket-selected-rail')).toBeHidden();
+    await expect(page.locator('#docket-mobile-ask-chat-link')).toBeHidden();
+    await expect(page.locator('#docket-mobile-show-selected')).toBeEnabled();
+    await expect(page.locator('#docket-mobile-show-selected')).toBeVisible();
+
+    await page.locator('#docket-mobile-show-selected').click();
+    await expect(docketPanel).toHaveClass(/mobile-docket-view-selected/);
+    await expect(page.locator('.docket-documents-card')).toBeHidden();
+    await expect(page.locator('#docket-selected-rail')).toBeVisible();
+    await expect(page.locator('.docket-selected-card')).toBeHidden();
+    await expectScreenshotBudget(docketPanel, {
+      label: 'mobile docket loaded panel',
+      maxRenderedHeight: 4200,
+      maxScrollHeight: 4200,
+    });
+
+    const screenshotPath = testInfo.outputPath('workspace-docket-mobile-loaded.png');
+    await docketPanel.screenshot({ path: screenshotPath });
+    await testInfo.attach('workspace-docket-mobile-loaded', {
       path: screenshotPath,
       contentType: 'image/png',
     });

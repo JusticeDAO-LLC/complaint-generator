@@ -19,14 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from collections import Counter
 
-try:
-    from workflow_phase_guidance import build_workflow_phase_plan
-except ModuleNotFoundError:
-    _REPO_ROOT = Path(__file__).resolve().parent.parent
-    _REPO_ROOT_TEXT = str(_REPO_ROOT)
-    if _REPO_ROOT_TEXT not in sys.path:
-        sys.path.insert(0, _REPO_ROOT_TEXT)
-    from workflow_phase_guidance import build_workflow_phase_plan
+from complaint_phases.document_surface import build_workflow_phase_plan
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,212 @@
+{
+  "authorized_fixture": {
+    "authorization": "injected_principal_registry",
+    "evidence_class": "synthetic_fixture",
+    "live_login": false,
+    "note": "The actual SERVER builder does not inject a principal registry. The authorized cases in this run use an explicit in-test PrincipalRegistry bearer. That bearer is a fixture, not a production login.",
+    "production_session": false
+  },
+  "baseline_commit": "2c1439a7029eb9035338133210d8b43319add8a4",
+  "evidence_channel": "python_asgi_and_service",
+  "fresh_dom_owner": "CIMP-GUI-02",
+  "fresh_dom_qualification": false,
+  "graph_metric_scope": "Historical synthetic development ASGI observations only. Eight entrypoint hashes do not bind the interpreter, installed NLP models or Data runtime; Native fresh checks require nonempty graphs and stable API/security contracts, not identical graph cardinalities.",
+  "gui_ready": false,
+  "live_grok_call": false,
+  "observations": [
+    {
+      "classification": "characterization_mechanic",
+      "counts_as_characterization_pass": true,
+      "id": "GUI-BASE-DENIED-BOOTSTRAP",
+      "observation": "On source generation cimp-gui-01-asgi-assembly, applications.server.SERVER served a fresh synthetic session root. Unauthenticated GET /api/complaint-workspace/session returned 403 authorization_denied. complaint.start_session through /mcp/call and /mcp/rpc returned isError true and authorization_denied. A wrong bearer on the fixture router was also 403. This denial is not GUI readiness.",
+      "product_acceptance": false
+    },
+    {
+      "classification": "characterization_mechanic",
+      "counts_as_characterization_pass": true,
+      "id": "GUI-BASE-FIXTURE-AUTH",
+      "observation": "Authorized requests in this run used an explicitly injected PrincipalRegistry bearer. evidence_class is synthetic_fixture. production_session and live_login are false. The fixture is not a production login and is not the registry omitted by SERVER.",
+      "product_acceptance": false
+    },
+    {
+      "classification": "characterization_mechanic",
+      "counts_as_characterization_pass": true,
+      "id": "GUI-BASE-SHARED-INTERVIEW",
+      "observation": "original_complaint through the real intake-chat route created a shared interview projection, action start, status awaiting_user, pending inquiry revision 1, legal_sufficiency false, 3 knowledge-graph entity rows, 1 relationship row, and 7 dependency-graph node rows. /why returned command /why, stored_as_answer false, and awaiting_user true. A mismatched expected_question_revision was refused as stale_question. A matching inquiry id with the revision omitted was not refused as stale_question. The encrypted session frame began CGJH and did not contain the synthetic narrative, answer, or passphrase.",
+      "product_acceptance": false
+    },
+    {
+      "classification": "characterization_mechanic",
+      "counts_as_characterization_pass": true,
+      "id": "GUI-BASE-SYNTHETIC-TRANSPORT",
+      "observation": "A synthetic generate_text_with_metadata transport was installed and labeled synthetic_fixture. It recorded 0 calls. The shared start returned provider_unavailable with router failures privacy_denied. live_grok_call is false. The unused synthetic transport does not verify a live Grok identity.",
+      "product_acceptance": false
+    },
+    {
+      "classification": "observed_gap",
+      "counts_as_characterization_pass": false,
+      "id": "GUI-GAP-FIXED-FORM",
+      "observation": "Saving the six fixed intake fields did not create shared_interview and left the original complaint text empty. The fixed form and the shared graph interview remain separate paths on this generation.",
+      "product_acceptance": false
+    },
+    {
+      "classification": "observed_gap",
+      "counts_as_characterization_pass": false,
+      "id": "GUI-GAP-FALSE-SUPPORT",
+      "observation": "The fixed-form review support matrix had 5 elements and marked all 5 supported from the entered answers. That label is not corroborated legal-element support and is not product acceptance.",
+      "product_acceptance": false
+    },
+    {
+      "classification": "observed_gap",
+      "counts_as_characterization_pass": false,
+      "id": "GUI-GAP-ASSEMBLY",
+      "observation": "The actual SERVER app exposes /workspace and websocket /api/chat without an injected principal registry. streaming_qualified is false. WebSocket presence is not SSE or streaming qualification.",
+      "product_acceptance": false
+    },
+    {
+      "classification": "attributed_to_pinned_manual_audit",
+      "counts_as_characterization_pass": false,
+      "id": "GUI-GAP-BROWSER-PLAINTEXT",
+      "observation": "Source inspection shows static/complaint_mcp_sdk.js writes complaintGenerator.sdkSyncEvent through localStorage.setItem. The plaintext browser-cache finding GUI-BROWSER-PLAINTEXT belongs to the pinned manual audit. This run did not measure browser storage.",
+      "product_acceptance": false
+    },
+    {
+      "classification": "attributed_to_pinned_manual_audit",
+      "counts_as_characterization_pass": false,
+      "id": "GUI-GAP-A11Y",
+      "observation": "Accessibility finding GUI-A11Y, seven visible intake textareas without programmatic labels, is attributed to the pinned manual audit. fresh_dom_qualification is false. Fresh DOM qualification belongs to CIMP-GUI-02.",
+      "product_acceptance": false
+    },
+    {
+      "classification": "dependency_unavailable",
+      "counts_as_characterization_pass": false,
+      "id": "GUI-GAP-TRANSPORT-PRIVACY",
+      "observation": "The installed synthetic transport was not invoked because interview model stages returned privacy_denied. That unavailable provider stage is not a live model result and is not a characterization failure.",
+      "product_acceptance": false
+    }
+  ],
+  "observed_flags": {
+    "audit_contains_plaintext_and_a11y": true,
+    "denied_mcp_error": "authorization_denied",
+    "denied_mcp_is_error": true,
+    "denied_mcp_status": 200,
+    "denied_rpc_is_error": true,
+    "denied_rpc_message": "authorization_denied",
+    "denied_session_detail": "authorization_denied",
+    "denied_session_status": 403,
+    "dg_node_count": 7,
+    "fixed_answer_count": 6,
+    "fixed_matrix_len": 5,
+    "fixed_narrative_empty": true,
+    "fixed_shared_interview_present": false,
+    "fixed_status": 200,
+    "fixed_supported_elements": 5,
+    "fixture_authorization": "injected_principal_registry",
+    "fixture_evidence_class": "synthetic_fixture",
+    "fresh_dom_qualification": false,
+    "gui_ready": false,
+    "kg_entity_count": 3,
+    "kg_relationship_count": 1,
+    "live_grok_call": false,
+    "matching_id_refused_stale": false,
+    "matching_id_without_revision_status": "provider_unavailable",
+    "pending_inquiry_prefix": "inq-",
+    "pending_revision": 1,
+    "product_acceptance": false,
+    "production_session": false,
+    "sdk_writes_sync_event_storage": true,
+    "session_prefix": "CGJH",
+    "shared_action": "start",
+    "shared_error_code": "provider_unavailable",
+    "shared_interview_present": true,
+    "shared_interview_status": "awaiting_user",
+    "shared_legal_sufficiency": false,
+    "shared_status": 200,
+    "stale_refused": true,
+    "stale_status": "stale_question",
+    "streaming_qualified": false,
+    "transport_call_count": 0,
+    "transport_evidence_class": "synthetic_fixture",
+    "transport_installed": true,
+    "websocket_route_present": true,
+    "why_awaiting_user": true,
+    "why_command": "/why",
+    "why_status": 200,
+    "why_stored_as_answer": false,
+    "workspace_route_present": true,
+    "workspace_status": 200,
+    "wrong_bearer_status": 403
+  },
+  "pinned_manual_audit": {
+    "baseline_commit": "2c1439a7029eb9035338133210d8b43319add8a4",
+    "evidence_class": "pinned_manual_audit",
+    "finding_ids": [
+      "GUI-AUTH-READY",
+      "GUI-FIXED-FORM",
+      "GUI-FALSE-SUPPORT",
+      "GUI-BROWSER-PLAINTEXT",
+      "GUI-A11Y",
+      "GUI-SHARED-AVAILABLE",
+      "GUI-CASE-AUTH",
+      "GUI-ENTRYPOINTS",
+      "GUI-CRYPTO-GRANTS",
+      "GUI-BROWSER-VALIDATION"
+    ],
+    "fresh_dom_owner": "CIMP-GUI-02",
+    "fresh_dom_qualification": false,
+    "path": "docs/task_boards/complaint_gui_collaboration_baseline_audit.json"
+  },
+  "product_acceptance": false,
+  "runtime_identity_qualified": false,
+  "schema_version": "complaint-generator.gui-baseline-receipt.v1",
+  "source_generation": {
+    "algorithm": "sha256",
+    "baseline_commit": "2c1439a7029eb9035338133210d8b43319add8a4",
+    "digest": "b9c8c4da1096723cff8ba08215cee2a71d0c56126a3131fdba0fff793ffdd8f2",
+    "files": [
+      {
+        "bytes": 10974,
+        "path": "applications/server.py",
+        "sha256": "c19578203bf6ba189556f060f097d0e6b931fea644ace78f2a75c5f06c9f2a51"
+      },
+      {
+        "bytes": 755266,
+        "path": "applications/complaint_workspace.py",
+        "sha256": "1034e2a5aebe554d90d2682aa94346c6cbf50c86427a40f7c79a7c5ebaf75118"
+      },
+      {
+        "bytes": 37650,
+        "path": "applications/complaint_workspace_api.py",
+        "sha256": "b028499c70bf6e4adfc77eda5e2659bd1fb427d0fe67041d61cf85da7483a615"
+      },
+      {
+        "bytes": 27898,
+        "path": "applications/complaint_mcp_protocol.py",
+        "sha256": "f6b07794eff19784e71e033ca0f9368e5e2754e9cee4b170e02f59a9d54f109d"
+      },
+      {
+        "bytes": 27714,
+        "path": "static/complaint_mcp_sdk.js",
+        "sha256": "59fc3f306190ead456c6df93ba27d023208acc469305bc2b3e704003878f9a0b"
+      },
+      {
+        "bytes": 880868,
+        "path": "templates/workspace.html",
+        "sha256": "03d1267039105244e1598c980ebcf74ea18477047e73c135d351150db410ee3b"
+      },
+      {
+        "bytes": 653438,
+        "path": "mediator/mediator.py",
+        "sha256": "4dd7515b802ec4c24d80cbfbaa2da32316a73258bde99879be6255d49e54b537"
+      },
+      {
+        "bytes": 73752,
+        "path": "mediator/workflow_service.py",
+        "sha256": "a7d874ba64e3b23974d54decc6a5e296fda6211067088bfca6c2d7af575c6c97"
+      }
+    ],
+    "name": "cimp-gui-01-asgi-assembly"
+  },
+  "synthetic_only": true,
+  "task_id": "CIMP-GUI-01"
+}

@@ -223,7 +223,16 @@ class AdversarialSession:
                 )
             return refreshed_intake_case_file
         except Exception:
-            return None
+            # Refreshing the final snapshot is best-effort: callers can still use
+            # the mediator's existing case file.  Keep that fallback observable,
+            # though, because otherwise a stale final result is indistinguishable
+            # from a successful refresh.
+            logger.warning(
+                "Could not refresh the final intake case file for session %s; "
+                "using the mediator's existing snapshot",
+                self.session_id,
+                exc_info=True,
+            )
 
     @staticmethod
     def _normalize_question(question_text: str) -> str:
@@ -4275,14 +4284,71 @@ class AdversarialSession:
         intake_case_file: Dict[str, Any] = {}
         try:
             from complaint_phases import ComplaintPhase
-
-            phase_manager = getattr(self.mediator, 'phase_manager', None)
-            if phase_manager is not None:
-                uploaded_evidence_summary = phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'uploaded_evidence_summary') or {}
-                claim_support_packet_summary = phase_manager.get_phase_data(ComplaintPhase.EVIDENCE, 'claim_support_packet_summary') or {}
-                intake_case_file = phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'intake_case_file') or {}
         except Exception:
-            pass
+            logger.warning(
+                "Could not load complaint phase definitions for fallback document generation "
+                "in adversarial session %s; continuing with seed and conversation data only",
+                self.session_id,
+                exc_info=True,
+            )
+        else:
+            phase_manager = None
+            get_phase_data = None
+            try:
+                phase_manager = getattr(self.mediator, 'phase_manager', None)
+                get_phase_data = getattr(phase_manager, 'get_phase_data', None)
+            except Exception:
+                logger.warning(
+                    "Could not access the phase manager for fallback document generation "
+                    "in adversarial session %s; continuing with seed and conversation data only",
+                    self.session_id,
+                    exc_info=True,
+                )
+
+            def read_fallback_phase_data(phase: Any, key: str) -> Dict[str, Any]:
+                try:
+                    value = get_phase_data(phase, key)
+                except Exception:
+                    logger.warning(
+                        "Could not read %s phase data for fallback document generation "
+                        "in adversarial session %s; continuing without that input",
+                        key,
+                        self.session_id,
+                        exc_info=True,
+                    )
+                    return {}
+                if value is None:
+                    return {}
+                if not isinstance(value, dict):
+                    logger.warning(
+                        "Ignoring non-mapping %s phase data for fallback document generation "
+                        "in adversarial session %s (received %s)",
+                        key,
+                        self.session_id,
+                        type(value).__name__,
+                    )
+                    return {}
+                return value
+
+            if callable(get_phase_data):
+                uploaded_evidence_summary = read_fallback_phase_data(
+                    ComplaintPhase.EVIDENCE,
+                    'uploaded_evidence_summary',
+                )
+                claim_support_packet_summary = read_fallback_phase_data(
+                    ComplaintPhase.EVIDENCE,
+                    'claim_support_packet_summary',
+                )
+                intake_case_file = read_fallback_phase_data(
+                    ComplaintPhase.INTAKE,
+                    'intake_case_file',
+                )
+            elif phase_manager is not None:
+                logger.warning(
+                    "Could not read phase data for fallback document generation in adversarial "
+                    "session %s because the phase manager has no callable get_phase_data",
+                    self.session_id,
+                )
 
         claim_type = str(seed_complaint.get('type') or 'civil_action').strip() or 'civil_action'
         claim_title = claim_type.replace('_', ' ').title()
@@ -4407,21 +4473,36 @@ class AdversarialSession:
                     confirmation_source='adversarial_optimizer',
                 )
             except Exception:
-                pass
+                logger.warning(
+                    "Could not confirm the intake summary for adversarial session %s; "
+                    "continuing with the direct document-generation handoff",
+                    self.session_id,
+                    exc_info=True,
+                )
 
         advance_to_evidence = getattr(self.mediator, 'advance_to_evidence_phase', None)
         if callable(advance_to_evidence):
             try:
                 advance_to_evidence()
             except Exception:
-                pass
+                logger.warning(
+                    "Could not advance adversarial session %s to evidence; "
+                    "continuing with the direct document-generation handoff",
+                    self.session_id,
+                    exc_info=True,
+                )
 
         advance_to_formalization = getattr(self.mediator, 'advance_to_formalization_phase', None)
         if callable(advance_to_formalization):
             try:
                 advance_to_formalization()
             except Exception:
-                pass
+                logger.warning(
+                    "Could not advance adversarial session %s to formalization; "
+                    "continuing with the direct document-generation handoff",
+                    self.session_id,
+                    exc_info=True,
+                )
 
         try:
             from complaint_phases import ComplaintPhase
@@ -4447,7 +4528,12 @@ class AdversarialSession:
                         phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'matching_results', matching_results)
                         phase_manager.update_phase_data(ComplaintPhase.FORMALIZATION, 'matching_complete', True)
         except Exception:
-            pass
+            logger.warning(
+                "Could not prepare formalization graphs for adversarial session %s; "
+                "continuing with the document-generation handoff",
+                self.session_id,
+                exc_info=True,
+            )
 
         builder = getattr(self.mediator, 'build_formal_complaint_document_package', None)
         if not callable(builder):

@@ -75,5 +75,16 @@ def test_mcp_generate_complaint_returns_draft_for_new_session(tmp_path):
     assert response["result"]["structuredContent"]["draft"]["review_snapshot"]["case_synopsis"]
 
 
+def test_provider_diagnostics_are_lightweight_and_ordered(tmp_path):
+    service = ComplaintWorkspaceService(tmp_path)
+
+    payload = service.get_provider_diagnostics("pkg-user")
+
+    assert payload["default_order"][:4] == ["codex_cli", "copilot_cli", "openai", "hf_inference_api"]
+    assert payload["complaint_draft_default_order"] == ["codex_cli", "copilot_cli", "hf_inference_api"]
+    assert payload["ui_review_multimodal_rate_limit_fallbacks"]["codex_cli"] == ["copilot_cli", "hf_inference_api"]
+    assert isinstance(payload["providers"], list)
+
+
 def test_console_entrypoint_targets_run_main():
     assert complaint_generator_main is not None

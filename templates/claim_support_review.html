@@ -145,6 +145,23 @@
             text-decoration: none;
         }
 
+        .surface-nav-disclosure {
+            margin-top: 12px;
+        }
+
+        .surface-nav-summary {
+            cursor: pointer;
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .surface-nav-disclosure .surface-links {
+            margin-top: 10px;
+        }
+
         .next-step-panel {
             margin-top: 18px;
             padding: 16px;
@@ -185,6 +202,48 @@
             font-weight: 700;
             text-decoration: none;
             text-align: center;
+        }
+
+        .operator-section-map {
+            margin-top: 18px;
+            padding: 16px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.76);
+            border: 1px solid var(--line);
+        }
+
+        .operator-section-map h2 {
+            margin: 0 0 8px;
+            font-size: 1rem;
+        }
+
+        .operator-section-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .operator-section-link {
+            display: grid;
+            gap: 4px;
+            padding: 12px;
+            border-radius: 16px;
+            border: 1px solid rgba(154, 52, 18, 0.16);
+            background: rgba(255, 250, 242, 0.92);
+            color: var(--ink);
+            text-decoration: none;
+        }
+
+        .operator-section-link strong {
+            color: var(--accent);
+            font-size: 0.92rem;
+        }
+
+        .operator-section-link span {
+            color: var(--muted);
+            font-size: 0.78rem;
+            line-height: 1.35;
         }
 
         .stat {
@@ -513,11 +572,21 @@
             padding: 16px;
         }
 
+        .element-card.focused-element-card {
+            border-color: rgba(217, 119, 6, 0.85);
+            box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.24);
+        }
+
         .history-card {
             border-radius: 18px;
             background: rgba(255, 255, 255, 0.72);
             border: 1px solid var(--line);
             padding: 14px;
+        }
+
+        .history-card--warning {
+            border-color: #f59e0b;
+            background: rgba(255, 251, 235, 0.85);
         }
 
         .row-head {
@@ -757,7 +826,8 @@
             .control-grid,
             .hero-guidance,
             .hero-stats,
-            .next-step-grid {
+            .next-step-grid,
+            .operator-section-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -776,18 +846,23 @@
                 </p>
                 <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
                     <a class="surface-link" href="/">Landing</a>
-                    <a class="surface-link" href="/home">Account</a>
-                <a class="surface-link" id="review-nav-chat" href="/chat">Chat</a>
-                <a class="surface-link" id="review-nav-profile" href="/profile">Profile</a>
-                <a class="surface-link" id="review-nav-results" href="/results">Results</a>
-                <a class="surface-link" id="review-nav-workspace" href="/workspace">Workspace</a>
-                <a class="surface-link" id="review-nav-review" href="/claim-support-review">Review</a>
-                <a class="surface-link" id="review-nav-builder" href="/document">Builder</a>
-                    <a class="surface-link" id="review-nav-trace" href="/document/optimization-trace">Trace</a>
-                    <a class="surface-link" href="/mlwysiwyg">Editor</a>
-                    <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
-                    <a class="surface-link" href="/dashboards">Dashboards</a>
+                    <a class="surface-link" href="/home">Secure Intake</a>
+                    <a class="surface-link" id="review-nav-chat" href="/chat">Chat</a>
+                    <a class="surface-link" id="review-nav-workspace" href="/workspace">Workspace</a>
+                    <a class="surface-link" id="review-nav-review" href="/claim-support-review">Review</a>
+                    <a class="surface-link" id="review-nav-builder" href="/document">Builder</a>
                 </div>
+                <details class="surface-nav-disclosure" id="review-advanced-nav">
+                    <summary class="surface-nav-summary">Advanced tools</summary>
+                    <div class="surface-links" aria-label="Advanced tools">
+                        <a class="surface-link" id="review-nav-profile" href="/profile">Profile</a>
+                        <a class="surface-link" id="review-nav-results" href="/results">Results</a>
+                        <a class="surface-link" id="review-nav-trace" href="/document/optimization-trace">Trace</a>
+                        <a class="surface-link" href="/mlwysiwyg">Editor</a>
+                        <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
+                        <a class="surface-link" href="/dashboards">Dashboards</a>
+                    </div>
+                </details>
                 <div class="hero-guidance">
                     <div class="hero-guidance-card">
                         <strong>Use this page before drafting</strong>
@@ -821,6 +896,19 @@
                         <a class="next-step-link" id="review-open-trace-link" href="/document/optimization-trace">Open trace</a>
                     </div>
                 </section>
+                <section class="operator-section-map" aria-label="Operator dashboard sections">
+                    <h2>Operator sections</h2>
+                    <p class="lede">Jump directly to the workflow lane you need without losing the current review payload.</p>
+                    <div class="operator-section-grid">
+                        <a class="operator-section-link" href="#questions-section"><strong>Questions</strong><span>Target missing testimony and intake clarifications.</span></a>
+                        <a class="operator-section-link" href="#testimony-section"><strong>Testimony</strong><span>Capture witness or claimant support by element.</span></a>
+                        <a class="operator-section-link" href="#documents-section"><strong>Documents</strong><span>Attach records, parse facts, and reparse weak sources.</span></a>
+                        <a class="operator-section-link" href="#facts-section"><strong>Facts</strong><span>Review timeline, canonical facts, and proof leads.</span></a>
+                        <a class="operator-section-link" href="#graph-section"><strong>Graph</strong><span>Inspect packet, path, and hybrid reasoning signals.</span></a>
+                        <a class="operator-section-link" href="#law-section"><strong>Law</strong><span>Check authority support and adverse treatment warnings.</span></a>
+                        <a class="operator-section-link" href="#actions-section"><strong>Actions</strong><span>Execute or queue work without blocking review.</span></a>
+                    </div>
+                </section>
                 <div class="hero-stats">
                     <div class="stat">
                         <span class="stat-label">Covered</span>
@@ -837,7 +925,7 @@
                 </div>
             </div>
 
-            <div class="hero-card control-card">
+            <div class="hero-card control-card" id="actions-section">
                 <div class="control-grid">
                     <div>
                         <label for="claim-type">Claim Type</label>
@@ -880,6 +968,31 @@
                 <div class="button-row">
                     <button class="button-primary" id="review-button" type="button">Load Review</button>
                     <button class="button-secondary" id="execute-button" type="button">Execute Follow-Up</button>
+                </div>
+
+                <div class="resolution-panel">
+                    <h2 style="margin: 0 0 14px;">Queued Heavy Processing</h2>
+                    <div class="control-grid">
+                        <div>
+                            <label for="queue-enrichment-type">Heavy Step</label>
+                            <select id="queue-enrichment-type">
+                                <option value="graph_enrichment">Rebuild graph support</option>
+                                <option value="legal_authority_refresh">Refresh legal authority retrieval</option>
+                                <option value="document_reparse">Reparse document evidence</option>
+                                <option value="proof_export">Export theorem/proof artifacts</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="queue-priority">Queue Priority</label>
+                            <input id="queue-priority" type="number" min="0" max="10" value="5">
+                        </div>
+                    </div>
+                    <div class="button-row" style="margin-top: 14px;">
+                        <button class="button-secondary" id="queue-heavy-processing-button" type="button">Queue Heavy Step</button>
+                        <button class="button-tertiary" id="refresh-heavy-processing-queue-button" type="button">Refresh Queue</button>
+                    </div>
+                    <div class="chip-row" id="heavy-processing-queue-chips"></div>
+                    <div class="question-list" id="heavy-processing-queue-list"></div>
                 </div>
 
                 <div class="resolution-feedback" id="execution-result-card" hidden>
@@ -992,7 +1105,7 @@
                     </div>
                 </div>
 
-                <div class="focus-block" data-section-focus-target="jurisdiction_and_venue claims_for_relief requested_relief">
+                <div class="focus-block" id="law-section" data-section-focus-target="jurisdiction_and_venue claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Authority Signals</h2>
                     <div class="signal-grid">
                         <div class="signal-card">
@@ -1032,15 +1145,30 @@
                             <div class="chip-row" id="signal-follow-up-source-context-chips"></div>
                         </div>
                         <div class="signal-card">
+                            <span class="signal-label">Graph gap follow-ups</span>
+                            <span class="signal-number" id="signal-graph-gap-follow-ups">0</span>
+                            <div class="chip-row" id="signal-graph-gap-follow-up-chips"></div>
+                        </div>
+                        <div class="signal-card">
                             <span class="signal-label">Legal retrieval warnings</span>
                             <span class="signal-number" id="signal-legal-retrieval-warnings">0</span>
                             <div class="chip-row" id="signal-legal-retrieval-warning-chips"></div>
                             <div class="packet-card-meta" id="signal-legal-retrieval-warning-note">No legal retrieval warnings recorded.</div>
                         </div>
+                        <div class="signal-card">
+                            <span class="signal-label">Formal validation routing</span>
+                            <span class="signal-number" id="signal-formal-proof-gaps">0</span>
+                            <div class="chip-row" id="signal-formal-routing-chips"></div>
+                        </div>
+                        <div class="signal-card">
+                            <span class="signal-label">Follow-up quality routing</span>
+                            <span class="signal-number" id="signal-follow-up-quality-actions">0</span>
+                            <div class="chip-row" id="signal-follow-up-quality-chips"></div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="focus-block" data-section-focus-target="summary_of_facts claims_for_relief requested_relief">
+                <div class="focus-block" id="facts-section" data-section-focus-target="summary_of_facts claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Intake Status</h2>
                     <div class="chip-row" id="intake-status-chips"></div>
                     <div class="chip-row" id="intake-readiness-criteria-chips" style="margin-top: 10px;"></div>
@@ -1106,7 +1234,7 @@
                     <div class="question-list" id="intake-matching-summary-list"></div>
                 </div>
 
-                <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
+                <div class="focus-block" id="graph-section" data-section-focus-target="claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Claim Support Packet Summary</h2>
                     <div class="chip-row" id="claim-support-packet-summary-chips"></div>
                     <h2 style="margin-top: 18px;">Hybrid Reasoning Diagnostics</h2>
@@ -1149,12 +1277,13 @@
                     <div class="question-list" id="alignment-task-update-list"></div>
                 </div>
 
-                <div class="focus-block" data-section-focus-target="claims_for_relief requested_relief">
+                <div class="focus-block" id="questions-section" data-section-focus-target="claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Question Queue</h2>
+                    <div class="chip-row" id="question-recommendation-summary-chips"></div>
                     <div class="question-list" id="question-list"></div>
                 </div>
 
-                <div class="focus-block" data-section-focus-target="summary_of_facts claims_for_relief requested_relief">
+                <div class="focus-block" id="testimony-section" data-section-focus-target="summary_of_facts claims_for_relief requested_relief">
                     <h2 style="margin-top: 18px;">Testimony Intake</h2>
                     <div class="chip-row" id="testimony-summary-chips"></div>
                     <div class="control-grid" style="margin-top: 12px;">
@@ -1211,7 +1340,7 @@
                     <div class="testimony-list" id="testimony-list"></div>
                 </div>
 
-                <div class="focus-block" data-section-focus-target="summary_of_facts exhibits claims_for_relief">
+                <div class="focus-block" id="documents-section" data-section-focus-target="summary_of_facts exhibits claims_for_relief">
                     <h2 style="margin-top: 18px;">Document Intake</h2>
                     <div class="chip-row" id="document-summary-chips"></div>
                     <div class="control-grid" style="margin-top: 12px;">
@@ -1238,6 +1367,10 @@
                         <div>
                             <label for="document-mime-type">MIME Type</label>
                             <input id="document-mime-type" type="text" placeholder="text/plain or application/pdf">
+                        </div>
+                        <div>
+                            <label for="document-testimony-id">Linked Testimony ID</label>
+                            <input id="document-testimony-id" type="text" placeholder="testimony-abc123 (optional)">
                         </div>
                         <div>
                             <label for="document-file-input">Document File</label>
@@ -1347,6 +1480,9 @@
             payload: null,
             postSaveValidationFocus: null,
             lastValidationOutcome: null,
+            deepLinkClaimElementId: null,
+            deepLinkClaimElementText: null,
+            deepLinkFocusApplied: false,
         };
 
         function renderSharedCaseSynopsisText(text, title) {
@@ -1706,6 +1842,16 @@
             const userId = String(payload.user_id || document.getElementById('user-id').value || '').trim() || null;
             const sectionKey = String(payload.section || sectionFocusState.sectionKey || '').trim() || null;
             const supportKind = String(payload.follow_up_support_kind || document.getElementById('support-kind').value || '').trim() || null;
+            const claimElementId = String(
+                payload.claim_element_id
+                || reviewRenderState.deepLinkClaimElementId
+                || ''
+            ).trim() || null;
+            const claimElementText = String(
+                payload.claim_element_text
+                || reviewRenderState.deepLinkClaimElementText
+                || ''
+            ).trim() || null;
             const followUpTaskFilter = String(
                 payload.follow_up_task_filter
                 || document.getElementById('follow-up-task-filter').value
@@ -1749,6 +1895,12 @@
             if (supportKind) {
                 params.set('follow_up_support_kind', supportKind);
             }
+            if (claimElementId) {
+                params.set('claim_element_id', claimElementId);
+            }
+            if (claimElementText) {
+                params.set('claim_element_text', claimElementText);
+            }
             if (followUpTaskFilter && followUpTaskFilter !== 'all') {
                 params.set('follow_up_task_filter', followUpTaskFilter);
             }
@@ -1773,6 +1925,8 @@
                 user_id: userId,
                 section: sectionKey,
                 follow_up_support_kind: supportKind,
+                claim_element_id: claimElementId,
+                claim_element_text: claimElementText,
                 follow_up_task_filter: followUpTaskFilter,
                 follow_up_task_sort: followUpTaskSort,
                 follow_up_history_filter: followUpHistoryFilter,
@@ -2197,6 +2351,24 @@
             return response.json();
         }
 
+        async function getJson(url) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || `Request failed with ${response.status}`);
+            }
+            return response.json();
+        }
+
+        async function postQuery(url) {
+            const response = await fetch(url, { method: 'POST' });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || `Request failed with ${response.status}`);
+            }
+            return response.json();
+        }
+
         async function postFormData(url, formData) {
             const response = await fetch(url, {
                 method: 'POST',
@@ -2213,14 +2385,63 @@
             document.getElementById('status-line').textContent = message;
         }
 
-        function setSummary(summary, planSummary) {
+        function renderHeavyProcessingQueue(queueState) {
+            const chips = document.getElementById('heavy-processing-queue-chips');
+            const list = document.getElementById('heavy-processing-queue-list');
+            const state = queueState && typeof queueState === 'object' ? queueState : {};
+            const entries = Array.isArray(state.queue) ? state.queue : [];
+            const available = Boolean(state.available);
+            const chipLabels = [
+                `queue ${available ? 'available' : 'degraded'}`,
+                `pending: ${Number(state.pending_count || 0)}`,
+                `running: ${Number(state.running_count || 0)}`,
+                `completed: ${Number(state.completed_count || 0)}`,
+                `failed: ${Number(state.failed_count || 0)}`,
+                `total: ${Number(state.queue_count || entries.length || 0)}`,
+            ];
+            chips.innerHTML = chipLabels.map((label) => `<span class="chip">${label}</span>`).join('');
+
+            if (!entries.length) {
+                list.innerHTML = `<div class="task-card">${state.message || 'No queued heavy processing jobs are recorded for this review context.'}</div>`;
+                return;
+            }
+
+            list.innerHTML = entries.slice(0, 8).map((entry) => {
+                const metadata = entry.metadata && typeof entry.metadata === 'object' ? entry.metadata : {};
+                const metadataChips = Object.entries(metadata).slice(0, 3).map(([key, value]) => (
+                    `<span class="chip">${key}: ${String(value)}</span>`
+                )).join('');
+                return `
+                    <article class="task-card">
+                        <div class="row-head">
+                            <div>
+                                <div class="row-title">${humanizeQueryValue(entry.enrichment_type || 'queued enrichment')}</div>
+                                <div class="meta">job ${entry.id || 'pending'} · ${entry.created_at || 'queued'}</div>
+                            </div>
+                            <span class="badge ${entry.status || 'pending'}">${entry.status || 'pending'}</span>
+                        </div>
+                        <div class="chip-row" style="margin-top: 10px;">
+                            <span class="chip">priority: ${Number(entry.priority || 0)}</span>
+                            ${entry.claim_type ? `<span class="chip">claim: ${entry.claim_type}</span>` : ''}
+                            ${metadataChips}
+                        </div>
+                    </article>
+                `;
+            }).join('');
+        }
+
+        function setSummary(summary, planSummary, coverageSnapshotSummary) {
             const statusCounts = (summary && summary.status_counts) || {};
             const packetSummary = (summary && summary.support_packet_summary) || {};
             const authorityTreatmentSummary = (summary && summary.authority_treatment_summary) || {};
+            const coverageSnapshotLifecycle = coverageSnapshotSummary || {};
+            const coverageSnapshotMatrixSummary = coverageSnapshotLifecycle.coverage_matrix_summary || {};
             const authorityProgramBiasCounts = (planSummary && planSummary.primary_authority_program_bias_counts) || {};
             const authorityProgramRuleBiasCounts = (planSummary && planSummary.primary_authority_program_rule_bias_counts) || {};
             const parseQualityTierCounts = (summary && summary.parse_quality_tier_counts) || {};
             const parseQualityRecommendation = (summary && summary.parse_quality_recommendation) || '';
+            const ontologyQualitySummary = (summary && summary.ontology_quality_summary) || {};
+            const graphGapQuerySummary = (summary && summary.graph_gap_query_summary) || {};
             const covered = statusCounts.covered || 0;
             const partial = statusCounts.partially_supported || 0;
             const missing = statusCounts.missing || 0;
@@ -2233,6 +2454,8 @@
             const supportiveAuthorities = Number(authorityTreatmentSummary.supportive_authority_link_count || 0);
             const adverseAuthorities = Number(authorityTreatmentSummary.adverse_authority_link_count || 0);
             const uncertainAuthorities = Number(authorityTreatmentSummary.uncertain_authority_link_count || 0);
+            const formalProofGaps = Number(summary.formal_proof_gap_count || 0);
+            const formalRoutingCounts = summary.formal_quality_follow_up_action_counts || {};
             document.getElementById('hero-covered').textContent = covered;
             document.getElementById('hero-partial').textContent = partial;
             document.getElementById('hero-missing').textContent = missing;
@@ -2244,6 +2467,7 @@
             document.getElementById('signal-low-quality-records').textContent = lowQualityRecords;
             document.getElementById('signal-supportive-authorities').textContent = supportiveAuthorities;
             document.getElementById('signal-adverse-authorities').textContent = adverseAuthorities + uncertainAuthorities;
+            document.getElementById('signal-formal-proof-gaps').textContent = formalProofGaps;
 
             const coverageChips = document.getElementById('coverage-chips');
             const labels = [];
@@ -2251,8 +2475,63 @@
             (summary.partially_supported_elements || []).forEach((label) => labels.push(`Partial: ${label}`));
             (summary.parse_quality_issue_elements || []).forEach((label) => labels.push(`Refresh parse: ${label}`));
             if (parseQualityRecommendation) labels.push(`Recommendation: ${parseQualityRecommendation}`);
+            if (Number(ontologyQualitySummary.available_element_count || 0)) {
+                labels.push(`Ontology quality elements: ${ontologyQualitySummary.available_element_count}`);
+            }
+            if (Number(ontologyQualitySummary.blocking_gap_element_count || 0)) {
+                labels.push(`Ontology blocking gaps: ${ontologyQualitySummary.blocking_gap_element_count}`);
+            }
+            if (Number(ontologyQualitySummary.workflow_degraded_element_count || 0)) {
+                labels.push(`Ontology workflow degraded: ${ontologyQualitySummary.workflow_degraded_element_count}`);
+            }
+            if (Number(graphGapQuerySummary.graph_gap_query_count || 0)) {
+                labels.push(`Graph gap queries: ${graphGapQuerySummary.graph_gap_query_count}`);
+            }
+            if (Number(graphGapQuerySummary.graph_gap_has_support_count || 0)) {
+                labels.push(`Graph gap support hits: ${graphGapQuerySummary.graph_gap_has_support_count}`);
+            }
+            Object.entries(graphGapQuerySummary.graph_gap_recommended_action_counts || {}).forEach(([action, count]) => {
+                if (action && Number(count || 0)) labels.push(`Graph gap action ${action}: ${count}`);
+            });
+            if (ontologyQualitySummary.grade_counts) {
+                Object.entries(ontologyQualitySummary.grade_counts).forEach(([grade, count]) => {
+                    labels.push(`Ontology grade ${grade}: ${count}`);
+                });
+            }
+            Object.entries(ontologyQualitySummary.workflow_status_counts || {}).forEach(([status, count]) => {
+                if (status && Number(count || 0)) labels.push(`Ontology workflow ${status}: ${count}`);
+            });
+            Object.entries(ontologyQualitySummary.gap_severity_counts || {}).forEach(([severity, count]) => {
+                if (severity && Number(count || 0)) labels.push(`Ontology severity ${severity}: ${count}`);
+            });
+            Object.entries(ontologyQualitySummary.gap_follow_up_action_counts || {}).forEach(([action, count]) => {
+                if (action && Number(count || 0)) labels.push(`Ontology action ${action}: ${count}`);
+            });
+            if (summary.formal_status) labels.push(`Formal: ${summary.formal_status}`);
+            if (summary.theorem_export_ready) labels.push('Theorem export ready');
             if (adverseAuthorities) labels.push(`Adverse authorities: ${adverseAuthorities}`);
             if (uncertainAuthorities) labels.push(`Uncertain authorities: ${uncertainAuthorities}`);
+            if (Number(coverageSnapshotLifecycle.total_snapshot_count || 0)) {
+                labels.push(`Coverage snapshots: fresh=${Number(coverageSnapshotLifecycle.fresh_snapshot_count || 0)}, stale=${Number(coverageSnapshotLifecycle.stale_snapshot_count || 0)}`);
+            }
+            if (Number(coverageSnapshotMatrixSummary.support_path_count || 0)) {
+                labels.push(`Coverage snapshot paths: ${coverageSnapshotMatrixSummary.support_path_count}`);
+            }
+            if (
+                Number(coverageSnapshotMatrixSummary.current_trace_path_count || 0)
+                || Number(coverageSnapshotMatrixSummary.persisted_path_count || 0)
+            ) {
+                labels.push(`Coverage path mix: current=${Number(coverageSnapshotMatrixSummary.current_trace_path_count || 0)}, persisted=${Number(coverageSnapshotMatrixSummary.persisted_path_count || 0)}`);
+            }
+            if (Number(coverageSnapshotMatrixSummary.graph_linked_path_count || 0)) {
+                labels.push(`Coverage graph-linked paths: ${coverageSnapshotMatrixSummary.graph_linked_path_count}`);
+            }
+            if (Number(coverageSnapshotMatrixSummary.unique_support_ref_count || 0)) {
+                labels.push(`Coverage support refs: ${coverageSnapshotMatrixSummary.unique_support_ref_count}`);
+            }
+            Object.entries(coverageSnapshotMatrixSummary.path_kind_counts || {}).forEach(([kind, count]) => {
+                if (kind && Number(count || 0)) labels.push(`Coverage path ${kind}: ${count}`);
+            });
             coverageChips.innerHTML = labels.length
                 ? labels.map((label) => `<span class="chip">${label}</span>`).join('')
                 : '<span class="chip">No missing or partially supported labels.</span>';
@@ -2292,6 +2571,13 @@
                     ),
                 },
                 'No adverse or uncertain authority signals',
+            );
+            renderSignalChips(
+                'signal-formal-routing-chips',
+                Object.keys(formalRoutingCounts || {}).length
+                    ? formalRoutingCounts
+                    : (summary.formal_primary_quality_signal_counts || summary.formal_support_quality_signal_counts || {}),
+                'No formal routing signals',
             );
         }
 
@@ -4120,6 +4406,14 @@
             if (claimSupportPacketSummary.proof_readiness_score !== undefined) {
                 packetChips.push(`<span class="chip">packet proof readiness: ${Number(claimSupportPacketSummary.proof_readiness_score || 0).toFixed(2)}</span>`);
             }
+            const packetLaneCounts = normalizeSummaryCountMap(claimSupportPacketSummary.support_lane_label_counts);
+            if (Object.keys(packetLaneCounts).length) {
+                packetChips.push(`<span class="chip">support lanes: ${formatSummaryCountLine(packetLaneCounts)}</span>`);
+            }
+            const packetQualityCounts = normalizeSummaryCountMap(claimSupportPacketSummary.support_quality_counts);
+            if (Object.keys(packetQualityCounts).length) {
+                packetChips.push(`<span class="chip">support quality: ${formatSummaryCountLine(packetQualityCounts)}</span>`);
+            }
             if (claimSupportPacketSummary.evidence_completion_ready !== undefined) {
                 packetChips.push(`<span class="chip">packet completion ready: ${claimSupportPacketSummary.evidence_completion_ready ? 'yes' : 'no'}</span>`);
             }
@@ -4137,6 +4431,18 @@
             }
             if (claimSupportPacketSummary.temporal_warning_count !== undefined) {
                 packetChips.push(`<span class="chip">packet temporal warnings: ${Number(claimSupportPacketSummary.temporal_warning_count || 0)}</span>`);
+            }
+            if (claimSupportPacketSummary.temporal_rule_profile_available_element_count !== undefined) {
+                packetChips.push(`<span class="chip">packet rule profiles: ${Number(claimSupportPacketSummary.temporal_rule_profile_available_element_count || 0)}</span>`);
+            }
+            if (claimSupportPacketSummary.temporal_rule_profile_satisfied_element_count !== undefined) {
+                packetChips.push(`<span class="chip">packet rule satisfied: ${Number(claimSupportPacketSummary.temporal_rule_profile_satisfied_element_count || 0)}</span>`);
+            }
+            if (claimSupportPacketSummary.temporal_rule_profile_partial_element_count !== undefined) {
+                packetChips.push(`<span class="chip">packet rule partial: ${Number(claimSupportPacketSummary.temporal_rule_profile_partial_element_count || 0)}</span>`);
+            }
+            if (claimSupportPacketSummary.temporal_rule_profile_failed_element_count !== undefined) {
+                packetChips.push(`<span class="chip">packet rule failed: ${Number(claimSupportPacketSummary.temporal_rule_profile_failed_element_count || 0)}</span>`);
             }
             const packetChronologyTaskCount = claimSupportPacketSummary.temporal_gap_task_count !== undefined
                 ? Number(claimSupportPacketSummary.temporal_gap_task_count || 0)
@@ -4192,7 +4498,17 @@
                     const detailChips = [];
                     sharedElements.forEach((element) => {
                         detailChips.push(`<span class="chip">aligned ${element.element_id}: ${element.support_status || 'unknown'}</span>`);
+                        if (element.support_lane_label) {
+                            detailChips.push(`<span class="chip">${element.element_id} lane: ${element.support_lane_label}</span>`);
+                        }
+                        if (element.support_quality) {
+                            detailChips.push(`<span class="chip">${element.element_id} quality: ${element.support_quality}</span>`);
+                        }
                     });
+                    const claimLaneCounts = normalizeSummaryCountMap(claim.support_lane_label_counts);
+                    if (Object.keys(claimLaneCounts).length) {
+                        detailChips.push(`<span class="chip">lane distribution: ${formatSummaryCountLine(claimLaneCounts)}</span>`);
+                    }
                     intakeOnlyIds.forEach((elementId) => {
                         detailChips.push(`<span class="chip">intake only: ${elementId}</span>`);
                     });
@@ -4666,6 +4982,99 @@
                 : `<span class="chip">${emptyLabel}</span>`;
         }
 
+        function buildGraphGapSummaryLabels(summary, prefix = 'Graph gaps') {
+            if (!summary || typeof summary !== 'object') {
+                return [];
+            }
+            const labels = [];
+            const taskCount = Number(summary.graph_gap_context_task_count || 0);
+            const supportedCount = Number(summary.graph_gap_has_support_task_count || 0);
+            const emptyCount = Number(summary.graph_gap_empty_task_count || 0);
+            const totalFacts = Number(summary.graph_gap_total_fact_count || 0);
+            const uniqueFacts = Number(summary.graph_gap_unique_fact_count || 0);
+            const duplicateFacts = Number(summary.graph_gap_duplicate_fact_count || 0);
+            const clusterCount = Number(summary.graph_gap_semantic_cluster_count || 0);
+            const semanticDuplicateCount = Number(summary.graph_gap_semantic_duplicate_count || 0);
+            const queryCount = Number(summary.graph_gap_query_task_count || 0);
+            const querySupportedCount = Number(summary.graph_gap_query_has_support_task_count || 0);
+            const queryEmptyCount = Number(summary.graph_gap_query_empty_task_count || 0);
+            const queryResultCount = Number(summary.graph_gap_query_result_count || 0);
+            const registrySummary = summary.graph_gap_fact_registry_summary || {};
+            if (taskCount) labels.push(`${prefix}: ${taskCount}`);
+            if (supportedCount || emptyCount) {
+                labels.push(`${prefix} support: supported=${supportedCount}, empty=${emptyCount}`);
+            }
+            if (queryCount) labels.push(`${prefix} queries: ${queryCount}`);
+            if (querySupportedCount || queryEmptyCount) {
+                labels.push(`${prefix} query support: supported=${querySupportedCount}, empty=${queryEmptyCount}`);
+            }
+            if (queryResultCount) labels.push(`${prefix} query hits: ${queryResultCount}`);
+            if (totalFacts || uniqueFacts || duplicateFacts) {
+                labels.push(`${prefix} facts: total=${totalFacts}, unique=${uniqueFacts}, duplicate=${duplicateFacts}`);
+            }
+            if (clusterCount || semanticDuplicateCount) {
+                labels.push(`${prefix} clusters: ${clusterCount}, duplicates=${semanticDuplicateCount}`);
+            }
+            [
+                buildCountSummaryLabel(`${prefix} strength`, summary.graph_gap_strength_counts || {}, 2),
+                buildCountSummaryLabel(`${prefix} actions`, summary.graph_gap_recommended_action_counts || {}, 2),
+                buildCountSummaryLabel(`${prefix} priority`, summary.graph_gap_priority_adjustment_counts || {}, 2),
+                buildCountSummaryLabel(`${prefix} query missing`, summary.graph_gap_query_missing_support_kind_counts || {}, 2),
+                buildCountSummaryLabel(`${prefix} query actions`, summary.graph_gap_query_recommended_action_counts || {}, 2),
+                buildCountSummaryLabel(`${prefix} source families`, summary.graph_gap_source_family_counts || {}, 2),
+                buildCountSummaryLabel(`${prefix} corpus`, summary.graph_gap_corpus_family_counts || {}, 2),
+                buildCountSummaryLabel(`${prefix} origins`, summary.graph_gap_content_origin_counts || {}, 2),
+            ].forEach((label) => {
+                if (label) labels.push(label);
+            });
+            if (Number(registrySummary.fact_count || 0)) {
+                labels.push(`${prefix} registry facts: ${registrySummary.fact_count}`);
+            }
+            return labels;
+        }
+
+        function renderGraphGapContextChips(context, options = {}) {
+            if (!context || typeof context !== 'object') {
+                return '';
+            }
+            const separator = options.separator || ' ';
+            const prefix = options.prefix || 'graph gap';
+            const chips = [];
+            const priorityAdjustment = context.priority_adjustment;
+            if (context.strength) chips.push(`<span class="chip">${prefix} strength${separator}${context.strength}</span>`);
+            if (context.recommended_action) chips.push(`<span class="chip">${prefix} action${separator}${context.recommended_action}</span>`);
+            if (priorityAdjustment !== undefined && priorityAdjustment !== null && String(priorityAdjustment).trim() !== '') {
+                chips.push(`<span class="chip">${prefix} priority${separator}${priorityAdjustment}</span>`);
+            }
+            if (Number(context.total_fact_count || 0)) chips.push(`<span class="chip">${prefix} facts${separator}${context.total_fact_count}</span>`);
+            if (Number(context.unique_fact_count || 0)) chips.push(`<span class="chip">${prefix} unique facts${separator}${context.unique_fact_count}</span>`);
+            if (Number(context.duplicate_fact_count || 0)) chips.push(`<span class="chip">${prefix} duplicate facts${separator}${context.duplicate_fact_count}</span>`);
+            Object.entries(context.source_family_counts || {}).slice(0, 2).forEach(([label, count]) => {
+                if (label && Number(count || 0)) chips.push(`<span class="chip">${prefix} source ${label}${separator}${count}</span>`);
+            });
+            Object.entries(context.corpus_family_counts || {}).slice(0, 2).forEach(([label, count]) => {
+                if (label && Number(count || 0)) chips.push(`<span class="chip">${prefix} corpus ${label}${separator}${count}</span>`);
+            });
+            return chips.join('');
+        }
+
+        function renderGraphGapQueryChips(query, options = {}) {
+            if (!query || typeof query !== 'object') {
+                return '';
+            }
+            const separator = options.separator || ' ';
+            const prefix = options.prefix || 'graph query';
+            const chips = [];
+            const missingSupportKinds = Array.isArray(query.missing_support_kinds)
+                ? query.missing_support_kinds.filter(Boolean)
+                : [];
+            if (query.claim_element_id) chips.push(`<span class="chip">${prefix} element${separator}${query.claim_element_id}</span>`);
+            if (missingSupportKinds.length) chips.push(`<span class="chip">${prefix} missing${separator}${missingSupportKinds.join(', ')}</span>`);
+            if (Number(query.result_count || 0)) chips.push(`<span class="chip">${prefix} hits${separator}${query.result_count}</span>`);
+            if (query.has_graph_support === false) chips.push(`<span class="chip">${prefix} empty</span>`);
+            return chips.join('');
+        }
+
         function normalizeFactBundle(bundleLike) {
             return Array.isArray(bundleLike)
                 ? bundleLike.map((item) => String(item || '').trim()).filter(Boolean)
@@ -4868,6 +5277,8 @@
             const userId = params.get('user_id') || storedIntent.user_id;
             const section = params.get('section') || storedIntent.section;
             const supportKind = params.get('follow_up_support_kind') || storedIntent.follow_up_support_kind || null;
+            const claimElementId = params.get('claim_element_id') || storedIntent.claim_element_id || null;
+            const claimElementText = params.get('claim_element_text') || storedIntent.claim_element_text || null;
             const followUpTaskFilter = params.get('follow_up_task_filter') || storedIntent.follow_up_task_filter || 'all';
             const followUpTaskSort = params.get('follow_up_task_sort') || storedIntent.follow_up_task_sort || 'section_focus';
             const followUpHistoryFilter = params.get('follow_up_history_filter') || storedIntent.follow_up_history_filter || 'all';
@@ -4884,6 +5295,9 @@
             if (supportKind) {
                 document.getElementById('support-kind').value = supportKind;
             }
+            reviewRenderState.deepLinkClaimElementId = claimElementId ? String(claimElementId).trim() : null;
+            reviewRenderState.deepLinkClaimElementText = claimElementText ? String(claimElementText).trim() : null;
+            reviewRenderState.deepLinkFocusApplied = false;
             document.getElementById('follow-up-task-filter').value = followUpTaskFilter;
             document.getElementById('follow-up-task-sort').value = followUpTaskSort;
             document.getElementById('follow-up-history-filter').value = followUpHistoryFilter;
@@ -4896,6 +5310,8 @@
                 user_id: userId,
                 section,
                 follow_up_support_kind: document.getElementById('support-kind').value || null,
+                claim_element_id: reviewRenderState.deepLinkClaimElementId,
+                claim_element_text: reviewRenderState.deepLinkClaimElementText,
                 follow_up_task_filter: document.getElementById('follow-up-task-filter').value || 'all',
                 follow_up_task_sort: document.getElementById('follow-up-task-sort').value || 'section_focus',
                 follow_up_history_filter: document.getElementById('follow-up-history-filter').value || 'all',
@@ -4910,6 +5326,8 @@
                 || userId
                 || section
                 || supportKind
+                || claimElementId
+                || claimElementText
                 || followUpTaskFilter !== 'all'
                 || followUpTaskSort !== 'section_focus'
                 || followUpHistoryFilter !== 'all'
@@ -5024,6 +5442,15 @@
             });
             if (handoffLabel) chips.push(`<span class="chip">${handoffLabel}</span>`);
             if (exhaustedLabel) chips.push(`<span class="chip">${exhaustedLabel}</span>`);
+            const selectedExecutionGraphGapBiasLabel = buildCountSummaryLabel(
+                'Selected graph-gap biases',
+                executionSummary && executionSummary.selected_authority_graph_gap_bias_counts,
+                2,
+            );
+            if (selectedExecutionGraphGapBiasLabel) chips.push(`<span class="chip">${selectedExecutionGraphGapBiasLabel}</span>`);
+            buildGraphGapSummaryLabels(executionSummary, 'Graph gaps').forEach((label) => {
+                chips.push(`<span class="chip">${label}</span>`);
+            });
             chips.push(renderSourceContextChips(executionSummary, 'No graph source context'));
             resolvedElements.forEach((element) => chips.push(`<span class="chip">resolved ${element}</span>`));
             if (!resolvedElements.length && remainingElements.length) {
@@ -5059,7 +5486,7 @@
             document.getElementById('execution-result-notes').textContent = notes;
         }
 
-        function setFollowUpSignals(planSummary, historySummary) {
+        function setFollowUpSignals(planSummary, historySummary, executionSummary) {
             const planResolutionCounts = (planSummary && planSummary.resolution_applied_counts) || {};
             const historyResolutionCounts = (historySummary && historySummary.resolution_applied_counts) || {};
             const sourceFamilyCounts = (planSummary && planSummary.source_family_counts) || {};
@@ -5068,6 +5495,58 @@
             const sourceContextCount = Object.values(sourceFamilyCounts).reduce((total, value) => total + Number(value || 0), 0);
             const sourceContextSignals = buildFollowUpSourceSignalCounts(planSummary);
             const warningSignalState = buildFollowUpWarningSignalState(planSummary, historySummary);
+            const graphGapTaskCount = Number((planSummary && planSummary.graph_gap_context_task_count) || 0)
+                + Number((historySummary && historySummary.graph_gap_context_task_count) || 0)
+                + Number((executionSummary && executionSummary.graph_gap_context_task_count) || 0);
+            const graphGapFactCount = Number((planSummary && planSummary.graph_gap_total_fact_count) || 0)
+                + Number((historySummary && historySummary.graph_gap_total_fact_count) || 0)
+                + Number((executionSummary && executionSummary.graph_gap_total_fact_count) || 0);
+            const graphGapSignals = {};
+            if (Number((planSummary && planSummary.graph_gap_context_task_count) || 0)) {
+                graphGapSignals.Plan = Number(planSummary.graph_gap_context_task_count || 0);
+            }
+            if (Number((historySummary && historySummary.graph_gap_context_task_count) || 0)) {
+                graphGapSignals.History = Number(historySummary.graph_gap_context_task_count || 0);
+            }
+            if (Number((executionSummary && executionSummary.graph_gap_context_task_count) || 0)) {
+                graphGapSignals.Execution = Number(executionSummary.graph_gap_context_task_count || 0);
+            }
+            if (graphGapFactCount) {
+                graphGapSignals.facts = graphGapFactCount;
+            }
+            Object.entries(mergeSummaryCounts(
+                (planSummary && planSummary.graph_gap_strength_counts) || {},
+                (historySummary && historySummary.graph_gap_strength_counts) || {},
+                (executionSummary && executionSummary.graph_gap_strength_counts) || {},
+            )).forEach(([label, count]) => {
+                graphGapSignals[`strength ${label}`] = count;
+            });
+            Object.entries(mergeSummaryCounts(
+                (planSummary && planSummary.graph_gap_recommended_action_counts) || {},
+                (historySummary && historySummary.graph_gap_recommended_action_counts) || {},
+                (executionSummary && executionSummary.graph_gap_recommended_action_counts) || {},
+            )).forEach(([label, count]) => {
+                graphGapSignals[`action ${label}`] = count;
+            });
+            const followUpQualityActionCounts = mergeSummaryCounts(
+                (planSummary && planSummary.quality_follow_up_action_counts) || {},
+                (historySummary && historySummary.quality_follow_up_action_counts) || {},
+                (executionSummary && executionSummary.quality_follow_up_action_counts) || {},
+            );
+            const followUpQualitySignals = Object.keys(followUpQualityActionCounts).length
+                ? followUpQualityActionCounts
+                : mergeSummaryCounts(
+                    (planSummary && planSummary.primary_quality_signal_counts) || {},
+                    (historySummary && historySummary.primary_quality_signal_counts) || {},
+                    (executionSummary && executionSummary.primary_quality_signal_counts) || {},
+                    (planSummary && planSummary.quality_signal_counts) || {},
+                    (historySummary && historySummary.quality_signal_counts) || {},
+                    (executionSummary && executionSummary.quality_signal_counts) || {},
+                );
+            const followUpQualityActionTotal = Object.values(followUpQualityActionCounts).reduce(
+                (total, value) => total + Number(value || 0),
+                0,
+            );
             const parseQualityTaskCount = Number((planSummary && planSummary.parse_quality_task_count) || 0);
             const parseQualityTaskSignals = {};
             const temporalGapTaskCount = Number((planSummary && planSummary.temporal_gap_task_count) || 0);
@@ -5082,6 +5561,22 @@
             if (qualityGapTargetedCount) {
                 parseQualityTaskSignals.quality_gap_targeted = qualityGapTargetedCount;
             }
+            const ontologyGapTaskCount = Number((planSummary && planSummary.ontology_quality_gap_task_count) || 0);
+            const historyOntologyGapTaskCount = Number((historySummary && historySummary.ontology_quality_gap_task_count) || 0);
+            const executionOntologyGapTaskCount = Number((executionSummary && executionSummary.ontology_quality_gap_task_count) || 0);
+            const ontologyGapTargetedCount = Number((planSummary && planSummary.ontology_quality_gap_targeted_task_count) || 0);
+            const historyOntologyGapTargetedCount = Number((historySummary && historySummary.ontology_quality_gap_targeted_task_count) || 0);
+            const executionOntologyGapTargetedCount = Number((executionSummary && executionSummary.ontology_quality_gap_targeted_task_count) || 0);
+            const ontologyQualityTaskSignals = {};
+            if (ontologyGapTaskCount) ontologyQualityTaskSignals['Plan ontology'] = ontologyGapTaskCount;
+            if (historyOntologyGapTaskCount) ontologyQualityTaskSignals['History ontology'] = historyOntologyGapTaskCount;
+            if (executionOntologyGapTaskCount) ontologyQualityTaskSignals['Execution ontology'] = executionOntologyGapTaskCount;
+            if (ontologyGapTargetedCount) ontologyQualityTaskSignals['Plan targeted'] = ontologyGapTargetedCount;
+            if (historyOntologyGapTargetedCount) ontologyQualityTaskSignals['History targeted'] = historyOntologyGapTargetedCount;
+            if (executionOntologyGapTargetedCount) ontologyQualityTaskSignals['Execution targeted'] = executionOntologyGapTargetedCount;
+            Object.entries(ontologyQualityTaskSignals).forEach(([label, count]) => {
+                followUpQualitySignals[label] = (followUpQualitySignals[label] || 0) + Number(count || 0);
+            });
             if (temporalGapTaskCount) {
                 temporalGapSignals['Plan chronology'] = temporalGapTaskCount;
             }
@@ -5099,17 +5594,40 @@
             document.getElementById('signal-history-normalized').textContent = historyNormalized;
             document.getElementById('signal-parse-quality-tasks').textContent = parseQualityTaskCount;
             document.getElementById('signal-follow-up-source-context').textContent = sourceContextCount;
+            document.getElementById('signal-graph-gap-follow-ups').textContent = graphGapTaskCount;
             document.getElementById('signal-legal-retrieval-warnings').textContent = warningSignalState.totalWarningCount;
+            document.getElementById('signal-follow-up-quality-actions').textContent = followUpQualityActionTotal;
             renderSignalChips('signal-temporal-gap-task-chips', temporalGapSignals, 'No chronology follow-up tasks');
             renderSignalChips('signal-plan-normalized-chips', planResolutionCounts, 'No normalized plan tasks');
             renderSignalChips('signal-history-normalized-chips', historyResolutionCounts, 'No normalized history events');
             renderSignalChips('signal-parse-quality-task-chips', parseQualityTaskSignals, 'No parse remediation tasks');
             renderSignalChips('signal-follow-up-source-context-chips', sourceContextSignals, 'No graph-backed source context');
+            renderSignalChips('signal-graph-gap-follow-up-chips', graphGapSignals, 'No graph-gap follow-up tasks');
             renderSignalChips('signal-legal-retrieval-warning-chips', warningSignalState.warningSignals, 'No legal retrieval warnings');
+            renderSignalChips('signal-follow-up-quality-chips', followUpQualitySignals, 'No follow-up quality routing signals');
             document.getElementById('signal-legal-retrieval-warning-note').textContent = formatSearchWarningNote(warningSignalState.primaryWarning);
         }
 
-        function renderElements(elements) {
+        function mergeSummaryCounts(...maps) {
+            const merged = {};
+            maps.forEach((counts) => {
+                Object.entries(counts || {}).forEach(([label, count]) => {
+                    const normalizedLabel = String(label || '').trim();
+                    if (!normalizedLabel) return;
+                    merged[normalizedLabel] = (merged[normalizedLabel] || 0) + Number(count || 0);
+                });
+            });
+            return merged;
+        }
+
+        function toDomSlug(value) {
+            return String(value || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-|-$/g, '') || 'element';
+        }
+
+        function renderElements(elements, activeClaimType = '') {
             const container = document.getElementById('element-list');
             if (!elements.length) {
                 container.innerHTML = '<div class="element-card">No element data returned.</div>';
@@ -5123,6 +5641,10 @@
             );
             container.innerHTML = orderedElements.map((element) => {
                 const focusScore = scoreElementForSectionFocus(element);
+                const elementId = String(element.element_id || element.claim_element_id || '').trim();
+                const elementText = String(element.element_text || '').trim();
+                const elementSlug = toDomSlug(elementText || elementId || 'element');
+                const claimType = String(activeClaimType || document.getElementById('claim-type').value || '').trim();
                 const supportPackets = sortSupportPackets(element.support_packets || []);
                 const supportFactPackets = Array.isArray(element.support_fact_packets) ? element.support_fact_packets : [];
                 const documentFactPackets = Array.isArray(element.document_fact_packets) ? element.document_fact_packets : [];
@@ -5131,6 +5653,14 @@
                 const contradictionPairs = Array.isArray(element.contradiction_pairs) ? element.contradiction_pairs : [];
                 const proofGaps = Array.isArray(element.proof_gaps) ? element.proof_gaps : [];
                 const proofDecisionTrace = element.proof_decision_trace || {};
+                const missingSupportKinds = Array.isArray(element.missing_support_kinds) ? element.missing_support_kinds : [];
+                const recommendedAction = String(element.recommended_action || '').trim().toLowerCase();
+                const needsEvidence = missingSupportKinds.includes('evidence')
+                    || recommendedAction.includes('testimony')
+                    || recommendedAction.includes('question');
+                const needsDocument = missingSupportKinds.includes('document')
+                    || recommendedAction.includes('document')
+                    || recommendedAction.includes('parse');
                 const archivedPacketCount = supportPackets.filter(
                     (packet) => Boolean(packet?.lineage_summary?.historical_capture),
                 ).length;
@@ -5172,7 +5702,7 @@
                 });
                 const packetDetails = supportPackets.length
                     ? `
-                        <details class="packet-details" id="packet-details-${(element.element_text || 'element').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'element'}">
+                        <details class="packet-details" id="packet-details-${elementSlug}">
                             <summary>View lineage packets (${supportPackets.length})</summary>
                             <div class="packet-filter-row">
                                 <button class="packet-filter-button is-active" type="button" data-packet-filter-button data-filter-value="all" aria-pressed="true">All packets <span class="packet-filter-count">${supportPackets.length}</span></button>
@@ -5228,8 +5758,8 @@
                         </details>
                     `
                     : '';
-                const missingKinds = (element.missing_support_kinds || []).length
-                    ? `<div class="chip-row">${element.missing_support_kinds.map((kind) => `<span class="chip">Missing ${kind}</span>`).join('')}</div>`
+                const missingKinds = missingSupportKinds.length
+                    ? `<div class="chip-row">${missingSupportKinds.map((kind) => `<span class="chip">Missing ${kind}</span>`).join('')}</div>`
                     : '';
                 const proofChips = [
                     element.validation_status ? `<span class="chip">proof ${element.validation_status}</span>` : '',
@@ -5291,7 +5821,7 @@
                     : '';
                 const proofGapDetails = proofGaps.length
                     ? `
-                        <details class="packet-details proof-gap-details" style="margin-top: 12px;">
+                        <details class="packet-details proof-gap-details" style="margin-top: 12px;" id="proof-gap-details-${elementSlug}">
                             <summary>Proof gaps (${proofGaps.length})</summary>
                             <div class="packet-list">
                                 ${proofGaps.map((gap) => `
@@ -5306,7 +5836,7 @@
                     : '';
                 const contradictionPairDetails = contradictionPairs.length
                     ? `
-                        <details class="packet-details contradiction-pair-details" style="margin-top: 12px;">
+                        <details class="packet-details contradiction-pair-details" style="margin-top: 12px;" id="contradiction-pair-details-${elementSlug}">
                             <summary>Contradiction pairs (${contradictionPairs.length})</summary>
                             <div class="packet-list">
                                 ${contradictionPairs.map((pair) => {
@@ -5345,8 +5875,36 @@
                         </details>
                     `
                     : '';
+                const nextActionSummary = element.recommended_action
+                    ? `Next action: ${humanizeQueryValue(element.recommended_action)}.`
+                    : (element.status && String(element.status).toLowerCase() !== 'covered'
+                        ? 'Next action: add support evidence or resolve through manual review.'
+                        : 'Next action: review drilldowns to confirm filing readiness.');
+                const proofCardActionButtons = [
+                    needsEvidence
+                        ? `<button class="button-tertiary proof-action-button" type="button" data-proof-action="prefill-testimony" data-claim-type="${claimType.replace(/"/g, '&quot;')}" data-claim-element-id="${elementId.replace(/"/g, '&quot;')}" data-claim-element-text="${elementText.replace(/"/g, '&quot;')}">Capture Testimony</button>`
+                        : '',
+                    needsDocument
+                        ? `<button class="button-tertiary proof-action-button" type="button" data-proof-action="prefill-document" data-claim-type="${claimType.replace(/"/g, '&quot;')}" data-claim-element-id="${elementId.replace(/"/g, '&quot;')}" data-claim-element-text="${elementText.replace(/"/g, '&quot;')}">Attach Document Support</button>`
+                        : '',
+                    `<button class="button-tertiary proof-action-button" type="button" data-proof-action="open-follow-up" data-claim-type="${claimType.replace(/"/g, '&quot;')}" data-claim-element-id="${elementId.replace(/"/g, '&quot;')}" data-claim-element-text="${elementText.replace(/"/g, '&quot;')}">Open Follow-Up Tasks</button>`,
+                    `<button class="button-tertiary proof-action-button" type="button" data-proof-action="prefill-resolution" data-claim-element-id="${elementId.replace(/"/g, '&quot;')}" data-claim-element-text="${elementText.replace(/"/g, '&quot;')}">Load Resolution Form</button>`,
+                    supportPackets.length
+                        ? `<button class="button-tertiary proof-action-button" type="button" data-proof-action="drilldown" data-drilldown-target="packet-details-${elementSlug}">View Support Packets</button>`
+                        : '',
+                    proofGaps.length
+                        ? `<button class="button-tertiary proof-action-button" type="button" data-proof-action="drilldown" data-drilldown-target="proof-gap-details-${elementSlug}">Review Proof Gaps</button>`
+                        : '',
+                    contradictionPairs.length
+                        ? `<button class="button-tertiary proof-action-button" type="button" data-proof-action="drilldown" data-drilldown-target="contradiction-pair-details-${elementSlug}">Review Contradictions</button>`
+                        : '',
+                ].filter(Boolean);
                 return `
-                    <article class="element-card">
+                    <article
+                        class="element-card"
+                        data-claim-element-id="${elementId.replace(/"/g, '&quot;')}"
+                        data-claim-element-text="${elementText.replace(/"/g, '&quot;')}"
+                    >
                         <div class="row-head">
                             <div>
                                 <div class="row-title">${element.element_text || 'Unnamed element'}</div>
@@ -5359,6 +5917,8 @@
                         ${lineageChips.length ? `<div class="chip-row">${lineageChips.join('')}</div>` : ''}
                         ${authorityChips.length ? `<div class="chip-row">${authorityChips.join('')}</div>` : ''}
                         ${proofChips.length ? `<div class="chip-row">${proofChips.join('')}</div>` : ''}
+                        <div class="meta" style="margin-top: 10px;">${nextActionSummary}</div>
+                        ${proofCardActionButtons.length ? `<div class="button-row" style="margin-top: 12px;">${proofCardActionButtons.join('')}</div>` : ''}
                         ${packetDetails}
                         ${documentProofFacts}
                         ${supportProofFacts}
@@ -5368,6 +5928,42 @@
                     </article>
                 `;
             }).join('');
+            focusDeepLinkedElementCard(container);
+        }
+
+        function normalizeClaimElementToken(value) {
+            return String(value || '').trim().toLowerCase();
+        }
+
+        function focusDeepLinkedElementCard(container) {
+            const listContainer = container || document.getElementById('element-list');
+            if (!listContainer) {
+                return;
+            }
+            const normalizedFocusId = normalizeClaimElementToken(reviewRenderState.deepLinkClaimElementId);
+            const normalizedFocusText = normalizeClaimElementToken(reviewRenderState.deepLinkClaimElementText);
+            const cards = Array.from(listContainer.querySelectorAll('.element-card'));
+            cards.forEach((card) => card.classList.remove('focused-element-card'));
+            if (!normalizedFocusId && !normalizedFocusText) {
+                return;
+            }
+            const matchingCard = cards.find((card) => {
+                const cardElementId = normalizeClaimElementToken(card.getAttribute('data-claim-element-id'));
+                const cardElementText = normalizeClaimElementToken(card.getAttribute('data-claim-element-text'));
+                const idMatches = normalizedFocusId
+                    && (cardElementId === normalizedFocusId || cardElementText === normalizedFocusId);
+                const textMatches = normalizedFocusText
+                    && (cardElementText === normalizedFocusText || cardElementText.includes(normalizedFocusText));
+                return Boolean(idMatches || textMatches);
+            });
+            if (!matchingCard) {
+                return;
+            }
+            matchingCard.classList.add('focused-element-card');
+            if (!reviewRenderState.deepLinkFocusApplied && typeof matchingCard.scrollIntoView === 'function') {
+                matchingCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                reviewRenderState.deepLinkFocusApplied = true;
+            }
         }
 
         function renderTasks(plan, planSummary) {
@@ -5394,6 +5990,12 @@
                 const chronologyStatusLabel = buildCountSummaryLabel('Chronology status', planSummary.temporal_rule_status_counts || {}, 2);
                 const chronologyBlockerLabel = buildCountSummaryLabel('Chronology blockers', planSummary.temporal_rule_blocking_reason_counts || {}, 1);
                 const chronologyHandoffLabel = buildResolutionCountSummaryLabel('Chronology handoffs', planSummary.temporal_resolution_status_counts || {}, 2, { requireHandoff: true });
+                const authorityJurisdictionLabel = buildCountSummaryLabel('Authority jurisdictions', planSummary.authority_jurisdiction_counts || {}, 2);
+                const authorityFamilyLabel = buildCountSummaryLabel('Authority families', planSummary.authority_family_counts || {}, 2);
+                const authorityThemeLabel = buildCountSummaryLabel('Defense themes', planSummary.authority_defense_theme_counts || {}, 2);
+                const authorityWindowLabel = buildCountSummaryLabel('Authority windows', planSummary.authority_time_window_counts || {}, 1);
+                const authorityGraphGapLabel = buildCountSummaryLabel('Authority graph gaps', planSummary.authority_graph_gap_bias_counts || {}, 2);
+                const graphGapLabels = buildGraphGapSummaryLabels(planSummary, 'Graph gaps');
                 const outcomeLabel = buildResolutionCountSummaryLabel('Outcomes', planSummary.resolution_applied_counts || {}, 2, {
                     includeKeys: ['skipped_resolution_handoff', 'insufficient_support_after_search', 'manual_review_resolved'],
                 });
@@ -5404,6 +6006,12 @@
                 if (chronologyStatusLabel) summaryLabels.push(chronologyStatusLabel);
                 if (chronologyBlockerLabel) summaryLabels.push(chronologyBlockerLabel);
                 if (chronologyHandoffLabel) summaryLabels.push(chronologyHandoffLabel);
+                if (authorityJurisdictionLabel) summaryLabels.push(authorityJurisdictionLabel);
+                if (authorityFamilyLabel) summaryLabels.push(authorityFamilyLabel);
+                if (authorityThemeLabel) summaryLabels.push(authorityThemeLabel);
+                if (authorityWindowLabel) summaryLabels.push(authorityWindowLabel);
+                if (authorityGraphGapLabel) summaryLabels.push(authorityGraphGapLabel);
+                graphGapLabels.forEach((label) => summaryLabels.push(label));
                 if (outcomeLabel) summaryLabels.push(outcomeLabel);
             }
             summaryChips.innerHTML = summaryLabels.length
@@ -5469,8 +6077,15 @@
                         ${task.temporal_rule_profile_id ? `<span class="chip">chronology profile ${task.temporal_rule_profile_id}</span>` : ''}
                         ${resolutionStatus ? `<span class="chip">${handoffStatus ? 'handoff' : 'resolution'} ${formatFollowUpResolutionLabel(resolutionStatus)}</span>` : ''}
                         ${task.source_quality_target ? `<span class="chip">quality target ${formatFollowUpResolutionLabel(task.source_quality_target)}</span>` : ''}
+                        ${renderFollowUpQualityRoutingChips(task)}
                         ${proofLeadLabels.map((label) => `<span class="chip">proof lead ${label}</span>`).join('')}
                         ${task.authority_search_program_summary && task.authority_search_program_summary.primary_program_type ? `<span class="chip">authority program ${task.authority_search_program_summary.primary_program_type}</span>` : ''}
+                        ${task.authority_intent ? `<span class="chip">authority intent ${task.authority_intent}</span>` : ''}
+                        ${task.authority_search_program_summary && task.authority_search_program_summary.primary_jurisdiction ? `<span class="chip">jurisdiction ${task.authority_search_program_summary.primary_jurisdiction}</span>` : ''}
+                        ${task.authority_search_program_summary && task.authority_search_program_summary.primary_forum ? `<span class="chip">forum ${task.authority_search_program_summary.primary_forum}</span>` : ''}
+                        ${task.authority_search_program_summary && Array.isArray(task.authority_search_program_summary.primary_authority_families) ? task.authority_search_program_summary.primary_authority_families.slice(0, 2).map((family) => `<span class="chip">authority family ${family}</span>`).join('') : ''}
+                        ${task.authority_search_program_summary && Array.isArray(task.authority_search_program_summary.primary_defense_themes) ? task.authority_search_program_summary.primary_defense_themes.slice(0, 2).map((theme) => `<span class="chip">defense theme ${theme}</span>`).join('') : ''}
+                        ${task.authority_search_program_summary && task.authority_search_program_summary.primary_time_window && task.authority_search_program_summary.primary_time_window.status ? `<span class="chip">time window ${task.authority_search_program_summary.primary_time_window.status}</span>` : ''}
                         ${task.authority_search_program_summary && task.authority_search_program_summary.primary_program_bias ? `<span class="chip">authority bias ${task.authority_search_program_summary.primary_program_bias}</span>` : ''}
                         ${task.authority_search_program_summary && task.authority_search_program_summary.primary_program_rule_bias ? `<span class="chip">rule bias ${task.authority_search_program_summary.primary_program_rule_bias}</span>` : ''}
                         ${task.authority_search_program_summary && task.authority_search_program_summary.program_count ? `<span class="chip">authority bundle ${task.authority_search_program_summary.program_count}</span>` : ''}
@@ -5479,6 +6094,8 @@
                         ${task.should_suppress_retrieval ? '<span class="chip">Suppressed</span>' : ''}
                         ${task.resolution_applied ? `<span class="chip">normalized: ${task.resolution_applied}</span>` : ''}
                         ${renderSourceContextChips(graphSourceContext, 'No graph source context')}
+                        ${renderGraphGapContextChips(task.graph_gap_context)}
+                        ${renderGraphGapQueryChips(task.graph_gap_query)}
                     </div>
                     ${temporalRuleBlockers.length ? `<div class="meta" style="margin-top: 10px;">chronology blocker: ${temporalRuleBlockers[0]}</div>` : ''}
                     ${temporalRuleFollowUps.length ? `<div class="meta" style="margin-top: 6px;">chronology follow-up: ${formatTemporalFollowUpItem(temporalRuleFollowUps[0])}</div>` : ''}
@@ -5519,16 +6136,40 @@
                 const latestAttemptedAt = historySummary.latest_attempted_at || 'none';
                 summaryLabels.push(`Latest: ${latestAttemptedAt}`);
                 const selectedProgramTypes = Object.entries(historySummary.selected_authority_program_type_counts || {});
+                const selectedAuthorityIntents = Object.entries(historySummary.selected_authority_intent_counts || {});
+                const selectedJurisdictions = Object.entries(historySummary.selected_authority_jurisdiction_counts || {});
+                const selectedFamilies = Object.entries(historySummary.selected_authority_family_counts || {});
+                const selectedDefenseThemes = Object.entries(historySummary.selected_authority_defense_theme_counts || {});
+                const selectedTimeWindows = Object.entries(historySummary.selected_authority_time_window_counts || {});
                 const selectedProgramBiases = Object.entries(historySummary.selected_authority_program_bias_counts || {});
                 const selectedProgramRuleBiases = Object.entries(historySummary.selected_authority_program_rule_bias_counts || {});
+                const selectedGraphGapBiases = Object.entries(historySummary.selected_authority_graph_gap_bias_counts || {});
                 if (selectedProgramTypes.length) {
                     summaryLabels.push(`History programs: ${selectedProgramTypes.map(([label, count]) => `${label}=${count}`).join(', ')}`);
+                }
+                if (selectedAuthorityIntents.length) {
+                    summaryLabels.push(`History intents: ${selectedAuthorityIntents.map(([label, count]) => `${label}=${count}`).join(', ')}`);
+                }
+                if (selectedJurisdictions.length) {
+                    summaryLabels.push(`History jurisdictions: ${selectedJurisdictions.map(([label, count]) => `${label}=${count}`).join(', ')}`);
+                }
+                if (selectedFamilies.length) {
+                    summaryLabels.push(`History authority families: ${selectedFamilies.map(([label, count]) => `${label}=${count}`).join(', ')}`);
+                }
+                if (selectedDefenseThemes.length) {
+                    summaryLabels.push(`History defense themes: ${selectedDefenseThemes.map(([label, count]) => `${label}=${count}`).join(', ')}`);
+                }
+                if (selectedTimeWindows.length) {
+                    summaryLabels.push(`History authority windows: ${selectedTimeWindows.map(([label, count]) => `${label}=${count}`).join(', ')}`);
                 }
                 if (selectedProgramBiases.length) {
                     summaryLabels.push(`History biases: ${selectedProgramBiases.map(([label, count]) => `${label}=${count}`).join(', ')}`);
                 }
                 if (selectedProgramRuleBiases.length) {
                     summaryLabels.push(`History rule biases: ${selectedProgramRuleBiases.map(([label, count]) => `${label}=${count}`).join(', ')}`);
+                }
+                if (selectedGraphGapBiases.length) {
+                    summaryLabels.push(`History graph-gap biases: ${selectedGraphGapBiases.map(([label, count]) => `${label}=${count}`).join(', ')}`);
                 }
                 const historySourceContext = buildFollowUpSourceSignalCounts({
                     support_by_kind: historySummary.support_kind_counts || {},
@@ -5547,6 +6188,7 @@
                 const chronologyStatusLabel = buildCountSummaryLabel('Chronology status', historySummary.temporal_rule_status_counts || {}, 2);
                 const chronologyBlockerLabel = buildCountSummaryLabel('Chronology blockers', historySummary.temporal_rule_blocking_reason_counts || {}, 1);
                 const chronologyHandoffLabel = buildResolutionCountSummaryLabel('Chronology handoffs', historySummary.temporal_resolution_status_counts || {}, 2, { requireHandoff: true });
+                const graphGapLabels = buildGraphGapSummaryLabels(historySummary, 'History graph gaps');
                 const outcomeLabel = buildResolutionCountSummaryLabel('Outcomes', historySummary.resolution_applied_counts || {}, 2, {
                     includeKeys: ['skipped_resolution_handoff', 'insufficient_support_after_search', 'manual_review_resolved'],
                 });
@@ -5557,6 +6199,7 @@
                 if (chronologyStatusLabel) summaryLabels.push(chronologyStatusLabel);
                 if (chronologyBlockerLabel) summaryLabels.push(chronologyBlockerLabel);
                 if (chronologyHandoffLabel) summaryLabels.push(chronologyHandoffLabel);
+                graphGapLabels.forEach((label) => summaryLabels.push(label));
                 if (outcomeLabel) summaryLabels.push(outcomeLabel);
             }
             if (chronologyHistoryEntries.length) {
@@ -5642,13 +6285,23 @@
                 temporalRuleFollowUps.forEach((item) => chips.push(`<span class="chip">chronology follow-up: ${formatTemporalFollowUpItem(item)}</span>`));
                 if (resolutionStatus) chips.push(`<span class="chip">${handoffStatus ? 'handoff' : 'resolution'}: ${formatFollowUpResolutionLabel(resolutionStatus)}</span>`);
                 if (entry.source_quality_target) chips.push(`<span class="chip">quality target: ${formatFollowUpResolutionLabel(entry.source_quality_target)}</span>`);
+                chips.push(renderFollowUpQualityRoutingChips(entry, { separator: ': ' }));
                 proofLeadLabels.forEach((label) => chips.push(`<span class="chip">proof lead: ${label}</span>`));
                 if (entry.selected_search_program_type) chips.push(`<span class="chip">program: ${entry.selected_search_program_type}</span>`);
+                if (entry.selected_search_program_intent || entry.authority_intent) chips.push(`<span class="chip">intent: ${entry.selected_search_program_intent || entry.authority_intent}</span>`);
+                if (entry.selected_search_program_jurisdiction) chips.push(`<span class="chip">jurisdiction: ${entry.selected_search_program_jurisdiction}</span>`);
+                if (entry.selected_search_program_forum) chips.push(`<span class="chip">forum: ${entry.selected_search_program_forum}</span>`);
+                (entry.selected_search_program_families || []).slice(0, 2).forEach((family) => chips.push(`<span class="chip">authority family: ${family}</span>`));
+                (entry.selected_search_program_defense_themes || []).slice(0, 2).forEach((theme) => chips.push(`<span class="chip">defense theme: ${theme}</span>`));
+                if (entry.selected_search_program_time_window && entry.selected_search_program_time_window.status) chips.push(`<span class="chip">time window: ${entry.selected_search_program_time_window.status}</span>`);
                 if (entry.selected_search_program_bias) chips.push(`<span class="chip">bias: ${entry.selected_search_program_bias}</span>`);
                 if (entry.selected_search_program_rule_bias) chips.push(`<span class="chip">rule bias: ${entry.selected_search_program_rule_bias}</span>`);
+                if (entry.selected_search_program_graph_gap_bias) chips.push(`<span class="chip">graph-gap bias: ${entry.selected_search_program_graph_gap_bias}</span>`);
                 if (entry.source_family) chips.push(`<span class="chip">family: ${entry.source_family}</span>`);
                 if (entry.artifact_family) chips.push(`<span class="chip">artifact: ${entry.artifact_family}</span>`);
                 if (entry.content_origin) chips.push(`<span class="chip">origin: ${entry.content_origin}</span>`);
+                chips.push(renderGraphGapContextChips(entry.graph_gap_context, { separator: ': ' }));
+                chips.push(renderGraphGapQueryChips(entry.graph_gap_query, { separator: ': ' }));
                 if (entry.resolution_applied) chips.push(`<span class="chip">normalized: ${entry.resolution_applied}</span>`);
                 if (entry.resolution_status) chips.push(`<span class="chip">resolution: ${formatFollowUpResolutionLabel(entry.resolution_status)}</span>`);
                 return `
@@ -5678,7 +6331,69 @@
             }).join('');
         }
 
-        function renderQuestionRecommendations(recommendations) {
+        function renderFollowUpQualityRoutingChips(record, options = {}) {
+            if (!record || typeof record !== 'object') return '';
+            const separator = options.separator || ' ';
+            const chips = [];
+            const supportQualitySummary = record.support_quality_summary || {};
+            const primaryQualitySignal = record.primary_quality_signal || supportQualitySummary.primary_quality_signal || {};
+            const primarySignalType = String(primaryQualitySignal.signal_type || record.primary_quality_signal_type || '').trim();
+            const ontologyQuality = record.ontology_quality || {};
+            const ontologyGrade = String(ontologyQuality.grade || '').trim();
+            const ontologyGapCount = Number(record.ontology_quality_gap_count || (Array.isArray(record.ontology_gap_types) ? record.ontology_gap_types.length : 0) || 0);
+            const followUpAction = String(
+                record.quality_follow_up_action || supportQualitySummary.quality_follow_up_action || '',
+            ).trim();
+            if (followUpAction) {
+                chips.push(`<span class="chip">quality action${separator}${followUpAction}</span>`);
+            }
+            if (ontologyGrade) {
+                chips.push(`<span class="chip">ontology grade${separator}${ontologyGrade}</span>`);
+            }
+            if (ontologyGapCount) {
+                chips.push(`<span class="chip">ontology gaps${separator}${ontologyGapCount}</span>`);
+            }
+            if (record.ontology_has_blocking_gaps) {
+                chips.push('<span class="chip">blocking ontology gap</span>');
+            }
+            if (Array.isArray(record.ontology_gap_types)) {
+                record.ontology_gap_types.slice(0, 2).forEach((label) => {
+                    if (label) chips.push(`<span class="chip">ontology gap${separator}${label}</span>`);
+                });
+            }
+            if (primarySignalType) {
+                chips.push(`<span class="chip">quality signal${separator}${primarySignalType}</span>`);
+            }
+            Object.entries(record.quality_signal_counts || {}).forEach(([label, count]) => {
+                if (label && Number(count || 0)) {
+                    chips.push(`<span class="chip">quality ${label}${separator}${count}</span>`);
+                }
+            });
+            return chips.join('');
+        }
+
+        function renderQuestionRecommendations(recommendations, summary) {
+            const summaryChips = document.getElementById('question-recommendation-summary-chips');
+            const summaryLabels = [];
+            if (summary && typeof summary === 'object') {
+                summaryLabels.push(`Questions: ${Number(summary.recommendation_count || 0)}`);
+                Object.entries(summary.question_lane_counts || {}).forEach(([label, count]) => {
+                    summaryLabels.push(`lane ${label}: ${count}`);
+                });
+                Object.entries(summary.expected_proof_gain_counts || {}).forEach(([label, count]) => {
+                    summaryLabels.push(`proof gain ${label}: ${count}`);
+                });
+                Object.entries(summary.quality_follow_up_action_counts || {}).forEach(([label, count]) => {
+                    summaryLabels.push(`quality action ${label}: ${count}`);
+                });
+                Object.entries(summary.primary_quality_signal_counts || {}).forEach(([label, count]) => {
+                    summaryLabels.push(`quality signal ${label}: ${count}`);
+                });
+            }
+            summaryChips.innerHTML = summaryLabels.length
+                ? summaryLabels.map((label) => `<span class="chip">${label}</span>`).join('')
+                : '<span class="chip">No question routing summary.</span>';
+
             const container = document.getElementById('question-list');
             const items = Array.isArray(recommendations) ? recommendations : [];
             if (!items.length) {
@@ -5701,6 +6416,9 @@
                         <span class="chip">${recommendation.question_reason || 'Clarify unresolved support.'}</span>
                         ${recommendation.supporting_evidence_summary ? `<span class="chip">${recommendation.supporting_evidence_summary}</span>` : ''}
                         ${recommendation.source_fact_status ? `<span class="chip">fact ${recommendation.source_fact_status}</span>` : ''}
+                        ${recommendation.quality_follow_up_action ? `<span class="chip">quality action ${recommendation.quality_follow_up_action}</span>` : ''}
+                        ${recommendation.primary_quality_signal && recommendation.primary_quality_signal.signal_type ? `<span class="chip">quality signal ${recommendation.primary_quality_signal.signal_type}</span>` : ''}
+                        ${Object.entries(recommendation.quality_signal_counts || {}).map(([label, count]) => `<span class="chip">quality ${label}: ${count}</span>`).join('')}
                         ${(recommendation.source_fact_ids || []).map((factId) => `<span class="chip">fact id ${factId}</span>`).join('')}
                         ${(recommendation.missing_support_kinds || []).map((kind) => `<span class="chip">missing ${kind}</span>`).join('')}
                     </div>
@@ -5886,8 +6604,14 @@
                 const graphPreview = record.graph_preview || {};
                 const graphEntities = Array.isArray(graphPreview.entities) ? graphPreview.entities : [];
                 const graphRelationships = Array.isArray(graphPreview.relationships) ? graphPreview.relationships : [];
+                const needsRemediation = Boolean(record.needs_remediation);
+                const remediationFlags = Array.isArray(record.remediation_flags) ? record.remediation_flags : [];
+                const remediationGuidance = String(record.remediation_guidance || '');
+                const reparseRecommended = Boolean(record.reparse_recommended);
+                const linkedTestimonyId = String(record.linked_testimony_id || '');
+                const needsOcr = remediationFlags.includes('needs_ocr');
                 return `
-                    <article class="history-card">
+                    <article class="history-card${needsRemediation ? ' history-card--warning' : ''}">
                         <div class="row-head">
                             <div>
                                 <div class="row-title">${record.description || record.filename || record.source_url || record.cid || 'Document artifact'}</div>
@@ -5902,7 +6626,22 @@
                             ${parseMetadata.quality_tier ? `<span class="chip">quality: ${parseMetadata.quality_tier}</span>` : ''}
                             ${record.graph_status ? `<span class="chip">graph: ${record.graph_status}</span>` : ''}
                             ${record.fact_count !== null && record.fact_count !== undefined ? `<span class="chip">facts: ${record.fact_count}</span>` : ''}
+                            ${linkedTestimonyId ? `<span class="chip">testimony: ${linkedTestimonyId}</span>` : ''}
+                            ${remediationFlags.map((f) => `<span class="chip chip--warning">${f}</span>`).join('')}
                         </div>
+                        ${needsRemediation && remediationGuidance ? `
+                            <div class="resolution-feedback" style="margin-top: 10px;">
+                                <div class="resolution-feedback-body">${remediationGuidance}</div>
+                                ${reparseRecommended && record.record_id != null ? `
+                                    <div class="button-row" style="margin-top: 8px;">
+                                        <button class="button-tertiary" type="button"
+                                            onclick="reparseDocument(${record.record_id}, false)">Reparse</button>
+                                        ${needsOcr ? `<button class="button-tertiary" type="button"
+                                            onclick="reparseDocument(${record.record_id}, true)">Reparse with OCR</button>` : ''}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        ` : ''}
                         <div style="margin-top: 10px;">${record.parsed_text_preview || 'No parsed preview available.'}</div>
                         ${chunkPreviews.length ? `
                             <details class="packet-details" style="margin-top: 12px;">
@@ -5966,6 +6705,7 @@
             document.getElementById('document-filename').value = '';
             document.getElementById('document-source-url').value = '';
             document.getElementById('document-mime-type').value = '';
+            document.getElementById('document-testimony-id').value = '';
             document.getElementById('document-text').value = '';
             document.getElementById('document-file-input').value = '';
         }
@@ -5986,6 +6726,9 @@
                     documentText.value = values.documentText;
                 }
             }
+            if (values.testimonyId) {
+                document.getElementById('document-testimony-id').value = values.testimonyId;
+            }
         }
 
         function buildDocumentRequest() {
@@ -5998,6 +6741,7 @@
                 filename: document.getElementById('document-filename').value.trim() || null,
                 source_url: document.getElementById('document-source-url').value.trim() || null,
                 mime_type: document.getElementById('document-mime-type').value.trim() || null,
+                testimony_id: document.getElementById('document-testimony-id').value.trim() || null,
                 document_text: document.getElementById('document-text').value.trim() || null,
                 required_support_kinds: parseRequiredSupportKinds(),
                 include_support_summary: document.getElementById('include-support').checked,
@@ -6005,6 +6749,34 @@
                 include_follow_up_plan: document.getElementById('include-plan').checked,
                 include_post_save_review: true,
             };
+        }
+
+        async function reparseDocument(recordId, forceOcr) {
+            if (!recordId) { return; }
+            setStatus('Reparsing document…');
+            try {
+                const payload = {
+                    record_id: Number(recordId),
+                    claim_type: document.getElementById('claim-type').value.trim() || null,
+                    user_id: document.getElementById('user-id').value.trim() || null,
+                    force_ocr: Boolean(forceOcr),
+                    include_post_save_review: true,
+                    include_support_summary: document.getElementById('include-support').checked,
+                    include_overview: document.getElementById('include-overview').checked,
+                    include_follow_up_plan: document.getElementById('include-plan').checked,
+                };
+                const result = await postJson('/api/claim-support/reparse-document', payload);
+                document.getElementById('raw-output').textContent = JSON.stringify(result, null, 2);
+                if (result && result.reparsed) {
+                    renderPayload(result.post_save_review || result);
+                    setStatus('Document reparsed successfully.');
+                } else {
+                    const error = (result && result.reparse_result && result.reparse_result.error) || result.error || 'unknown error';
+                    setStatus(`Reparse did not complete: ${error}`);
+                }
+            } catch (err) {
+                setStatus(`Reparse failed: ${err.message}`);
+            }
         }
 
         function buildDocumentUploadFormData(file, payload) {
@@ -6069,6 +6841,8 @@
             const planSummaryClaims = payload.follow_up_plan_summary || {};
             const historyClaims = payload.follow_up_history || {};
             const historySummaryClaims = payload.follow_up_history_summary || {};
+            const executionSummaryClaims = payload.follow_up_execution_summary || {};
+            const coverageSnapshotSummaryClaims = payload.claim_coverage_matrix_snapshot_summary || {};
             const fallbackClaim = Object.keys(coverageClaims)[0] || Object.keys(planClaims)[0] || claimType;
             return {
                 claimType: coverageClaims[claimType] ? claimType : fallbackClaim,
@@ -6077,6 +6851,8 @@
                 planSummaryClaims,
                 historyClaims,
                 historySummaryClaims,
+                executionSummaryClaims,
+                coverageSnapshotSummaryClaims,
             };
         }
 
@@ -6091,24 +6867,28 @@
             const planSummary = primary.planSummaryClaims[claimType] || null;
             const historyEntries = primary.historyClaims[claimType] || [];
             const historySummary = primary.historySummaryClaims[claimType] || null;
+            const executionSummary = primary.executionSummaryClaims[claimType] || null;
+            const coverageSnapshotSummary = primary.coverageSnapshotSummaryClaims[claimType] || null;
             const questionRecommendations = ((payload.question_recommendations || {})[claimType]) || [];
+            const questionRecommendationSummary = ((payload.question_recommendation_summary || {})[claimType]) || null;
             const testimonyRecords = ((payload.testimony_records || {})[claimType]) || [];
             const testimonySummary = ((payload.testimony_summary || {})[claimType]) || null;
             const documentArtifacts = ((payload.document_artifacts || {})[claimType]) || [];
             const documentSummary = ((payload.document_summary || {})[claimType]) || null;
 
-            setSummary(summary, planSummary);
-            setFollowUpSignals(planSummary, historySummary);
+            setSummary(summary, planSummary, coverageSnapshotSummary);
+            setFollowUpSignals(planSummary, historySummary, executionSummary);
             renderIntakeStatus(payload.intake_status || null, payload.intake_case_summary || null);
             renderIntakeCaseSummary(payload.intake_case_summary || null);
-            renderQuestionRecommendations(questionRecommendations);
+            renderQuestionRecommendations(questionRecommendations, questionRecommendationSummary);
             renderTestimonyRecords(testimonyRecords, testimonySummary);
             renderDocumentArtifacts(documentArtifacts, documentSummary);
             renderTimelineOrdering(payload.intake_case_summary || {});
             renderClaimReasoningReview(reasoningReview);
-            renderElements(matrix.elements || []);
+            renderElements(matrix.elements || [], claimType);
             renderTasks(plan, planSummary);
             renderHistory(historyEntries, historySummary);
+            renderHeavyProcessingQueue(payload.heavy_processing_queue || null);
             document.getElementById('raw-output').textContent = JSON.stringify(payload, null, 2);
             if (payload && (payload.user_id || document.getElementById('user-id').value.trim())) {
                 syncSharedCaseSynopsis();
@@ -6176,6 +6956,65 @@
             } catch (error) {
                 clearExecutionFeedback();
                 setStatus(`Execution request failed: ${error.message}`);
+            }
+        }
+
+        function buildHeavyProcessingQueueParams() {
+            const request = baseRequest();
+            const params = new URLSearchParams();
+            const enrichmentType = document.getElementById('queue-enrichment-type').value || 'graph_enrichment';
+            params.set('enrichment_type', enrichmentType);
+            params.set('priority', String(Number(document.getElementById('queue-priority').value || 0)));
+            if (request.user_id) {
+                params.set('user_id', request.user_id);
+            }
+            if (request.claim_type) {
+                params.set('claim_type', request.claim_type);
+            }
+            return params;
+        }
+
+        function buildHeavyProcessingQueueStateParams() {
+            const request = baseRequest();
+            const params = new URLSearchParams();
+            if (request.user_id) {
+                params.set('user_id', request.user_id);
+            }
+            if (request.claim_type) {
+                params.set('claim_type', request.claim_type);
+            }
+            return params;
+        }
+
+        async function submitHeavyProcessingJob() {
+            const params = buildHeavyProcessingQueueParams();
+            setStatus('Queueing heavy processing step...');
+            try {
+                const result = await postQuery(`/api/claim-support/enrich-background?${params.toString()}`);
+                renderHeavyProcessingQueue(result.queue_state || {
+                    available: Boolean(result.submitted),
+                    queue: result.submitted ? [result] : [],
+                    queue_count: result.submitted ? 1 : 0,
+                    pending_count: result.submitted ? 1 : 0,
+                });
+                document.getElementById('raw-output').textContent = JSON.stringify(result, null, 2);
+                setStatus(result.submitted ? 'Heavy processing step queued.' : `Heavy processing queue failed: ${result.error || 'unknown error'}`);
+            } catch (error) {
+                setStatus(`Heavy processing queue request failed: ${error.message}`);
+            }
+        }
+
+        async function refreshHeavyProcessingQueue() {
+            const params = buildHeavyProcessingQueueStateParams();
+            setStatus('Refreshing heavy processing queue...');
+            try {
+                const suffix = params.toString() ? `?${params.toString()}` : '';
+                const result = await getJson(`/api/claim-support/enrichment-queue${suffix}`);
+                renderHeavyProcessingQueue(result);
+                document.getElementById('raw-output').textContent = JSON.stringify(result, null, 2);
+                setStatus('Heavy processing queue refreshed.');
+            } catch (error) {
+                setStatus(`Heavy processing queue refresh failed: ${error.message}`);
             }
         }
 
@@ -6421,6 +7260,8 @@
 
         document.getElementById('review-button').addEventListener('click', loadReview);
         document.getElementById('execute-button').addEventListener('click', executeFollowUp);
+        document.getElementById('queue-heavy-processing-button').addEventListener('click', submitHeavyProcessingJob);
+        document.getElementById('refresh-heavy-processing-queue-button').addEventListener('click', refreshHeavyProcessingQueue);
         document.getElementById('confirm-intake-summary-button').addEventListener('click', confirmIntakeSummary);
         document.getElementById('resolve-button').addEventListener('click', resolveManualReview);
         document.getElementById('clear-resolution-button').addEventListener('click', clearResolutionForm);
@@ -6546,6 +7387,79 @@
                     .then(() => setStatus(`Proof explanation copied for ${proofExplanationButton.dataset.proofElement || 'the selected element'}.`))
                     .catch((error) => setStatus(`Proof explanation copy failed: ${error.message}`));
                 return;
+            }
+            const proofActionButton = event.target.closest('.proof-action-button');
+            if (proofActionButton) {
+                const proofAction = String(proofActionButton.dataset.proofAction || '').trim();
+                const claimType = proofActionButton.dataset.claimType || '';
+                const claimElementId = proofActionButton.dataset.claimElementId || '';
+                const claimElementText = proofActionButton.dataset.claimElementText || '';
+                if (proofAction === 'prefill-testimony') {
+                    prefillTestimonyForm({
+                        claimElementId,
+                        claimElementText,
+                        questionText: claimElementText
+                            ? `Capture testimony that directly supports: ${claimElementText}.`
+                            : 'Capture testimony that directly supports this claim element.',
+                    });
+                    setStatus('Testimony form prefilled from proof card next action.');
+                    return;
+                }
+                if (proofAction === 'prefill-document') {
+                    prefillDocumentForm({
+                        claimElementId,
+                        claimElementText,
+                        documentLabel: claimElementText
+                            ? `Support document for ${claimElementText}`
+                            : 'Support document',
+                        documentText: claimElementText
+                            ? `Attach the strongest source document that supports ${claimElementText}.`
+                            : 'Attach the strongest source document for this claim element.',
+                    });
+                    setStatus('Document form prefilled from proof card next action.');
+                    return;
+                }
+                if (proofAction === 'open-follow-up') {
+                    openEvidenceTaskReview(
+                        claimType,
+                        claimElementId,
+                        claimElementText,
+                        document.getElementById('support-kind').value || '',
+                    );
+                    setStatus('Showing follow-up tasks for the selected proof card.');
+                    return;
+                }
+                if (proofAction === 'prefill-resolution') {
+                    prefillResolutionForm({
+                        claimElementId,
+                        claimElementText,
+                        resolutionStatus: 'resolved_supported',
+                    });
+                    const resolutionField = document.getElementById('resolution-element-id');
+                    if (resolutionField && typeof resolutionField.scrollIntoView === 'function') {
+                        resolutionField.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                    setStatus('Resolution form prefilled from proof card next action.');
+                    return;
+                }
+                if (proofAction === 'drilldown') {
+                    const drilldownTargetId = String(proofActionButton.dataset.drilldownTarget || '').trim();
+                    if (!drilldownTargetId) {
+                        return;
+                    }
+                    const drilldownTarget = document.getElementById(drilldownTargetId);
+                    if (!drilldownTarget) {
+                        return;
+                    }
+                    if (drilldownTarget.tagName === 'DETAILS') {
+                        drilldownTarget.open = true;
+                    }
+                    if (typeof drilldownTarget.scrollIntoView === 'function') {
+                        drilldownTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                    setStatus('Opened proof-card drilldown details.');
+                    return;
+                }
             }
             const button = event.target.closest('.prefill-resolution-button');
             if (button) {

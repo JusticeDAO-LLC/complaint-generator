@@ -1,10 +1,11 @@
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from applications.complaint_workspace import (
     ComplaintWorkspaceService,
     DEFAULT_CLAIM_ELEMENTS,
     DEFAULT_INTAKE_QUESTIONS,
+    WorkspaceAccess,
     generate_decentralized_id,
 )
 
@@ -13,12 +14,16 @@ def _resolve_service(
     service: Optional[ComplaintWorkspaceService] = None,
     *,
     root_dir: Optional[str | Path] = None,
+    access: Optional[WorkspaceAccess] = None,
 ) -> ComplaintWorkspaceService:
     if service is not None:
         return service
+    # Ordinary CLI and TUI callers are local operators. Ownership is explicit
+    # trusted-local and does not install an external identity provider.
+    local_access = access if access is not None else WorkspaceAccess.trusted_local()
     if root_dir is not None:
-        return ComplaintWorkspaceService(root_dir=Path(root_dir))
-    return ComplaintWorkspaceService()
+        return ComplaintWorkspaceService(root_dir=Path(root_dir), access=local_access)
+    return ComplaintWorkspaceService(access=local_access)
 
 
 def create_identity(
@@ -81,13 +86,25 @@ def run_intake_chat_turn(
     *,
     message: Optional[str] = None,
     question_id: Optional[str] = None,
+    expected_question_revision: Optional[int] = None,
+    interview_action: Optional[str] = None,
     service: Optional[ComplaintWorkspaceService] = None,
     root_dir: Optional[str | Path] = None,
 ) -> dict[str, Any]:
+    """Advance one intake turn and return the next typed inquiry.
+
+    The first turn stores ``message`` on ``original_complaint`` (versioned
+    narrative and revisions). Later structured ``question_id`` answers stay in
+    ``intake_answers``. Graph start, answer, and resume use the same mediator
+    transition for package, API, and MCP callers.
+    """
+
     return _resolve_service(service, root_dir=root_dir).run_intake_chat_turn(
         user_id,
         message=message,
         question_id=question_id,
+        expected_question_revision=expected_question_revision,
+        interview_action=interview_action,
     )
 
 
@@ -412,6 +429,190 @@ def search_workspace_dataset(
     )
 
 
+def view_workspace_dataset(
+    input_path: str | Path,
+    *,
+    input_type: str = "packaged",
+    include_document_text: bool = False,
+    document_limit: int = 25,
+    collection_id: Optional[str] = None,
+    document_type: Optional[str] = None,
+    claim_type: Optional[str] = None,
+    claim_element_id: Optional[str] = None,
+    source_type: Optional[str] = None,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).view_workspace_dataset(
+        str(input_path),
+        input_type=input_type,
+        include_document_text=include_document_text,
+        document_limit=document_limit,
+        collection_id=collection_id,
+        document_type=document_type,
+        claim_type=claim_type,
+        claim_element_id=claim_element_id,
+        source_type=source_type,
+    )
+
+
+def get_draft_proof_report(
+    user_id: Optional[str],
+    *,
+    state_code: Optional[str] = None,
+    allow_live_scrape_fallback: bool = False,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).get_draft_proof_report(
+        user_id,
+        state_code=state_code,
+        allow_live_scrape_fallback=allow_live_scrape_fallback,
+    )
+
+
+def render_draft_proof_report(
+    user_id: Optional[str],
+    *,
+    state_code: Optional[str] = None,
+    claim_id: str = "",
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).render_draft_proof_report(
+        user_id, state_code=state_code, claim_id=claim_id,
+    )
+
+
+def pin_draft_proof_report(
+    user_id: Optional[str],
+    *,
+    state_code: Optional[str] = None,
+    claim_id: str = "",
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).pin_draft_proof_report(
+        user_id, state_code=state_code, claim_id=claim_id,
+    )
+
+
+def score_draft_quality(
+    user_id: Optional[str],
+    *,
+    state_code: Optional[str] = None,
+    persist: bool = True,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).score_draft_quality(
+        user_id, state_code=state_code, persist=persist,
+    )
+
+
+def get_privacy_policy(
+    user_id: Optional[str] = None,
+    case_id: Optional[str] = None,
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).get_privacy_policy(user_id, case_id=case_id)
+
+
+def set_privacy_policy(
+    user_id: Optional[str],
+    mode: str,
+    case_id: Optional[str] = None,
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).set_privacy_policy(
+        user_id,
+        mode,
+        case_id=case_id,
+    )
+
+
+def dispatch_private_llm_turn(
+    user_id: Optional[str],
+    *,
+    relevant_facts: list,
+    rule_gaps: list,
+    unrelated_evidence: list | None = None,
+    sensitive_literals: list | None = None,
+    key: bytes,
+    key_id: str,
+    provider: str | None = None,
+    model_name: str | None = None,
+    timeout: Any = None,
+    campaign_settings: Mapping[str, Any] | None = None,
+    stored_user_complaint: bool = False,
+    turn_id: str = "",
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+    **options: Any,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).dispatch_private_llm_turn(
+        user_id,
+        relevant_facts=relevant_facts,
+        rule_gaps=rule_gaps,
+        unrelated_evidence=unrelated_evidence,
+        sensitive_literals=sensitive_literals,
+        key=key,
+        key_id=key_id,
+        provider=provider,
+        model_name=model_name,
+        timeout=timeout,
+        campaign_settings=campaign_settings,
+        stored_user_complaint=stored_user_complaint,
+        turn_id=turn_id,
+        **options,
+    )
+
+
+def inventory_private_data_classes(
+    user_id: Optional[str] = None,
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).inventory_private_data_classes(user_id)
+
+
+def improve_draft(
+    user_id: Optional[str],
+    *,
+    state_code: Optional[str] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    config_path: Optional[str] = None,
+    backend_id: Optional[str] = None,
+    max_suggestions: int = 3,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).improve_draft(
+        user_id,
+        state_code=state_code,
+        provider=provider,
+        model=model,
+        config_path=config_path,
+        backend_id=backend_id,
+        max_suggestions=max_suggestions,
+    )
+
+
+def get_proof_history(
+    user_id: Optional[str],
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).get_proof_history(user_id)
+
+
 def generate_complaint(
     user_id: Optional[str],
     *,
@@ -452,6 +653,208 @@ def update_draft(
         body=body,
         requested_relief=requested_relief,
     )
+
+
+def build_mike_handoff(
+    user_id: Optional[str],
+    *,
+    mike_base_url: Optional[str] = None,
+    project_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+    generate_draft_if_missing: bool = True,
+    grounding_mode: Optional[str] = None,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).build_mike_handoff(
+        user_id,
+        mike_base_url=mike_base_url,
+        project_id=project_id,
+        workspace_id=workspace_id,
+        generate_draft_if_missing=generate_draft_if_missing,
+        grounding_mode=grounding_mode,
+    )
+
+
+def get_mike_integration_status(
+    user_id: Optional[str],
+    *,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).get_mike_integration_status(user_id)
+
+
+def sync_mike_final_draft(
+    user_id: Optional[str],
+    *,
+    body: str,
+    title: Optional[str] = None,
+    requested_relief: Optional[list[str]] = None,
+    handoff_id: Optional[str] = None,
+    project_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+    mike_document_id: Optional[str] = None,
+    citation_links: Optional[list[dict[str, Any]]] = None,
+    redline_summary: Optional[str] = None,
+    source_updated_at: Optional[str] = None,
+    structured_deltas: Optional[list[dict[str, Any]]] = None,
+    editor_metadata: Optional[dict[str, Any]] = None,
+    grounding_mode: Optional[str] = None,
+    assertion_annotations: Optional[list[dict[str, Any]]] = None,
+    authority_links: Optional[list[dict[str, Any]]] = None,
+    sync_provenance: Optional[dict[str, Any]] = None,
+    service: Optional[ComplaintWorkspaceService] = None,
+    root_dir: Optional[str | Path] = None,
+) -> dict[str, Any]:
+    return _resolve_service(service, root_dir=root_dir).sync_mike_final_draft(
+        user_id,
+        body=body,
+        title=title,
+        requested_relief=requested_relief,
+        handoff_id=handoff_id,
+        project_id=project_id,
+        workspace_id=workspace_id,
+        mike_document_id=mike_document_id,
+        citation_links=citation_links,
+        redline_summary=redline_summary,
+        source_updated_at=source_updated_at,
+        structured_deltas=structured_deltas,
+        editor_metadata=editor_metadata,
+        grounding_mode=grounding_mode,
+        assertion_annotations=assertion_annotations,
+        authority_links=authority_links,
+        sync_provenance=sync_provenance,
+    )
+
+
+def export_encrypted_workspace(
+    repository: str | Path,
+    export_dir: str | Path,
+    recovery_path: str | Path,
+    session: Any,
+    *,
+    tenant_id: str,
+    case_id: str,
+    principal_id: str,
+    recovery_passphrase: str,
+) -> dict[str, Any]:
+    """Export ciphertext plus a versioned manifest, with recovery kept separate."""
+
+    from integrations.private_storage import export_encrypted_workspace as _export
+
+    return _export(
+        repository,
+        export_dir,
+        recovery_path,
+        session,
+        tenant_id=tenant_id,
+        case_id=case_id,
+        principal_id=principal_id,
+        recovery_passphrase=recovery_passphrase,
+    )
+
+
+def import_encrypted_workspace(
+    repository: str | Path,
+    export_dir: str | Path,
+    recovery_path: str | Path,
+    store_dir: str | Path,
+    *,
+    tenant_id: str,
+    case_id: str,
+    principal_id: str,
+    recovery_passphrase: str,
+    store_passphrase: str | None = None,
+) -> dict[str, Any]:
+    """Restore a ciphertext archive in this process. A fresh process can call it too."""
+
+    from integrations.private_storage import import_encrypted_workspace as _import
+
+    return _import(
+        repository,
+        export_dir,
+        recovery_path,
+        store_dir,
+        tenant_id=tenant_id,
+        case_id=case_id,
+        principal_id=principal_id,
+        recovery_passphrase=recovery_passphrase,
+        store_passphrase=store_passphrase,
+    )
+
+
+def rotate_wrapping_key(session: Any, new_passphrase: str, *, policy: str = "retain", crash_at: str | None = None) -> dict[str, Any]:
+    """Rewrap the master key without reencrypting case ciphertext."""
+
+    return session.rotate_wrapping_key(new_passphrase, policy=policy, crash_at=crash_at)
+
+
+def rotate_data_key(
+    session: Any,
+    tenant_id: str,
+    case_id: str,
+    repository: str | Path,
+    principal_id: str,
+    *,
+    policy: str = "retain",
+    crash_at: str | None = None,
+) -> dict[str, Any]:
+    """Reencrypt the workspace under a new data key and retain the previous generation."""
+
+    return session.rotate_data_key(
+        tenant_id,
+        case_id,
+        repository,
+        principal_id,
+        policy=policy,
+        crash_at=crash_at,
+    )
+
+
+def revoke_retained_keys(session: Any, tenant_id: str, case_id: str, repository: str | Path, **options: Any) -> dict[str, Any]:
+    """Apply explicit retention policy. Rotation does not erase the only recovery path."""
+
+    return session.revoke_retained_keys(tenant_id, case_id, repository, **options)
+
+
+def delete_private_case(
+    repository: str | Path,
+    session: Any,
+    *,
+    tenant_id: str,
+    case_id: str,
+    policy: str,
+    legal_hold: bool = False,
+    workspace_required: bool = False,
+    providers: Any = None,
+    timeout_seconds: float | None = None,
+    crash_at: str | None = None,
+) -> dict[str, Any]:
+    """Delete one case and return the scoped unpin, remote, and key receipts."""
+
+    from integrations.private_storage import delete_private_case as _delete
+
+    return _delete(
+        repository,
+        session,
+        tenant_id=tenant_id,
+        case_id=case_id,
+        policy=policy,
+        legal_hold=legal_hold,
+        workspace_required=workspace_required,
+        providers=providers,
+        timeout_seconds=timeout_seconds,
+        crash_at=crash_at,
+    )
+
+
+def normal_reset_retention_receipt() -> dict[str, Any]:
+    """Show that a normal reset leaves encryption keys and recovery in place."""
+
+    from integrations.private_storage import normal_reset_retention_receipt as _receipt
+
+    return _receipt()
 
 
 def export_complaint_packet(
@@ -848,14 +1251,29 @@ __all__ = [
     "get_workspace_data_schema",
     "create_identity",
     "create_complaint_workspace_router",
+    "export_encrypted_workspace",
+    "import_encrypted_workspace",
+    "rotate_wrapping_key",
+    "rotate_data_key",
+    "revoke_retained_keys",
     "export_complaint_packet",
     "export_complaint_markdown",
     "export_complaint_pdf",
     "export_complaint_docx",
     "analyze_complaint_output",
     "get_formal_diagnostics",
+    "get_draft_proof_report",
+    "render_draft_proof_report",
+    "pin_draft_proof_report",
+    "score_draft_quality",
+    "improve_draft",
+    "get_proof_history",
     "get_filing_provenance",
     "get_provider_diagnostics",
+    "get_privacy_policy",
+    "set_privacy_policy",
+    "dispatch_private_llm_turn",
+    "inventory_private_data_classes",
     "get_packaged_docket_operator_dashboard",
     "load_packaged_docket_operator_dashboard_report",
     "execute_packaged_docket_proof_revalidation_queue",
@@ -864,9 +1282,12 @@ __all__ = [
     "update_claim_type",
     "generate_decentralized_id",
     "generate_complaint",
+    "build_mike_handoff",
+    "get_mike_integration_status",
     "get_workflow_capabilities",
     "migrate_legacy_workspace_data",
     "search_workspace_dataset",
+    "view_workspace_dataset",
     "import_gmail_evidence",
     "list_claim_elements",
     "list_intake_questions",
@@ -885,6 +1306,7 @@ __all__ = [
     "search_email_duckdb_corpus",
     "start_session",
     "submit_intake_answers",
+    "sync_mike_final_draft",
     "update_case_synopsis",
     "update_draft",
 ]

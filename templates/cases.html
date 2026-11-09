@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cases</title>
+    <link id="case-shell-style" rel="stylesheet" href="/static/complaint_app_shell.css">
+    <link id="complaint-case-shell-style" rel="stylesheet" href="/static/complaint_case_shell.css">
+    <style>
+        body { font-family: sans-serif; margin: 0; background: #f4f1ea; color: #1c2430; }
+        main { max-width: 42rem; margin: 0 auto; padding: 1.5rem; }
+        form, section { background: #fff; border: 1px solid #d5d0c6; padding: 1rem; margin-bottom: 1rem; }
+        button, summary { font: inherit; white-space: normal; overflow-wrap: anywhere; }
+        fieldset { min-width: 0; max-width: 100%; }
+        .notice { font-size: 0.95rem; }
+        .gap { margin: 0.2rem 0; }
+        /* The case shell stays on screen. Cap it so invitation controls below remain clickable. */
+        #complaint-case-shell.case-shell {
+            max-height: 16rem;
+            overflow: auto;
+        }
+        #case-list button,
+        #lawyer-queue-list button,
+        #assignment-list button,
+        #invite-lawyer button,
+        #invite-lawyer input {
+            scroll-margin-top: 18rem;
+            scroll-margin-bottom: 2rem;
+        }
+    </style>
+</head>
+<body class="case-catalog-page">
+<a class="cg-skip-link" href="#case-context">Skip to current case</a>
+<div id="case-context" class="cg-case-context" role="region" aria-label="Current case" data-state="empty" tabindex="-1">
+    <span class="cg-case-context__label">Current case</span>
+    <strong id="case-context-value">No case selected</strong>
+</div>
+<section id="complaint-case-shell" data-state="loading"></section>
+<div id="case-error-summary" class="cg-error-summary" role="alert" aria-labelledby="case-error-summary-title" tabindex="-1" hidden>
+    <h2 id="case-error-summary-title">Fix the following</h2>
+    <ul id="case-error-summary-list"></ul>
+</div>
+<main id="cases-main">
+    <h1>Your cases</h1>
+    <form id="case-login">
+        <p>Sign in here to enable changes. Authentication is required again after reloading or leaving this page; credentials and CSRF remain in memory only.</p>
+        <label for="case-credential">Credential</label>
+        <input id="case-credential" type="password" autocomplete="current-password" required>
+        <button type="submit">Sign in</button>
+        <button id="case-logout" type="button">Log out</button>
+        <span id="case-auth-status" role="status">Sign in required</span>
+    </form>
+    <p id="membership-notice" class="notice">Newly created cases are owner-only until you invite a lawyer. A lawyer role alone does not open a case. The recipient must accept the exact scope. Content stays closed until that membership is accepted and a key grant is admitted. Pending, declined, expired, and removed assignments stay visible to both parties. This screen does not send external messages.</p>
+    <section id="lawyer-review-queue" data-state="empty" aria-labelledby="lawyer-queue-title">
+        <h2 id="lawyer-queue-title">Review queue</h2>
+        <p id="lawyer-queue-notice" class="notice">This queue lists cases assigned to you. A lawyer role alone does not include every complaint. Status, sort, and pages come from the server. Grant identifiers are not the controls.</p>
+        <form id="lawyer-queue-filters">
+            <label for="lawyer-queue-state">Status</label>
+            <select id="lawyer-queue-state" name="state">
+                <option value="all">All assigned</option>
+                <option value="authorized">Authorized</option>
+                <option value="pending">Pending acceptance</option>
+                <option value="locked">Locked</option>
+                <option value="revoked">Revoked</option>
+            </select>
+            <label for="lawyer-queue-sort">Sort</label>
+            <select id="lawyer-queue-sort" name="sort">
+                <option value="priority">Priority</option>
+                <option value="label">Label</option>
+                <option value="state">Status</option>
+                <option value="expires">Expiry</option>
+            </select>
+            <label for="lawyer-queue-query">Find</label>
+            <input id="lawyer-queue-query" name="q" maxlength="200" autocomplete="off">
+            <button type="submit">Apply queue</button>
+        </form>
+        <p id="lawyer-queue-status" class="cg-state-loading" role="status" hidden></p>
+        <p id="lawyer-queue-empty" class="cg-state-empty" hidden>No assigned cases match this queue.</p>
+        <ol id="lawyer-queue-list"></ol>
+        <nav aria-label="Review queue pages">
+            <button id="lawyer-queue-prev" type="button">Previous page</button>
+            <span id="lawyer-queue-page">Page 0 of 0</span>
+            <button id="lawyer-queue-next" type="button">Next page</button>
+        </nav>
+    </section>
+    <section id="assignments">
+        <h2>Lawyer assignments</h2>
+        <form id="invite-lawyer">
+            <label for="lawyer-select">Lawyer</label>
+            <select id="lawyer-select"></select>
+            <fieldset>
+                <legend>Scope</legend>
+                <label><input type="checkbox" name="scope" value="case.read" checked> Read</label>
+                <label><input type="checkbox" name="scope" value="case.review"> Review</label>
+                <label><input type="checkbox" name="scope" value="case.download"> Download</label>
+                <label><input type="checkbox" name="scope" value="case.message.send"> Message</label>
+            </fieldset>
+            <label for="assignment-access">Access lasts</label>
+            <select id="assignment-access">
+                <option value="7">7 days</option>
+                <option value="30" selected>30 days</option>
+                <option value="90">90 days</option>
+            </select>
+            <button id="review-invitation" type="submit">Review invitation</button>
+        </form>
+        <ul id="assignment-list"></ul>
+        <p id="assignment-content"></p>
+        <dialog id="invitation-dialog" aria-labelledby="invitation-dialog-title" aria-modal="true">
+            <h2 id="invitation-dialog-title">Invite a participant</h2>
+            <p id="invitation-dialog-summary"></p>
+            <p>The server issues the membership version. This page cannot set ownership, a key grant, or a version.</p>
+            <p id="invitation-dialog-error" role="alert"></p>
+            <button id="invitation-dialog-cancel" type="button" data-a11y-cancel>Cancel</button>
+            <button id="invitation-dialog-confirm" type="button">Send invitation</button>
+        </dialog>
+        <dialog id="acceptance-dialog" aria-labelledby="acceptance-dialog-title" aria-modal="true">
+            <h2 id="acceptance-dialog-title">Accept this scope</h2>
+            <p id="acceptance-dialog-summary"></p>
+            <p id="acceptance-dialog-version"></p>
+            <p id="acceptance-dialog-key">A key grant is separate. Accepting this scope does not open complaint text.</p>
+            <label for="acceptance-dialog-confirm-scope"><input id="acceptance-dialog-confirm-scope" type="checkbox"> I accept this exact case and scope</label>
+            <p id="acceptance-dialog-error" role="alert"></p>
+            <button id="acceptance-dialog-cancel" type="button" data-a11y-cancel>Cancel</button>
+            <button id="acceptance-dialog-accept" type="button">Accept scope</button>
+        </dialog>
+        <dialog id="revocation-dialog" aria-labelledby="revocation-dialog-title" aria-modal="true">
+            <h2 id="revocation-dialog-title">Revoke access</h2>
+            <p id="revocation-dialog-summary"></p>
+            <p id="revocation-dialog-error" role="alert"></p>
+            <button id="revocation-dialog-cancel" type="button" data-a11y-cancel>Cancel</button>
+            <button id="revocation-dialog-confirm" type="button">Revoke access</button>
+        </dialog>
+    </section>
+    <form id="create-case">
+        <label for="case-label">Label</label>
+        <input id="case-label" name="label" maxlength="200" autocomplete="off">
+        <button type="submit">Create case</button>
+    </form>
+    <section>
+        <h2>Authorized cases</h2>
+        <p id="case-list-status" class="cg-state-loading" role="status" hidden></p>
+        <p id="case-list-empty" class="cg-state-empty">No cases are loaded yet.</p>
+        <ul id="case-list" data-state="empty"></ul>
+    </section>
+    <section id="selected-case" hidden>
+        <h2>Selected case</h2>
+        <p id="selected-case-label"></p>
+        <p>Directory revision <span id="directory-revision"></span></p>
+        <p>Encrypted revision <span id="encrypted-revision"></span></p>
+        <p>Envelope <span id="envelope-sha256"></span></p>
+        <h3>Unresolved gaps</h3>
+        <ul id="unresolved-gaps"></ul>
+        <label for="case-draft">Transient draft</label>
+        <textarea id="case-draft" data-transient="draft" maxlength="4000"></textarea>
+        <button id="save-draft" type="button">Save draft</button>
+        <button id="save-gaps" type="button">Save gaps</button>
+        <label for="gap-input">Gap</label>
+        <input id="gap-input" maxlength="200" autocomplete="off">
+    </section>
+    <section id="notifications">
+        <h2>In-app notifications <span id="notification-badge" data-channel="in_app" data-external-delivery="false">0</span></h2>
+        <p id="notification-notice" class="notice">Badges count assignment, message, and review events for you only. They do not include complaint or evidence text. This campaign does not send email, SMS, or external chat.</p>
+        <ul id="notification-list"></ul>
+    </section>
+    <section id="correspondence-attention" data-channel="in_app" data-external-delivery="false">
+        <h2>Correspondence attention <span id="correspondence-badge" data-channel="in_app" data-external-delivery="false">0</span></h2>
+        <p id="correspondence-attention-notice" class="notice">Unread, review-needed, and update counts are for your account only. Global badges and the operational log omit complaint content. This page does not send email or SMS.</p>
+        <p id="correspondence-attention-status" role="status"></p>
+        <ul id="correspondence-attention-list"></ul>
+        <ul id="correspondence-attention-log"></ul>
+    </section>
+    <p id="case-error" role="alert"></p>
+    <p id="case-asset-status" class="cg-state-error" role="status" hidden></p>
+    <img id="case-external-asset" alt="" width="1" height="1">
+</main>
+<script src="/static/complaint_case_shell.js"></script>
+<script src="/static/complaint_reviewer.js"></script>
+<script>
+(function () {
+    var selected = null;
+    var contentRevision = null;
+    var csrf = "";
+    var generation = 0;
+    var signingIn = false;
+    var catalogRequest = null;
+    var inviteKeys = {};
+    var pendingInvite = null;
+    var pendingDecision = null;
+    var attentionTimer = 0;
+    var attentionAbort = null;
+    var attentionToken = 0;
+    var scopeLabels = {
+        "case.read": "Read",
+        "case.review": "Review",
+        "case.download": "Download",
+        "case.message.send": "Message"
+    };
+
+    function retireCatalogRequest() {
+        if (catalogRequest) {
+            catalogRequest.abort();
+        }
+        catalogRequest = new AbortController();
+        return catalogRequest.signal;
+    }
+
+    function clearTransientState() {
+        document.getElementById("case-draft").value = "";
+        document.getElementById("gap-input").value = "";
+    }
+
+    var errorFields = {
+        authentication_failed: "case-credential",
+        case_not_selected: "lawyer-select"
+    };
+
+    function setCaseContext(text, state) {
+        document.getElementById("case-context-value").textContent = text;
+        document.getElementById("case-context").dataset.state = state;
+    }
+
+    function clearSelectionDisplay() {
+        document.getElementById("selected-case").hidden = true;
+        delete document.getElementById("selected-case").dataset.actorPrincipalId;
+        delete document.getElementById("selected-case").dataset.caseId;
+        document.getElementById("selected-case-label").textContent = "";
+        document.getElementById("unresolved-gaps").replaceChildren();
+        document.getElementById("directory-revision").textContent = "";
+        document.getElementById("encrypted-revision").textContent = "";
+        document.getElementById("envelope-sha256").textContent = "";
+        setCaseContext("No case selected", "empty");
+        if (window.complaintCaseShell) window.complaintCaseShell.scheduleRefresh();
+    }
+
+    function showError(text) {
+        document.getElementById("case-error").textContent = text || "";
+        var summary = document.getElementById("case-error-summary");
+        var list = document.getElementById("case-error-summary-list");
+        if (!text) {
+            summary.hidden = true;
+            list.replaceChildren();
+            return;
+        }
+        var field = errorFields[text] || "case-error";
+        var item = document.createElement("li");
+        var link = document.createElement("a");
+        link.href = "#" + field;
+        link.textContent = text;
+        item.appendChild(link);
+        list.replaceChildren(item);
+        summary.hidden = false;
+        summary.focus();
+    }
+
+    async function api(path, options) {
+        var headers = Object.assign({"accept": "application/json"}, (options && options.headers) || {});
+        if (options && options.method && options.method !== "GET") {
+            headers["content-type"] = "application/json";
+            headers["x-csrf-token"] = csrf;
+        }
+        var signal = (options && options.signal) || (catalogRequest && catalogRequest.signal) || undefined;
+        var response = await fetch(path, {
+            method: (options && options.method) || "GET",
+            headers: headers,
+            body: options && options.body ? JSON.stringify(options.body) : undefined,
+            credentials: "same-origin",
+            signal: signal
+        });
+        var payload = await response.json();
+        // A retired actor or case must not apply a body that arrived late.
+        if (signal && signal.aborted) throw new DOMException("The operation was aborted.", "AbortError");
+        if (!response.ok) {
+            var detail = payload && (payload.error || payload.detail);
+            if (detail && typeof detail !== "string") detail = "";
+            throw new Error(detail || "request_failed");
+        }
+        return payload;
+    }
+
+    function renderCases(cases, principalId) {
+        var list = document.getElementById("case-list");
+        list.dataset.actorPrincipalId = principalId || "";
+        var empty = document.getElementById("case-list-empty");
+        var status = document.getElementById("case-list-status");
+        list.replaceChildren();
+        status.hidden = true;
+        status.textContent = "";
+        if (!cases.length) {
+            empty.hidden = false;
+            empty.textContent = "No cases yet.";
+            list.dataset.state = "empty";
+        } else {
+            empty.hidden = true;
+            empty.textContent = "";
+            list.dataset.state = "ready";
+            list.dataset.readyBadge = "false";
+        }
+        cases.forEach(function (item) {
+            var row = document.createElement("li");
+            var button = document.createElement("button");
+            button.type = "button";
+            button.textContent = item.label || item.case_id;
+            button.addEventListener("click", function () { selectCase(item.case_id); });
+            row.appendChild(button);
+            list.appendChild(row);
+        });
+    }
+
+    function renderSelection(item) {
+        document.getElementById("selected-case").hidden = false;
+        document.getElementById("selected-case").dataset.actorPrincipalId = item.actor_principal_id || "";
+        document.getElementById("selected-case").dataset.caseId = item.case_id || "";
+        document.getElementById("selected-case-label").textContent = item.label || item.case_id;
+        setCaseContext(item.label || item.case_id, "ready");
+        document.getElementById("directory-revision").textContent = String(item.directory_revision);
+        document.getElementById("encrypted-revision").textContent = String(item.encrypted_content_revision);
+        document.getElementById("envelope-sha256").textContent = item.envelope_sha256 || "";
+        var gaps = document.getElementById("unresolved-gaps");
+        gaps.replaceChildren();
+        (item.unresolved_gaps || []).forEach(function (gap) {
+            var row = document.createElement("li");
+            row.className = "gap";
+            row.textContent = gap;
+            gaps.appendChild(row);
+        });
+        contentRevision = item.encrypted_content_revision;
+        if (window.complaintCaseShell) window.complaintCaseShell.scheduleRefresh();
+        if (item.transient && typeof item.transient.draft === "string") {
+            document.getElementById("case-draft").value = item.transient.draft;
+        }
+    }
+
+    async function selectCase(caseId) {
+        var ownGeneration = ++generation;
+        var signal = retireCatalogRequest();
+        selected = caseId;
+        contentRevision = null;
+        clearTransientState();
+        clearSelectionDisplay();
+        if (window.complaintCaseShell) window.complaintCaseShell.clearPlaintext();
+        showError("");
+        try {
+            var item = await api("/api/cases/" + encodeURIComponent(caseId) + "/select", {method: "POST", body: {}, signal: signal});
+            if (ownGeneration !== generation || selected !== caseId) return;
+            if (item.plaintext_available === false) {
+                showError("key_grant_required");
+                return;
+            }
+            renderSelection(item);
+            showError("");
+        } catch (error) {
+            if (error && error.name === "AbortError") return;
+            if (ownGeneration === generation && selected === caseId) showError(error.message);
+        }
+    }
+
+    async function logout() {
+        var ownGeneration = ++generation;
+        signingIn = false;
+        var token = csrf;
+        retireCatalogRequest();
+        csrf = "";
+        selected = null;
+        contentRevision = null;
+        clearTransientState();
+        clearSelectionDisplay();
+        document.getElementById("assignment-content").textContent = "";
+        document.getElementById("assignment-list").replaceChildren();
+        document.getElementById("notification-list").replaceChildren();
+        document.getElementById("notification-badge").textContent = "0";
+        stopCorrespondenceAttention();
+        renderCorrespondenceAttention(null);
+        if (window.complaintReviewer) window.complaintReviewer.clear();
+        document.getElementById("case-auth-status").textContent = "Sign in required";
+        renderCases([]);
+        if (window.complaintCaseShell) window.complaintCaseShell.clearPlaintext();
+        try {
+            await fetch("/api/complaint-workspace/auth/logout", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {"x-csrf-token": token, "accept": "application/json"}
+            });
+        } catch (error) {
+            /* The rendered case is already gone; a failed logout stays signed-out in the page. */
+        }
+        if (ownGeneration === generation && window.complaintCaseShell) window.complaintCaseShell.scheduleRefresh();
+    }
+
+    async function loadSession(ownGeneration) {
+        var session = await api("/api/cases/session");
+        if (ownGeneration !== generation) return;
+        renderCases(session.cases || [], session.actor_principal_id);
+        if (session.selected_case_id) {
+            selected = session.selected_case_id;
+            var current = (session.cases || []).find(function (item) { return item.case_id === selected; });
+            if (current) renderSelection(current);
+            if (session.transient) document.getElementById("case-draft").value = session.transient.draft || "";
+        }
+    }
+
+    document.getElementById("case-login").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        var ownGeneration = ++generation;
+        signingIn = true;
+        retireCatalogRequest();
+        var credential = document.getElementById("case-credential").value;
+        document.getElementById("case-credential").value = "";
+        csrf = "";
+        selected = null;
+        contentRevision = null;
+        clearTransientState();
+        clearSelectionDisplay();
+        document.getElementById("case-label").value = "";
+        document.getElementById("assignment-list").replaceChildren();
+        document.getElementById("notification-list").replaceChildren();
+        document.getElementById("notification-badge").textContent = "0";
+        stopCorrespondenceAttention();
+        renderCorrespondenceAttention(null);
+        document.getElementById("assignment-content").textContent = "";
+        document.getElementById("lawyer-select").replaceChildren();
+        document.getElementById("case-auth-status").textContent = "Signing in";
+        window.complaintEntryHold = "";
+        showError("");
+        renderCases([]);
+        document.getElementById("case-list-empty").hidden = true;
+        document.getElementById("case-list-status").hidden = false;
+        document.getElementById("case-list-status").textContent = "Loading your cases.";
+        document.getElementById("case-list").dataset.state = "loading";
+        while (window.__cimpGui53HoldLogin) {
+            await new Promise(function (resolve) { setTimeout(resolve, 40); });
+            if (ownGeneration !== generation) return;
+        }
+        try {
+            var issued = await api("/api/complaint-workspace/auth/login", {method: "POST", body: {credential: credential}});
+            credential = "";
+            if (ownGeneration !== generation) return;
+            if (typeof issued.csrf_token !== "string" || !issued.csrf_token) throw new Error("authentication_failed");
+            csrf = issued.csrf_token;
+            document.getElementById("case-auth-status").textContent = "Signed in";
+            await loadSession(ownGeneration);
+            await loadAssignments(ownGeneration);
+            await loadNotifications(ownGeneration);
+            startCorrespondenceAttention(ownGeneration);
+            if (window.complaintReviewer) await window.complaintReviewer.load({bare: true, generation: ownGeneration, current: function () { return generation; }});
+            if (ownGeneration === generation) showError("");
+            if (window.complaintCaseShell) window.complaintCaseShell.scheduleRefresh();
+        } catch (error) {
+            credential = "";
+            if (error && error.name === "AbortError") return;
+            if (ownGeneration === generation) {
+                csrf = "";
+                document.getElementById("case-auth-status").textContent = "Sign in required";
+                document.getElementById("case-list-status").hidden = true;
+                document.getElementById("case-list-status").textContent = "";
+                document.getElementById("case-list-empty").hidden = false;
+                document.getElementById("case-list-empty").textContent = error.message === "authentication_failed"
+                    ? "Sign-in was denied. No case was opened."
+                    : "No cases are loaded yet.";
+                document.getElementById("case-list").dataset.state = "error";
+                document.getElementById("case-list").dataset.readyBadge = "false";
+                showError(error.message);
+                var entry = document.getElementById("complaint-entry");
+                if (entry && error.message === "authentication_failed") {
+                    window.complaintEntryHold = "denied";
+                    entry.dataset.entry = "denied";
+                    entry.dataset.readyBadge = "false";
+                    document.getElementById("complaint-entry-title").textContent = "This session is denied";
+                    document.getElementById("complaint-entry-boundary").textContent = "Sign-in was denied. No replacement case was opened.";
+                }
+            }
+        } finally {
+            if (ownGeneration === generation) signingIn = false;
+        }
+    });
+
+    document.getElementById("create-case").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        var ownGeneration = generation;
+        var label = document.getElementById("case-label").value;
+        try {
+            await api("/api/cases", {method: "POST", body: {label: label}});
+            if (ownGeneration !== generation) return;
+            document.getElementById("case-label").value = "";
+            var listed = await api("/api/cases");
+            if (ownGeneration !== generation) return;
+            renderCases(listed.cases || [], listed.actor_principal_id);
+            if (window.complaintCaseShell) window.complaintCaseShell.scheduleRefresh();
+            showError("");
+        } catch (error) {
+            if (ownGeneration === generation) showError(error.message);
+        }
+    });
+
+    function selectedScope() {
+        return Array.prototype.map.call(document.querySelectorAll("#invite-lawyer input[name=scope]:checked"), function (node) {
+            return node.value;
+        });
+    }
+
+    function scopeSentence(scope) {
+        return (scope || []).map(function (name) { return scopeLabels[name] || name; }).join(", ");
+    }
+
+    function closeDialog(id) {
+        var dialog = document.getElementById(id);
+        if (dialog && dialog.open) dialog.close();
+    }
+
+    function renderAssignments(rows) {
+        var list = document.getElementById("assignment-list");
+        list.replaceChildren();
+        (rows || []).forEach(function (item) {
+            var row = document.createElement("li");
+            row.dataset.state = item.state;
+            row.dataset.caseId = item.case_id || "";
+            var label = document.createElement("span");
+            label.className = "assignment-state";
+            var version = item.server_version || item.revision;
+            label.textContent = (item.state || "") + ". " + scopeSentence(item.scope) + ". Server version " + version + ".";
+            row.appendChild(label);
+            function act(name, handler) {
+                var button = document.createElement("button");
+                button.type = "button";
+                button.textContent = name;
+                button.addEventListener("click", handler);
+                row.appendChild(button);
+            }
+            if (item.party === "recipient" && item.state === "pending") {
+                act("Review invitation", function () { openAcceptance(item.grant_id); });
+                act("Decline", function () { assignmentAction(item, "/decline", {case_id: item.case_id}); });
+            }
+            if (item.party === "owner" && (item.state === "pending" || item.state === "accepted")) {
+                act("Revoke access", function () { openRevocation(item.grant_id); });
+            }
+            if (item.party === "recipient" && item.state === "accepted" && item.key_grant_id) {
+                act("Open content", function () {
+                    assignmentAction(item, "/content", {
+                        key_grant_id: item.key_grant_id,
+                        artifact_kind: item.artifact_kind,
+                        artifact_revision: item.artifact_revision
+                    });
+                });
+            }
+            list.appendChild(row);
+        });
+        if (window.complaintCaseShell) window.complaintCaseShell.scheduleRefresh();
+    }
+
+    async function loadAssignments(ownGeneration) {
+        try {
+            var lawyers = await api("/api/cases/lawyers");
+            if (ownGeneration !== generation) return;
+            var select = document.getElementById("lawyer-select");
+            select.replaceChildren();
+            (lawyers.lawyers || []).forEach(function (lawyer) {
+                var option = document.createElement("option");
+                option.value = lawyer.principal_id;
+                option.textContent = lawyer.display_label || "Lawyer participant";
+                select.appendChild(option);
+            });
+            var listed = await api("/api/cases/assignments");
+            if (ownGeneration !== generation) return;
+            renderAssignments(listed.assignments || []);
+        } catch (error) {
+            if (error.message === "assignment_unavailable") return;
+            if (ownGeneration === generation) showError(error.message);
+        }
+    }
+
+    async function assignmentAction(item, suffix, extra) {
+        var ownGeneration = generation;
+        var body = Object.assign({
+            expected_version: item.version,
+            idempotency_key: item.grant_id + "-" + suffix.slice(1)
+        }, extra || {});
+        try {
+            var result = await api("/api/cases/assignments/" + encodeURIComponent(item.grant_id) + suffix, {method: "POST", body: body});
+            if (ownGeneration !== generation) return;
+            if (suffix === "/content") {
+                document.getElementById("assignment-content").textContent = result.plaintext_available ? (result.text || "") : "";
+            }
+            if (suffix === "/remove" || suffix === "/decline" || result.revoked === true || result.plaintext_available === false) {
+                document.getElementById("assignment-content").textContent = "";
+            }
+            await loadAssignments(ownGeneration);
+            await loadNotifications(ownGeneration);
+            if (window.complaintReviewer && ownGeneration === generation) {
+                await window.complaintReviewer.load({generation: ownGeneration, current: function () { return generation; }});
+            }
+            showError("");
+        } catch (error) {
+            if (ownGeneration === generation) showError(error.message);
+        }
+    }
+
+    function stopCorrespondenceAttention() {
+        attentionToken += 1;
+        if (attentionTimer) window.clearInterval(attentionTimer);
+        attentionTimer = 0;
+        if (attentionAbort) attentionAbort.abort();
+        attentionAbort = null;
+    }
+
+    function renderCorrespondenceAttention(payload) {
+        var badge = document.getElementById("correspondence-badge");
+        var status = document.getElementById("correspondence-attention-status");
+        var list = document.getElementById("correspondence-attention-list");
+        var log = document.getElementById("correspondence-attention-log");
+        var counts = payload && payload.badge ? payload.badge : {};
+        var total = counts.total_count || 0;
+        badge.textContent = String(total);
+        badge.dataset.channel = "in_app";
+        badge.dataset.externalDelivery = "false";
+        badge.dataset.unread = String(counts.unread_count || 0);
+        badge.dataset.reviewNeeded = String(counts.review_needed_count || 0);
+        badge.dataset.updates = String(counts.update_count || 0);
+        status.textContent = payload
+            ? "Unread " + (counts.unread_count || 0) + ". Review needed " + (counts.review_needed_count || 0) + ". Updates " + (counts.update_count || 0) + ". In-app only."
+            : "";
+        list.replaceChildren();
+        ((payload && payload.items) || []).forEach(function (item) {
+            var row = document.createElement("li");
+            row.dataset.attention = item.attention || "";
+            row.dataset.sourceId = item.source_id || "";
+            row.dataset.caseId = item.case_id || "";
+            row.textContent = (item.attention || "update") + " " + (item.source_id || "");
+            list.appendChild(row);
+        });
+        log.replaceChildren();
+        ((payload && payload.operational_log) || []).forEach(function (item) {
+            var row = document.createElement("li");
+            row.dataset.action = item.action || "";
+            row.dataset.sourceId = item.source_id || "";
+            row.textContent = (item.action || "recorded") + " " + (item.source_id || "");
+            log.appendChild(row);
+        });
+    }
+
+    async function loadCorrespondenceAttention(ownGeneration, token) {
+        var controller = new AbortController();
+        if (attentionAbort) attentionAbort.abort();
+        attentionAbort = controller;
+        try {
+            var payload = await api("/api/cases/correspondence/attention", {signal: controller.signal});
+            if (token !== attentionToken || ownGeneration !== generation) return;
+            if (payload.external_delivery !== false || payload.email !== false || payload.sms !== false) {
+                renderCorrespondenceAttention(null);
+                return;
+            }
+            renderCorrespondenceAttention(payload);
+        } catch (error) {
+            if (error && (error.name === "AbortError" || error.message === "aborted")) return;
+            if (error && error.message === "correspondence_unavailable") return;
+            if (token === attentionToken && ownGeneration === generation) showError(error.message);
+        }
+    }
+
+    function startCorrespondenceAttention(ownGeneration) {
+        stopCorrespondenceAttention();
+        var token = attentionToken;
+        function tick() {
+            if (token !== attentionToken || ownGeneration !== generation) return;
+            loadCorrespondenceAttention(ownGeneration, token);
+        }
+        tick();
+        attentionTimer = window.setInterval(tick, 4000);
+    }
+
+    function renderNotifications(payload) {
+        var badge = document.getElementById("notification-badge");
+        var count = payload && payload.badge ? payload.badge.unread_count : 0;
+        badge.textContent = String(count);
+        badge.dataset.channel = "in_app";
+        badge.dataset.externalDelivery = "false";
+        var list = document.getElementById("notification-list");
+        list.replaceChildren();
+        ((payload && payload.notifications) || []).forEach(function (item) {
+            var row = document.createElement("li");
+            row.dataset.notificationId = item.notification_id;
+            row.dataset.eventKind = item.event_kind;
+            row.dataset.read = item.read ? "true" : "false";
+            var label = document.createElement("span");
+            label.className = "notification-badge-label";
+            label.textContent = item.badge_label + " " + item.source_id;
+            row.appendChild(label);
+            var button = document.createElement("button");
+            button.type = "button";
+            button.textContent = item.read ? "Mark unread" : "Mark read";
+            button.addEventListener("click", function () {
+                notificationRead(item, !item.read);
+            });
+            row.appendChild(button);
+            list.appendChild(row);
+        });
+    }
+
+    async function loadNotifications(ownGeneration) {
+        try {
+            var listed = await api("/api/cases/notifications");
+            if (ownGeneration !== generation) return;
+            renderNotifications(listed);
+        } catch (error) {
+            if (error.message === "notification_unavailable") return;
+            if (ownGeneration === generation) showError(error.message);
+        }
+    }
+
+    async function notificationRead(item, read) {
+        var ownGeneration = generation;
+        var suffix = read ? "/read" : "/unread";
+        try {
+            await api("/api/cases/notifications/" + encodeURIComponent(item.notification_id) + suffix, {method: "POST", body: {}});
+            if (ownGeneration !== generation) return;
+            await loadNotifications(ownGeneration);
+            showError("");
+        } catch (error) {
+            if (ownGeneration === generation) showError(error.message);
+        }
+    }
+
+    function inviteIdentity(caseId, member, scope, days) {
+        return [caseId, member, scope.join("|"), String(days)].join(":");
+    }
+
+    document.getElementById("invite-lawyer").addEventListener("submit", function (event) {
+        event.preventDefault();
+        if (!selected) {
+            showError("case_not_selected");
+            return;
+        }
+        var scope = selectedScope();
+        if (!scope.length) {
+            showError("scope_required");
+            return;
+        }
+        var member = document.getElementById("lawyer-select").value;
+        if (!member) {
+            showError("lawyer_required");
+            return;
+        }
+        var days = Number(document.getElementById("assignment-access").value);
+        var caseLabel = document.getElementById("selected-case-label").textContent || selected;
+        pendingInvite = {caseId: selected, member: member, scope: scope, days: days};
+        document.getElementById("invitation-dialog-error").textContent = "";
+        document.getElementById("invitation-dialog-summary").textContent =
+            "Invite a lawyer participant to " + caseLabel + " for " + scopeSentence(scope)
+            + " for " + days + " days. The server will issue the version after you confirm.";
+        window.complaintCaseShell.openQualifiedDialog("invitation-dialog", document.activeElement);
+    });
+
+    document.getElementById("invitation-dialog-cancel").addEventListener("click", function () {
+        pendingInvite = null;
+        closeDialog("invitation-dialog");
+    });
+
+    document.getElementById("invitation-dialog-confirm").addEventListener("click", async function () {
+        var draft = pendingInvite;
+        if (!draft) return;
+        var ownGeneration = generation;
+        var identity = inviteIdentity(draft.caseId, draft.member, draft.scope, draft.days);
+        if (!inviteKeys[identity]) inviteKeys[identity] = "invite-" + String(Object.keys(inviteKeys).length + 1);
+        try {
+            var current = await api("/api/cases/" + encodeURIComponent(draft.caseId));
+            if (ownGeneration !== generation || selected !== draft.caseId) return;
+            var created = await api("/api/cases/assignments", {
+                method: "POST",
+                body: {
+                    case_id: draft.caseId,
+                    member_principal_id: draft.member,
+                    scope: draft.scope,
+                    access_for_days: draft.days,
+                    expected_case_revision: current.directory_revision,
+                    idempotency_key: inviteKeys[identity]
+                }
+            });
+            if (ownGeneration !== generation) return;
+            if (!created || created.version_source !== "server" || typeof created.server_version !== "number") {
+                throw new Error("server_version_required");
+            }
+            pendingInvite = null;
+            closeDialog("invitation-dialog");
+            await loadAssignments(ownGeneration);
+            await loadNotifications(ownGeneration);
+            showError("");
+        } catch (error) {
+            if (ownGeneration === generation) {
+                document.getElementById("invitation-dialog-error").textContent = error.message;
+                showError(error.message);
+            }
+        }
+    });
+
+    async function openAcceptance(grantId) {
+        var ownGeneration = generation;
+        document.getElementById("acceptance-dialog-error").textContent = "";
+        document.getElementById("acceptance-dialog-confirm-scope").checked = false;
+        try {
+            var issued = await api("/api/cases/assignments/" + encodeURIComponent(grantId));
+            if (ownGeneration !== generation) return;
+            if (!issued || issued.version_source !== "server" || typeof issued.server_version !== "number") {
+                throw new Error("server_version_required");
+            }
+            pendingDecision = issued;
+            document.getElementById("acceptance-dialog-summary").textContent = issued.acceptance_prompt || "";
+            document.getElementById("acceptance-dialog-version").textContent = "Server version " + issued.server_version + ".";
+            window.complaintCaseShell.openQualifiedDialog("acceptance-dialog", document.activeElement);
+        } catch (error) {
+            if (ownGeneration === generation) showError(error.message);
+        }
+    }
+
+    document.getElementById("acceptance-dialog-cancel").addEventListener("click", function () {
+        pendingDecision = null;
+        closeDialog("acceptance-dialog");
+    });
+
+    document.getElementById("acceptance-dialog-accept").addEventListener("click", async function () {
+        var issued = pendingDecision;
+        if (!issued) return;
+        if (!document.getElementById("acceptance-dialog-confirm-scope").checked) {
+            document.getElementById("acceptance-dialog-error").textContent = "Confirm the exact case and scope before accepting.";
+            return;
+        }
+        await assignmentAction(issued, "/accept", {scope: issued.scope, case_id: issued.case_id});
+        if (!document.getElementById("case-error").textContent) {
+            pendingDecision = null;
+            closeDialog("acceptance-dialog");
+        } else {
+            document.getElementById("acceptance-dialog-error").textContent = document.getElementById("case-error").textContent;
+        }
+    });
+
+    async function openRevocation(grantId) {
+        var ownGeneration = generation;
+        document.getElementById("revocation-dialog-error").textContent = "";
+        try {
+            var issued = await api("/api/cases/assignments/" + encodeURIComponent(grantId));
+            if (ownGeneration !== generation) return;
+            if (!issued || issued.version_source !== "server" || typeof issued.server_version !== "number") {
+                throw new Error("server_version_required");
+            }
+            pendingDecision = issued;
+            document.getElementById("revocation-dialog-summary").textContent = issued.revocation_prompt || "";
+            window.complaintCaseShell.openQualifiedDialog("revocation-dialog", document.activeElement);
+        } catch (error) {
+            if (ownGeneration === generation) showError(error.message);
+        }
+    }
+
+    document.getElementById("revocation-dialog-cancel").addEventListener("click", function () {
+        pendingDecision = null;
+        closeDialog("revocation-dialog");
+    });
+
+    document.getElementById("revocation-dialog-confirm").addEventListener("click", async function () {
+        var issued = pendingDecision;
+        if (!issued) return;
+        await assignmentAction(issued, "/remove", {case_id: issued.case_id});
+        if (!document.getElementById("case-error").textContent) {
+            pendingDecision = null;
+            closeDialog("revocation-dialog");
+            document.getElementById("assignment-content").textContent = "";
+        } else {
+            document.getElementById("revocation-dialog-error").textContent = document.getElementById("case-error").textContent;
+        }
+    });
+
+    window.complaintInvitations = {
+        acceptForCase: async function (caseId) {
+            var ownGeneration = generation;
+            try {
+                var listed = await api("/api/cases/assignments");
+                if (ownGeneration !== generation) return;
+                var match = (listed.assignments || []).find(function (item) {
+                    return item.case_id === caseId && item.party === "recipient" && item.state === "pending";
+                });
+                if (!match) {
+                    showError("invitation_unavailable");
+                    return;
+                }
+                await openAcceptance(match.grant_id);
+            } catch (error) {
+                if (ownGeneration === generation) showError(error.message);
+            }
+        }
+    };
+
+    document.getElementById("save-draft").addEventListener("click", async function () {
+        if (!selected) return;
+        var caseId = selected;
+        var ownGeneration = generation;
+        var draft = document.getElementById("case-draft").value;
+        try {
+            await api("/api/cases/" + encodeURIComponent(caseId) + "/transient", {
+                method: "POST",
+                body: {draft: draft}
+            });
+            if (ownGeneration === generation && selected === caseId) showError("");
+        } catch (error) {
+            if (ownGeneration === generation && selected === caseId) showError(error.message);
+        }
+    });
+
+    document.getElementById("save-gaps").addEventListener("click", async function () {
+        if (!selected) return;
+        var caseId = selected;
+        var ownGeneration = generation;
+        var expectedRevision = contentRevision;
+        var gap = document.getElementById("gap-input").value.trim();
+        var existing = Array.prototype.map.call(document.querySelectorAll("#unresolved-gaps .gap"), function (node) {
+            return node.textContent;
+        });
+        if (gap) existing.push(gap);
+        try {
+            var item = await api("/api/cases/" + encodeURIComponent(caseId) + "/gaps", {
+                method: "POST",
+                body: {unresolved_gaps: existing, expected_content_revision: expectedRevision}
+            });
+            if (ownGeneration !== generation || selected !== caseId) return;
+            renderSelection(item);
+            document.getElementById("gap-input").value = "";
+            showError("");
+        } catch (error) {
+            if (ownGeneration === generation && selected === caseId) showError(error.message);
+        }
+    });
+
+    var missingAsset = document.getElementById("case-external-asset");
+    missingAsset.addEventListener("error", function () {
+        missingAsset.removeAttribute("src");
+        var status = document.getElementById("case-asset-status");
+        status.hidden = false;
+        status.textContent = "Required mark did not load. No replacement image was inserted.";
+        document.body.dataset.missingAsset = "reported";
+    });
+    missingAsset.src = "/static/cimp-gui-53-mark-missing.png";
+
+    document.getElementById("case-logout").addEventListener("click", function () {
+        logout();
+    });
+
+    if (window.location.hash === "#create-case") {
+        var beginLabel = document.getElementById("case-label");
+        if (beginLabel) beginLabel.focus();
+    }
+
+    window.complaintCasesSelect = selectCase;
+    window.retireComplaintCaseRequests = function () {
+        // A shell refresh can retire the catalog while sign-in is still in
+        // flight. Aborting that request leaves the status on "Signing in".
+        if (signingIn) return;
+        ++generation;
+        retireCatalogRequest();
+        selected = null;
+        contentRevision = null;
+    };
+    window.clearTransientState = clearTransientState;
+})();
+</script>
+</body>
+</html>

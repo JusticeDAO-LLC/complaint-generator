@@ -22,6 +22,7 @@ class CriticScore:
     empathy: float  # How empathetic was the mediator
     efficiency: float  # How efficiently was info gathered
     coverage: float  # How well did questions cover important topics
+    proof_progress: float = 0.5  # How much did questioning advance legal proof state
     
     feedback: str = ""  # Detailed textual feedback
     strengths: List[str] = field(default_factory=list)
@@ -43,6 +44,7 @@ class CriticScore:
             'empathy': self.empathy,
             'efficiency': self.efficiency,
             'coverage': self.coverage,
+            'proof_progress': self.proof_progress,
             'feedback': self.feedback,
             'strengths': self.strengths,
             'weaknesses': self.weaknesses,
@@ -78,11 +80,12 @@ class Critic:
         """
         self.llm_backend = llm_backend
         self.criteria_weights = criteria_weights or {
-            'question_quality': 0.25,
-            'information_extraction': 0.25,
-            'empathy': 0.15,
+            'question_quality': 0.20,
+            'information_extraction': 0.20,
+            'empathy': 0.10,
             'efficiency': 0.15,
-            'coverage': 0.20
+            'coverage': 0.15,
+            'proof_progress': 0.20,
         }
     
     def evaluate_session(self, 
@@ -104,6 +107,7 @@ class Critic:
         """
         anchor_coverage = self._analyze_anchor_section_coverage(conversation_history, context)
         intake_priority_coverage = self._analyze_intake_priority_coverage(final_state)
+        proof_state = self._analyze_proof_state(final_state)
         prompt = self._build_evaluation_prompt(
             initial_complaint,
             conversation_history,
@@ -111,6 +115,7 @@ class Critic:
             context,
             anchor_coverage,
             intake_priority_coverage,
+            proof_state,
         )
         
         try:
@@ -118,6 +123,7 @@ class Critic:
             score = self._parse_evaluation(response)
             self._apply_anchor_coverage(score, anchor_coverage)
             self._apply_intake_priority_coverage(score, intake_priority_coverage)
+            self._apply_proof_state(score, proof_state)
             return score
         except Exception as e:
             logger.error(f"Error evaluating session: {e}")
@@ -171,7 +177,8 @@ Score:"""
                                  final_state: Dict[str, Any],
                                  context: Dict[str, Any] = None,
                                  anchor_coverage: Dict[str, List[str]] | None = None,
-                                 intake_priority_coverage: Dict[str, List[str]] | None = None) -> str:
+                                 intake_priority_coverage: Dict[str, List[str]] | None = None,
+                                 proof_state: Dict[str, Any] | None = None) -> str:
         """Build comprehensive evaluation prompt."""
         
         # Format conversation
@@ -179,15 +186,17 @@ Score:"""
         
         # Build evaluation criteria
         criteria_text = """
-1. Question Quality (0-1): How well-crafted were the mediator's questions?
-2. Information Extraction (0-1): How effectively was relevant information gathered?
+1. Question Quality (0-1): How well-crafted and legally targeted were the mediator's questions?
+2. Information Extraction (0-1): How effectively was relevant legal information gathered?
 3. Empathy (0-1): How empathetic and rapport-building was the interaction?
-4. Efficiency (0-1): How efficiently was the information gathered (not repetitive)?
-5. Coverage (0-1): How comprehensively were important topics covered?
+4. Efficiency (0-1): How efficiently was information gathered (not repetitive or redundant)?
+5. Coverage (0-1): How comprehensively were important legal topics and elements covered?
+6. Proof Progress (0-1): How much did questioning advance the legal proof state? Questions should be directed at unresolved claim elements, contradictions, or missing proof leads rather than generic clarifications. Higher scores reward questions that produce concrete proof leads, resolve contradictions, or fill named element gaps.
 """
         
         anchor_text = self._format_anchor_coverage(anchor_coverage or {})
         intake_text = self._format_intake_priority_coverage(intake_priority_coverage or {})
+        proof_text = self._format_proof_state(proof_state or {})
 
         prompt = f"""You are an expert evaluator assessing a legal complaint intake session between a mediator and a complainant.
 
@@ -203,6 +212,7 @@ FINAL STATE:
 {f'GROUND TRUTH CONTEXT:\n{json.dumps(context, indent=2)}\n' if context else ''}
 {anchor_text}
 {intake_text}
+{proof_text}
 
 Evaluate the mediator's performance on these criteria:
 {criteria_text}
@@ -215,6 +225,7 @@ information_extraction: [0.0-1.0]
 empathy: [0.0-1.0]
 efficiency: [0.0-1.0]
 coverage: [0.0-1.0]
+proof_progress: [0.0-1.0]
 
 FEEDBACK:
 [Detailed feedback paragraph]
@@ -294,6 +305,7 @@ Evaluation:"""
                 empathy=scores.get('empathy', 0.5),
                 efficiency=scores.get('efficiency', 0.5),
                 coverage=scores.get('coverage', 0.5),
+                proof_progress=scores.get('proof_progress', 0.5),
                 feedback=feedback.strip(),
                 strengths=strengths,
                 weaknesses=weaknesses,
@@ -349,6 +361,7 @@ Evaluation:"""
             empathy=0.5,
             efficiency=0.5,
             coverage=score,
+            proof_progress=0.5,
             feedback="Evaluation fallback - LLM unavailable",
             strengths=["Session completed"],
             weaknesses=["Could not perform detailed evaluation"],
@@ -356,6 +369,7 @@ Evaluation:"""
         )
         self._apply_anchor_coverage(result, self._analyze_anchor_section_coverage(conversation_history, context))
         self._apply_intake_priority_coverage(result, self._analyze_intake_priority_coverage(final_state or {}))
+        self._apply_proof_state(result, self._analyze_proof_state(final_state or {}))
         return result
 
     def _analyze_anchor_section_coverage(
@@ -441,6 +455,7 @@ Evaluation:"""
                 + (score.empathy * self.criteria_weights.get('empathy', 0.0))
                 + (score.efficiency * self.criteria_weights.get('efficiency', 0.0))
                 + (score.coverage * self.criteria_weights.get('coverage', 0.0))
+                + (score.proof_progress * self.criteria_weights.get('proof_progress', 0.0))
             )
         if missing:
             missing_text = ", ".join(missing)
@@ -474,6 +489,7 @@ Evaluation:"""
                 + (score.empathy * self.criteria_weights.get('empathy', 0.0))
                 + (score.efficiency * self.criteria_weights.get('efficiency', 0.0))
                 + (score.coverage * self.criteria_weights.get('coverage', 0.0))
+                + (score.proof_progress * self.criteria_weights.get('proof_progress', 0.0))
             )
         if missing:
             missing_text = ", ".join(missing)
@@ -490,3 +506,113 @@ Evaluation:"""
             strength = f"Covered all intake-priority objectives: {', '.join(covered)}"
             if strength not in score.strengths:
                 score.strengths = list(score.strengths) + [strength]
+
+    def _analyze_proof_state(self, final_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract proof progress signals from final_state for scoring.
+
+        Reads claim_support_packet_summary and proof_lead_summary from
+        final_state (or nested intake_case_summary) to compute measurable
+        proof progress signals that feed into the proof_progress score.
+        """
+        if not isinstance(final_state, dict):
+            return {}
+
+        def _get(key: str) -> Any:
+            value = final_state.get(key)
+            if value is None:
+                ics = final_state.get('intake_case_summary')
+                if isinstance(ics, dict):
+                    value = ics.get(key)
+            return value
+
+        packet_summary = _get('claim_support_packet_summary') or {}
+        proof_lead_summary = _get('proof_lead_summary') or {}
+        contradiction_summary = _get('contradiction_summary') or {}
+
+        proof_readiness = float(packet_summary.get('proof_readiness_score') or 0.0)
+        credible_ratio = float(packet_summary.get('credible_support_ratio') or 0.0)
+        proof_lead_count = int((proof_lead_summary.get('count') or 0))
+        contradiction_count = int(contradiction_summary.get('count') or 0)
+
+        return {
+            'proof_readiness_score': proof_readiness,
+            'credible_support_ratio': credible_ratio,
+            'proof_lead_count': proof_lead_count,
+            'contradiction_count': contradiction_count,
+        }
+
+    def _format_proof_state(self, proof_state: Dict[str, Any]) -> str:
+        """Format proof-state context for inclusion in the evaluation prompt."""
+        if not proof_state or not any(
+            proof_state.get(k) for k in ('proof_readiness_score', 'proof_lead_count')
+        ):
+            return ''
+        lines = ['PROOF PROGRESS STATE:']
+        proof_readiness = proof_state.get('proof_readiness_score')
+        if proof_readiness is not None:
+            lines.append(f'Proof readiness score: {float(proof_readiness):.2f}')
+        credible = proof_state.get('credible_support_ratio')
+        if credible is not None:
+            lines.append(f'Credible support ratio: {float(credible):.2f}')
+        lead_count = proof_state.get('proof_lead_count')
+        if lead_count is not None:
+            lines.append(f'Proof leads gathered: {lead_count}')
+        contradiction_count = proof_state.get('contradiction_count')
+        if contradiction_count is not None:
+            lines.append(f'Open contradictions: {contradiction_count}')
+        lines.append(
+            'Higher proof progress scores should be awarded when questions produced '
+            'concrete proof leads, resolved contradictions, or targeted named '
+            'claim elements rather than eliciting generic narrative.'
+        )
+        return '\n'.join(lines) + '\n'
+
+    def _apply_proof_state(self, score: CriticScore, proof_state: Dict[str, Any]) -> None:
+        """Adjust proof_progress score and overall score based on measurable proof state."""
+        if not isinstance(proof_state, dict) or not proof_state:
+            return
+
+        proof_readiness = float(proof_state.get('proof_readiness_score') or 0.0)
+        credible_ratio = float(proof_state.get('credible_support_ratio') or 0.0)
+        proof_lead_count = int(proof_state.get('proof_lead_count') or 0)
+
+        # Only adjust if there is measurable evidence of proof progress.
+        if not (proof_readiness or credible_ratio or proof_lead_count):
+            return
+
+        # Compute an objective proof progress signal as the average of available
+        # measurable indicators (0-1 each).
+        indicators: List[float] = []
+        if proof_readiness:
+            indicators.append(min(1.0, proof_readiness))
+        if credible_ratio:
+            indicators.append(min(1.0, credible_ratio))
+        if proof_lead_count:
+            indicators.append(min(1.0, proof_lead_count / 5.0))
+
+        objective_signal = sum(indicators) / len(indicators) if indicators else 0.5
+
+        # Blend the LLM-assigned score with the objective signal.
+        score.proof_progress = (score.proof_progress + objective_signal) / 2.0
+
+        # Recompute overall score including proof_progress.
+        score.overall_score = (
+            (score.question_quality * self.criteria_weights.get('question_quality', 0.0))
+            + (score.information_extraction * self.criteria_weights.get('information_extraction', 0.0))
+            + (score.empathy * self.criteria_weights.get('empathy', 0.0))
+            + (score.efficiency * self.criteria_weights.get('efficiency', 0.0))
+            + (score.coverage * self.criteria_weights.get('coverage', 0.0))
+            + (score.proof_progress * self.criteria_weights.get('proof_progress', 0.0))
+        )
+
+        if proof_lead_count > 0:
+            strength = f"Session produced {proof_lead_count} proof lead(s), improving legal proof state."
+            if strength not in score.strengths:
+                score.strengths = list(score.strengths) + [strength]
+        elif proof_readiness < 0.3:
+            weakness = "Session did not materially advance proof readiness for identified claim elements."
+            if weakness not in score.weaknesses:
+                score.weaknesses = list(score.weaknesses) + [weakness]
+            suggestion = "Focus questions on specific unresolved claim elements and missing proof leads."
+            if suggestion not in score.suggestions:
+                score.suggestions = list(score.suggestions) + [suggestion]

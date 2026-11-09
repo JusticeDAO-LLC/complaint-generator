@@ -151,6 +151,23 @@
             text-decoration: none;
         }
 
+        .surface-nav-disclosure {
+            margin-top: 12px;
+        }
+
+        .surface-nav-summary {
+            cursor: pointer;
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .surface-nav-disclosure .surface-links {
+            margin-top: 10px;
+        }
+
         .metric {
             border-radius: 18px;
             padding: 18px;
@@ -420,6 +437,19 @@
         .readiness-chip strong {
             display: block;
             margin-bottom: 4px;
+        }
+
+        .mike-workflow-journey {
+            margin: 12px 0 14px;
+            padding: 12px;
+            border-radius: 14px;
+            border: 1px solid rgba(22, 33, 38, 0.12);
+            background: rgba(255,255,255,0.74);
+        }
+
+        .mike-workflow-journey[data-severity="warning"] {
+            border-color: rgba(143, 45, 30, 0.28);
+            background: rgba(143, 45, 30, 0.09);
         }
 
         .triage-chip-row {
@@ -942,18 +972,23 @@
                 </p>
                 <div class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
                     <a class="surface-link" href="/">Landing</a>
-                    <a class="surface-link" href="/home">Account</a>
+                    <a class="surface-link" href="/home">Secure Intake</a>
                     <a class="surface-link" id="builder-nav-chat" href="/chat">Chat</a>
-                    <a class="surface-link" id="builder-nav-profile" href="/profile">Profile</a>
-                    <a class="surface-link" id="builder-nav-results" href="/results">Results</a>
                     <a class="surface-link" id="builder-nav-workspace" href="/workspace">Workspace</a>
                     <a class="surface-link" id="builder-nav-review" href="/claim-support-review">Review</a>
                     <a class="surface-link" id="builder-nav-builder" href="/document">Builder</a>
-                    <a class="surface-link" id="builder-nav-trace" href="/document/optimization-trace">Trace</a>
-                    <a class="surface-link" href="/mlwysiwyg">Editor</a>
-                    <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
-                    <a class="surface-link" href="/dashboards">Dashboards</a>
                 </div>
+                <details class="surface-nav-disclosure" id="builder-advanced-nav">
+                    <summary class="surface-nav-summary">Advanced tools</summary>
+                    <div class="surface-links" aria-label="Advanced tools">
+                        <a class="surface-link" id="builder-nav-profile" href="/profile">Profile</a>
+                        <a class="surface-link" id="builder-nav-results" href="/results">Results</a>
+                        <a class="surface-link" id="builder-nav-trace" href="/document/optimization-trace">Trace</a>
+                        <a class="surface-link" href="/mlwysiwyg">Editor</a>
+                        <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
+                        <a class="surface-link" href="/dashboards">Dashboards</a>
+                    </div>
+                </details>
                 <div class="hero-guidance">
                     <div class="hero-guidance-card">
                         <strong>Use this page when the record is organized</strong>
@@ -1311,10 +1346,15 @@
         const DRAFT_STORAGE_KEY = 'formalComplaintBuilderState';
         const PREVIEW_STORAGE_KEY = 'formalComplaintBuilderPreview';
         const REVIEW_INTENT_STORAGE_KEY = 'formalComplaintReviewIntent';
+        const SYNC_EVENT_NAME = (window.ComplaintMcpSdk && window.ComplaintMcpSdk.SYNC_EVENT_NAME) || 'complaint-mcp-sync';
+        const SYNC_EVENT_STORAGE_KEY = (window.ComplaintMcpSdk && window.ComplaintMcpSdk.DEFAULT_SYNC_EVENT_STORAGE_KEY) || 'complaintGenerator.sdkSyncEvent';
+        const MIKE_STATUS_STALE_MS = 5 * 60 * 1000;
         const state = {
             userId: null,
             generatedPayload: null,
             reviewIntent: null,
+            mikeIntegrationStatus: null,
+            mikeStatusUpdatedAt: null,
         };
 
         function getRequestedUserId() {
@@ -1354,6 +1394,50 @@
             });
             const query = params.toString();
             return query ? `${path}?${query}` : path;
+        }
+
+        function formatRelativeTimestamp(value) {
+            const raw = String(value || '').trim();
+            if (!raw) {
+                return '';
+            }
+            const timestamp = Date.parse(raw);
+            if (!Number.isFinite(timestamp)) {
+                return raw;
+            }
+            const diffMs = Date.now() - timestamp;
+            const diffMinutes = Math.max(0, Math.round(diffMs / 60000));
+            if (diffMinutes < 1) {
+                return 'updated just now';
+            }
+            if (diffMinutes === 1) {
+                return 'updated 1 minute ago';
+            }
+            if (diffMinutes < 60) {
+                return `updated ${diffMinutes} minutes ago`;
+            }
+            const diffHours = Math.round(diffMinutes / 60);
+            if (diffHours === 1) {
+                return 'updated 1 hour ago';
+            }
+            if (diffHours < 48) {
+                return `updated ${diffHours} hours ago`;
+            }
+            const diffDays = Math.round(diffHours / 24);
+            return diffDays === 1 ? 'updated 1 day ago' : `updated ${diffDays} days ago`;
+        }
+
+        function isTimestampStale(isoTimestamp, maxAgeMs) {
+            const raw = String(isoTimestamp || '').trim();
+            if (!raw) {
+                return false;
+            }
+            const timestamp = Date.parse(raw);
+            if (!Number.isFinite(timestamp)) {
+                return false;
+            }
+            const ageMs = Date.now() - timestamp;
+            return Number.isFinite(ageMs) && ageMs > (Number(maxAgeMs) || MIKE_STATUS_STALE_MS);
         }
 
         function resolveBuilderCaseSynopsis(userId) {
@@ -2124,8 +2208,20 @@
             if (!values.length) {
                 return '';
             }
+            const mikeStatus = state.mikeIntegrationStatus && typeof state.mikeIntegrationStatus === 'object'
+                ? state.mikeIntegrationStatus
+                : {};
+            const mikeState = deriveMikeUiState(mikeStatus);
+            const mikeStatusContractVersion = String(mikeStatus.status_contract_version || '').trim();
+            const mikeStatusStale = isTimestampStale(state.mikeStatusUpdatedAt, MIKE_STATUS_STALE_MS);
+            const downloadsGuardedByMike = mikeStatusStale
+                || !mikeStatusContractVersion
+                || mikeState.key === 'handoff_pending_sync'
+                || mikeState.key === 'synced_with_conflicts';
             const cards = values.map(([format, artifact]) => {
-                const link = artifact.download_url
+                const link = downloadsGuardedByMike
+                    ? `<span class="preview-meta">Download withheld until Mike sync is current and conflict-free (${escapeHtml(mikeState.label)}).</span>`
+                    : artifact.download_url
                     ? `<a href="${encodeURI(artifact.download_url)}">Download ${escapeHtml(format.toUpperCase())}</a>`
                     : '<span class="preview-meta">Download unavailable for this artifact</span>';
                 return `
@@ -2138,10 +2234,13 @@
                     </article>
                 `;
             }).join('');
-            return `<section><h2>Artifacts</h2><div class="artifact-grid">${cards}</div></section>`;
+            const gateNote = downloadsGuardedByMike
+                ? `<div class="preview-meta"><strong>Export gate note:</strong> Refresh Mike status and resolve sync blockers before treating artifact downloads as the next action.</div>`
+                : '';
+            return `<section><h2>Artifacts</h2>${gateNote}<div class="artifact-grid">${cards}</div></section>`;
         }
 
-        function renderClaims(claims, readinessClaims = []) {
+        function renderClaims(claims, readinessClaims = [], reviewLinks = {}) {
             if (!Array.isArray(claims) || !claims.length) {
                 return '';
             }
@@ -2152,11 +2251,20 @@
             );
             const cards = claims.map((claim) => {
                 const readiness = readinessByClaim.get(String(claim.claim_type || '').toLowerCase()) || null;
+                const claimType = String(claim.claim_type || '').trim();
+                const claimReviewUrl = appendClaimElementFocusToReviewUrl(
+                    resolveClaimReviewUrl({ claim_type: claimType, review_url: readiness && readiness.review_url }, reviewLinks),
+                    resolvePreferredClaimElementFocus(reviewLinks, { claimType }),
+                );
                 const readinessWarningBlock = readiness && Array.isArray(readiness.warnings) && readiness.warnings.length
                     ? `
                         <div class="claim-warning-callout">
                             <strong>Open filing warnings</strong>
-                            ${renderWarningList(readiness.warnings)}
+                            ${renderWarningList(readiness.warnings, {
+                                claimType,
+                                reviewUrl: claimReviewUrl,
+                                reviewLinks,
+                            })}
                         </div>
                     `
                     : '';
@@ -2519,15 +2627,142 @@
             return `<ul class="metric-list">${items}</ul>`;
         }
 
-        function renderWarningList(warnings) {
+        function formatBuilderCountMap(values) {
+            const entries = Object.entries(values && typeof values === 'object' ? values : {})
+                .filter(([, value]) => Number(value || 0) > 0);
+            return entries.length
+                ? entries.map(([label, value]) => `${humanizeKey(label)}=${Number(value || 0)}`).join(', ')
+                : 'No counts reported.';
+        }
+
+        function renderBuilderSupportSummary(summary) {
+            const builderSummary = summary && typeof summary === 'object' ? summary : {};
+            if (!Object.keys(builderSummary).length) {
+                return '';
+            }
+            const artifactProvenance = builderSummary.artifact_provenance && typeof builderSummary.artifact_provenance === 'object'
+                ? builderSummary.artifact_provenance
+                : {};
+            const documentProvenance = builderSummary.document_provenance_summary && typeof builderSummary.document_provenance_summary === 'object'
+                ? builderSummary.document_provenance_summary
+                : {};
+            const sectionSupport = Array.isArray(builderSummary.section_support)
+                ? builderSummary.section_support.filter((item) => item && typeof item === 'object')
+                : [];
+            const sectionCards = sectionSupport.slice(0, 4).map((section) => {
+                const reviewLink = section.review_url
+                    ? `<div class="inline-link-row"><a class="inline-link" data-review-intent-link="true" href="${escapeHtml(section.review_url)}">Open support review</a></div>`
+                    : '';
+                return `
+                    <article class="readiness-detail-card">
+                        <div class="readiness-card-header">
+                            <h3>${escapeHtml(section.title || humanizeKey(section.section_key || 'section'))}</h3>
+                            ${renderStatusPill(section.support_status || section.status || 'ready')}
+                        </div>
+                        <ul class="metric-list">
+                            <li><strong>Claim elements:</strong> ${escapeHtml(String(section.claim_element_count || 0))}</li>
+                            <li><strong>Source refs:</strong> ${escapeHtml(String(section.source_ref_count || 0))}</li>
+                            <li><strong>Explicit gaps:</strong> ${escapeHtml(String(section.explicit_gap_count || 0))}</li>
+                        </ul>
+                        ${reviewLink}
+                    </article>
+                `;
+            }).join('');
+            const provenanceChips = [
+                `<span class="readiness-chip"><strong>Support statuses:</strong> ${escapeHtml(formatBuilderCountMap(builderSummary.support_status_counts))}</span>`,
+                `<span class="readiness-chip"><strong>Source refs:</strong> ${escapeHtml(String(builderSummary.source_ref_count || 0))}</span>`,
+                `<span class="readiness-chip"><strong>Source families:</strong> ${escapeHtml(formatBuilderCountMap(builderSummary.source_family_counts))}</span>`,
+                `<span class="readiness-chip"><strong>Artifact families:</strong> ${escapeHtml(formatBuilderCountMap(builderSummary.artifact_family_counts))}</span>`,
+                `<span class="readiness-chip"><strong>Guardrails:</strong> ${escapeHtml(String(builderSummary.guardrail_warning_count || 0))} warnings / ${escapeHtml(String(builderSummary.guardrail_blocker_count || 0))} blockers</span>`,
+                `<span class="readiness-chip"><strong>Artifact downloads:</strong> ${escapeHtml(String(artifactProvenance.downloadable_count || 0))}/${escapeHtml(String(artifactProvenance.artifact_count || 0))} managed</span>`,
+            ];
+            const groundingLine = Object.keys(documentProvenance).length
+                ? `<div class="preview-meta"><strong>Document grounding:</strong> fact-backed ratio ${escapeHtml(String(documentProvenance.fact_backed_ratio ?? 'n/a'))}; low-grounding flag ${documentProvenance.low_grounding_flag ? 'yes' : 'no'}.</div>`
+                : '';
+            const warningTypeLine = Object.keys(builderSummary.warning_type_counts || {}).length
+                ? `<div class="preview-meta"><strong>Guardrail types:</strong> ${escapeHtml(formatBuilderCountMap(builderSummary.warning_type_counts))}</div>`
+                : '';
+            return `
+                <div class="readiness-subtitle">Builder Support Summary</div>
+                <div class="readiness-grid">${provenanceChips.join('')}</div>
+                ${groundingLine}
+                ${warningTypeLine}
+                ${sectionCards ? `<div class="readiness-detail-grid">${sectionCards}</div>` : ''}
+            `;
+        }
+
+        function inferWarningSupportKind(warning, sectionKey = '') {
+            const normalizedSectionKey = String(sectionKey || '').trim().toLowerCase();
+            const explicitSupportKind = String((warning && warning.support_kind) || '').trim().toLowerCase();
+            if (explicitSupportKind === 'authority' || explicitSupportKind === 'evidence') {
+                return explicitSupportKind;
+            }
+            const warningCode = String((warning && (warning.code || warning.warning_type)) || '').trim().toLowerCase();
+            if (warningCode.includes('authority') || warningCode.includes('legal') || warningCode.includes('jurisdiction')) {
+                return 'authority';
+            }
+            if (warningCode.includes('proof') || warningCode.includes('chronology') || warningCode.includes('evidence') || warningCode.includes('intake')) {
+                return 'evidence';
+            }
+            if (['claims_for_relief', 'jurisdiction_and_venue'].includes(normalizedSectionKey)) {
+                return 'authority';
+            }
+            if (['summary_of_facts', 'chronology', 'proof_leads', 'exhibits'].includes(normalizedSectionKey)) {
+                return 'evidence';
+            }
+            return '';
+        }
+
+        function buildWarningReviewTargets({ warning, reviewUrl = '', claimType = '', sectionKey = '', reviewLinks = {} } = {}) {
+            const normalizedClaimType = String(claimType || '').trim();
+            const normalizedSectionKey = String(sectionKey || '').trim().toLowerCase();
+            const baseReviewUrl = String(reviewUrl || '').trim()
+                || (normalizedSectionKey
+                    ? resolveSectionReviewUrl(normalizedSectionKey, {}, reviewLinks)
+                    : resolveClaimReviewUrl({ claim_type: normalizedClaimType }, reviewLinks));
+            if (!baseReviewUrl) {
+                return { proofCardUrl: '', supportLedgerUrl: '' };
+            }
+            const warningClaimElementId = String(
+                (warning && (warning.claim_element_id || warning.target_claim_element_id || warning.claim_element || warning.element_id)) || ''
+            ).trim();
+            const preferredClaimElementId = resolvePreferredClaimElementFocus(reviewLinks, {
+                claimType: normalizedClaimType,
+                sectionKey: normalizedSectionKey,
+            });
+            const claimElementId = warningClaimElementId || preferredClaimElementId;
+            const proofCardUrl = appendClaimElementFocusToReviewUrl(baseReviewUrl, claimElementId) || baseReviewUrl;
+            const supportKind = inferWarningSupportKind(warning, normalizedSectionKey);
+            const supportSectionKey = normalizedSectionKey || (supportKind === 'authority' ? 'claims_for_relief' : 'summary_of_facts');
+            const supportLedgerUrl = appendTaskUpdateIntentToReviewUrl(
+                appendSupportKindToReviewUrl(proofCardUrl, supportKind),
+                supportSectionKey,
+                supportKind,
+            );
+            return { proofCardUrl, supportLedgerUrl };
+        }
+
+        function renderWarningList(warnings, options = {}) {
             const normalized = Array.isArray(warnings) ? warnings.filter((warning) => warning && typeof warning === 'object') : [];
             if (!normalized.length) {
                 return '<div class="preview-meta">No drafting warnings are currently reported.</div>';
             }
             const items = normalized.map((warning) => {
                 const severity = warning.severity ? `[${String(warning.severity).toUpperCase()}] ` : '';
-                const code = warning.code ? `${humanizeKey(warning.code)}: ` : '';
-                return `<li>${escapeHtml(`${severity}${code}${warning.message || 'Warning reported.'}`)}</li>`;
+                const warningCode = warning.code || warning.warning_type || '';
+                const code = warningCode ? `${humanizeKey(warningCode)}: ` : '';
+                const { proofCardUrl, supportLedgerUrl } = buildWarningReviewTargets({
+                    warning,
+                    reviewUrl: options.reviewUrl || '',
+                    claimType: options.claimType || '',
+                    sectionKey: options.sectionKey || '',
+                    reviewLinks: options.reviewLinks || {},
+                });
+                const actionLinks = [
+                    proofCardUrl ? `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(proofCardUrl)}">Open proof card</a>` : '',
+                    supportLedgerUrl ? `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(supportLedgerUrl)}">Open support ledger</a>` : '',
+                ].filter(Boolean).join(' · ');
+                return `<li>${escapeHtml(`${severity}${code}${warning.message || 'Warning reported.'}`)}${actionLinks ? `<div class="preview-meta" style="margin-top: 6px;">${actionLinks}</div>` : ''}</li>`;
             }).join('');
             return `<ul class="warning-list">${items}</ul>`;
         }
@@ -2597,12 +2832,23 @@
 
         function renderReviewLinks(reviewLinks) {
             const dashboardUrl = String((reviewLinks && reviewLinks.dashboard_url) || '').trim() || '/claim-support-review';
+            const focusedDashboardUrl = appendClaimElementFocusToReviewUrl(
+                dashboardUrl,
+                resolvePreferredClaimElementFocus(reviewLinks),
+            ) || dashboardUrl;
             const intakeStatus = reviewLinks && typeof reviewLinks.intake_status === 'object' ? reviewLinks.intake_status : {};
             const blockers = Array.isArray(intakeStatus.blockers) ? intakeStatus.blockers : [];
             const contradictions = Array.isArray(intakeStatus.contradictions) ? intakeStatus.contradictions : [];
             const resumeIntent = normalizeReviewIntent(state.reviewIntent);
+            const focusedResumeUrl = appendClaimElementFocusToReviewUrl(
+                resumeIntent && resumeIntent.review_url ? resumeIntent.review_url : '',
+                resolvePreferredClaimElementFocus(reviewLinks, {
+                    claimType: resumeIntent && resumeIntent.claim_type ? resumeIntent.claim_type : '',
+                    sectionKey: resumeIntent && resumeIntent.section ? resumeIntent.section : '',
+                }),
+            );
             const resumeLink = resumeIntent && resumeIntent.review_url && resumeIntent.review_url !== dashboardUrl
-                ? `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(resumeIntent.review_url)}">Resume Review Focus</a>`
+                ? `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(focusedResumeUrl || resumeIntent.review_url)}">Resume Review Focus</a>`
                 : '';
             const intakeStatusSummary = (() => {
                 if (!Object.keys(intakeStatus).length) {
@@ -2634,7 +2880,7 @@
             })();
             return `
                 <div class="inline-link-row">
-                    <a class="inline-link" data-review-intent-link="true" href="${escapeHtml(dashboardUrl)}">Open Review Dashboard</a>
+                    <a class="inline-link" data-review-intent-link="true" href="${escapeHtml(focusedDashboardUrl)}">Open Review Dashboard</a>
                     ${resumeLink}
                 </div>
                 ${intakeStatusSummary}
@@ -2977,6 +3223,49 @@
             return reviewUrl;
         }
 
+        function appendClaimElementFocusToReviewUrl(reviewUrl, claimElementId) {
+            const normalizedUrl = String(reviewUrl || '').trim();
+            const normalizedElementId = String(claimElementId || '').trim();
+            if (!normalizedUrl || !normalizedElementId) {
+                return normalizedUrl;
+            }
+            const parsedUrl = new URL(normalizedUrl, window.location.origin);
+            parsedUrl.searchParams.set('claim_element_id', normalizedElementId);
+            return `${parsedUrl.pathname}${parsedUrl.search}`;
+        }
+
+        function resolvePrimaryValidationTarget(reviewLinks) {
+            const target = reviewLinks && typeof reviewLinks.primary_validation_target === 'object'
+                ? reviewLinks.primary_validation_target
+                : {};
+            return {
+                claimType: String(target.claim_type || '').trim().toLowerCase(),
+                sectionKey: String(target.section || target.section_key || '').trim().toLowerCase(),
+                claimElementId: String(
+                    target.claim_element_id
+                    || target.target_claim_element_id
+                    || target.claim_element
+                    || ''
+                ).trim(),
+            };
+        }
+
+        function resolvePreferredClaimElementFocus(reviewLinks, { claimType = '', sectionKey = '' } = {}) {
+            const target = resolvePrimaryValidationTarget(reviewLinks);
+            if (!target.claimElementId) {
+                return '';
+            }
+            const normalizedClaimType = String(claimType || '').trim().toLowerCase();
+            const normalizedSectionKey = String(sectionKey || '').trim().toLowerCase();
+            if (normalizedClaimType && target.claimType && normalizedClaimType !== target.claimType) {
+                return '';
+            }
+            if (normalizedSectionKey && target.sectionKey && normalizedSectionKey !== target.sectionKey) {
+                return '';
+            }
+            return target.claimElementId;
+        }
+
         function appendSectionReviewIntentToReviewUrl(reviewUrl, sectionKey) {
             const normalizedSectionKey = String(sectionKey || '').trim().toLowerCase();
             if (!normalizedSectionKey) {
@@ -3266,10 +3555,17 @@
                             manualReviewClaims,
                             pendingReviewClaims,
                         );
-                        if (!claimType || !reviewUrl) {
+                        const focusedReviewUrl = appendClaimElementFocusToReviewUrl(
+                            reviewUrl,
+                            resolvePreferredClaimElementFocus(reviewLinks, {
+                                claimType,
+                                sectionKey,
+                            }),
+                        );
+                        if (!claimType || !focusedReviewUrl) {
                             return '';
                         }
-                        return `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(reviewUrl)}">Open ${escapeHtml(humanizeKey(claimType))} Section Review</a>`;
+                        return `<a class="inline-link" data-review-intent-link="true" href="${escapeHtml(focusedReviewUrl)}">Open ${escapeHtml(humanizeKey(claimType))} Section Review</a>`;
                     }).join('')}
                 </div>
             `;
@@ -3277,11 +3573,15 @@
 
         function renderClaimActions(claim, reviewLinks, manualReviewClaims, pendingReviewClaims) {
             const claimType = String((claim && claim.claim_type) || '').trim();
-            const reviewUrl = appendClaimQueueIntentToReviewUrl(
+            const claimReviewUrl = appendClaimQueueIntentToReviewUrl(
                 resolveClaimReviewUrl(claim, reviewLinks),
                 claimType,
                 manualReviewClaims,
                 pendingReviewClaims,
+            );
+            const reviewUrl = appendClaimElementFocusToReviewUrl(
+                claimReviewUrl,
+                resolvePreferredClaimElementFocus(reviewLinks, { claimType }),
             );
             if (!claimType || !reviewUrl) {
                 return '';
@@ -3397,6 +3697,10 @@
                     resolveSectionReviewUrl(key, section, reviewLinks),
                     key,
                 );
+                const focusedReviewUrl = appendClaimElementFocusToReviewUrl(
+                    reviewUrl,
+                    resolvePreferredClaimElementFocus(reviewLinks, { sectionKey: key }),
+                );
                 return `
                 <article class="readiness-detail-card">
                     <div class="readiness-card-header">
@@ -3406,8 +3710,12 @@
                     <div class="readiness-subtitle">Section Metrics</div>
                     ${renderMetricList(section.metrics || {})}
                     <div class="readiness-subtitle">Section Warnings</div>
-                    ${renderWarningList(section.warnings || [])}
-                    ${reviewUrl ? `<div class="inline-link-row"><a class="inline-link" data-review-intent-link="true" href="${escapeHtml(reviewUrl)}">Open Section Review</a></div>` : ''}
+                    ${renderWarningList(section.warnings || [], {
+                        sectionKey: key,
+                        reviewUrl: focusedReviewUrl,
+                        reviewLinks,
+                    })}
+                    ${focusedReviewUrl ? `<div class="inline-link-row"><a class="inline-link" data-review-intent-link="true" href="${escapeHtml(focusedReviewUrl)}">Open Section Review</a></div>` : ''}
                     ${renderSectionClaimLinks(key, section, reviewLinks, manualReviewClaims, pendingReviewClaims)}
                 </article>
             `;
@@ -3422,6 +3730,16 @@
             }
             const cards = values.map((claim) => {
                 const supportByKind = Object.entries(claim.support_by_kind || {}).filter(([, value]) => value !== null && value !== undefined && value !== '');
+                const claimType = String(claim.claim_type || '').trim();
+                const claimReviewUrl = appendClaimElementFocusToReviewUrl(
+                    appendClaimQueueIntentToReviewUrl(
+                        resolveClaimReviewUrl(claim, reviewLinks),
+                        claimType,
+                        manualReviewClaims,
+                        pendingReviewClaims,
+                    ),
+                    resolvePreferredClaimElementFocus(reviewLinks, { claimType }),
+                );
                 const supportSummary = supportByKind.length
                     ? supportByKind.map(([key, value]) => `${humanizeKey(key)}=${value}`).join(', ')
                     : 'No support-by-kind counts reported.';
@@ -3454,17 +3772,192 @@
                             contradiction_candidate_count: claim.contradiction_candidate_count,
                         })}
                         <div class="readiness-subtitle">Claim Warnings</div>
-                        ${renderWarningList(claim.warnings || [])}
+                        ${renderWarningList(claim.warnings || [], {
+                            claimType,
+                            reviewUrl: claimReviewUrl,
+                            reviewLinks,
+                        })}
                         <div class="readiness-subtitle">Source Drilldown</div>
                         ${renderProvenanceList(claim, exhibits)}
-                        ${renderClaimActions(claim, reviewLinks, manualReviewClaims, pendingReviewClaims)}
+                        ${claimReviewUrl ? `<div class="inline-link-row"><a class="inline-link" data-review-intent-link="true" href="${escapeHtml(claimReviewUrl)}">Open Claim Support Review</a></div>` : ''}
                     </article>
                 `;
             }).join('');
             return `<div class="readiness-claim-stack">${cards}</div>`;
         }
 
-        function renderReadiness(readiness, exhibits, reviewLinks, intakeCaseSummary) {
+        function deriveMikeUiState(mikeStatus) {
+            const status = mikeStatus && typeof mikeStatus === 'object' ? mikeStatus : {};
+            const workflowState = status.workflow_state && typeof status.workflow_state === 'object'
+                ? status.workflow_state
+                : null;
+            const pendingSync = Boolean(status.pending_sync);
+            const hasSyncedDraft = Boolean(status.has_mike_synced_draft);
+            const hasConflicts = Boolean(status.has_citation_link_conflicts);
+            const latestHandoffId = String(status.latest_handoff_id || '').trim();
+            const statusContractVersion = String(status.status_contract_version || '').trim();
+            const workflowStateKey = String((workflowState || {}).key || '').trim();
+            const derivedKey = !latestHandoffId
+                ? 'not_handed_off'
+                : (pendingSync
+                    ? 'handoff_pending_sync'
+                    : ((hasSyncedDraft && hasConflicts)
+                        ? 'synced_with_conflicts'
+                        : (hasSyncedDraft ? 'synced_clean' : 'handoff_pending_sync')));
+            const key = workflowState && workflowStateKey
+                ? workflowStateKey
+                : derivedKey;
+            const labelByKey = {
+                not_handed_off: 'Not handed off',
+                handoff_pending_sync: 'Handoff pending sync',
+                synced_with_conflicts: 'Synced with conflicts',
+                synced_clean: 'Synced clean',
+            };
+            const severityByKey = {
+                not_handed_off: 'warning',
+                handoff_pending_sync: 'warning',
+                synced_with_conflicts: 'warning',
+                synced_clean: 'ready',
+            };
+            const summaryByKey = {
+                not_handed_off: 'Start by sending this draft context to Mike before expecting a synced draft.',
+                handoff_pending_sync: 'A Mike handoff exists, but the latest edited draft has not been synced back yet.',
+                synced_with_conflicts: 'Mike sync is current, but citation-link conflicts were detected.',
+                synced_clean: 'Mike sync is current and no citation-link conflicts were reported.',
+            };
+            return {
+                key,
+                label: String((workflowState || {}).label || '').trim() || (labelByKey[key] || 'Unknown'),
+                severity: (() => {
+                    const workflowSeverity = String((workflowState || {}).severity || '').trim().toLowerCase();
+                    if (workflowSeverity === 'good') {
+                        return 'ready';
+                    }
+                    if (workflowSeverity === 'warn' || workflowSeverity === 'warning') {
+                        return 'warning';
+                    }
+                    return severityByKey[key] || 'warning';
+                })(),
+                summary: String((status.conflict_component || {}).impact_statement || status.recommended_action || '').trim()
+                    || (summaryByKey[key] || 'Mike status is available.'),
+                sequenceHint: key === 'synced_with_conflicts'
+                    ? 'Resolve conflicts in Mike and sync again before export.'
+                    : 'Prepare draft → Send to Mike → Confirm sync back → Resolve conflicts if present → Continue export checks.',
+                statusContractVersion,
+            };
+        }
+
+        function renderMikeWorkflowJourney(userId) {
+            const mikeStatus = state.mikeIntegrationStatus && typeof state.mikeIntegrationStatus === 'object'
+                ? state.mikeIntegrationStatus
+                : {};
+            const mikeState = deriveMikeUiState(mikeStatus);
+            const conflictCount = Number(mikeStatus.citation_link_conflict_count || 0);
+            const unknownCount = Number(mikeStatus.citation_link_unknown_element_count || 0);
+            const conflictComponent = mikeStatus.conflict_component && typeof mikeStatus.conflict_component === 'object'
+                ? mikeStatus.conflict_component
+                : {};
+            const recommendedAction = String(conflictComponent.required_next_action || mikeStatus.recommended_action || '').trim()
+                || 'Use Mike handoff and sync tools to keep this draft aligned.';
+            const statusTimestampStale = isTimestampStale(state.mikeStatusUpdatedAt, MIKE_STATUS_STALE_MS);
+            const statusContractVersion = String(mikeStatus.status_contract_version || '').trim();
+            const statusFreshness = state.mikeStatusUpdatedAt
+                ? `Status ${formatRelativeTimestamp(state.mikeStatusUpdatedAt)}${statusTimestampStale ? ' (stale — refresh before export)' : ''}`
+                : 'Status pending refresh.';
+            const workspaceUrl = buildBuilderSurfaceUrl('/workspace', {
+                user_id: userId || '',
+                target_tab: 'draft',
+                focus: 'mike-integration-card',
+                status_message: 'Opened workspace Mike panel from the builder.',
+            });
+            const integrationsUrl = buildBuilderSurfaceUrl('/workspace', {
+                user_id: userId || '',
+                target_tab: 'integrations',
+                focus: 'tool-list',
+                status_message: 'Opened CLI + MCP from the builder for Mike sync follow-up.',
+            });
+            const conflictBlockerText = (statusTimestampStale || !statusContractVersion)
+                ? 'Export readiness is blocked until canonical Mike status is refreshed and contract metadata is present.'
+                : (mikeState.key === 'synced_with_conflicts'
+                ? (String(conflictComponent.impact_statement || '').trim()
+                    || 'Export readiness is blocked until Mike citation-link conflicts are resolved and synced again')
+                : 'Export readiness follows the same Mike sync state shown here.');
+            return `
+                <section class="mike-workflow-journey" id="mike-workflow-journey" data-severity="${escapeHtml(mikeState.severity)}" aria-label="Mike workflow journey" role="status">
+                    <div class="readiness-subtitle">Mike workflow journey</div>
+                    <div class="preview-meta"><strong>State:</strong> ${escapeHtml(mikeState.label)} | <strong>Sync:</strong> ${statusTimestampStale ? 'stale' : (mikeStatus.pending_sync ? 'pending' : 'current')}</div>
+                    <div class="preview-meta"><strong>Latest handoff:</strong> ${escapeHtml(String(mikeStatus.latest_handoff_id || 'none'))} | <strong>Latest synced handoff:</strong> ${escapeHtml(String(mikeStatus.latest_sync_handoff_id || 'none'))}</div>
+                    <div class="preview-meta"><strong>Contract:</strong> ${escapeHtml(statusContractVersion || 'missing')}</div>
+                    <div class="preview-meta"><strong>Conflict summary:</strong> conflicts=${escapeHtml(String(conflictCount))} | unknown links=${escapeHtml(String(unknownCount))}</div>
+                    <div class="preview-meta"><strong>Sequence:</strong> ${escapeHtml(mikeState.sequenceHint)}</div>
+                    <div class="preview-meta"><strong>Recommended action:</strong> ${escapeHtml(recommendedAction)}</div>
+                    <div class="preview-meta"><strong>Export gate:</strong> ${escapeHtml(conflictBlockerText)}</div>
+                    <div class="preview-meta"><strong>Status freshness:</strong> ${escapeHtml(statusFreshness)}</div>
+                    <div class="inline-link-row">
+                        <a class="inline-link" href="${escapeHtml(workspaceUrl)}">Open workspace Mike panel</a>
+                        <a class="inline-link" href="${escapeHtml(integrationsUrl)}">Open sync workflow</a>
+                    </div>
+                </section>
+            `;
+        }
+
+        function renderChronologyBlockerSummary(chronologyBlockerSummary) {
+            if (!chronologyBlockerSummary || typeof chronologyBlockerSummary !== 'object') {
+                return '';
+            }
+            const blocked = Boolean(chronologyBlockerSummary.chronology_blocked);
+            const summary = String(chronologyBlockerSummary.summary || '').trim();
+            const failedCount = Number(chronologyBlockerSummary.temporal_rule_profile_failed_element_count || 0);
+            const partialCount = Number(chronologyBlockerSummary.temporal_rule_profile_partial_element_count || 0);
+            const unresolvedCount = Number(chronologyBlockerSummary.unresolved_temporal_issue_count || 0);
+            const gapTaskCount = Number(chronologyBlockerSummary.temporal_gap_task_count || 0);
+            const proofScore = Number(chronologyBlockerSummary.proof_readiness_score || 0);
+            const failedRuleFrameIds = Array.isArray(chronologyBlockerSummary.failed_rule_frame_ids)
+                ? chronologyBlockerSummary.failed_rule_frame_ids.filter((id) => String(id || '').trim())
+                : [];
+
+            if (!blocked && !unresolvedCount && !gapTaskCount && !failedCount && !partialCount) {
+                return '';
+            }
+
+            const tone = blocked ? 'critical' : 'important';
+            const statusLabel = blocked ? 'blocked' : 'pending';
+            const chips = [];
+            if (failedCount > 0) {
+                chips.push(`<span class="triage-chip" data-tone="critical">failed rule elements: ${escapeHtml(String(failedCount))}</span>`);
+            }
+            if (partialCount > 0) {
+                chips.push(`<span class="triage-chip" data-tone="${escapeHtml(tone)}">partial rule elements: ${escapeHtml(String(partialCount))}</span>`);
+            }
+            if (unresolvedCount > 0) {
+                chips.push(`<span class="triage-chip" data-tone="${escapeHtml(tone)}">unresolved issues: ${escapeHtml(String(unresolvedCount))}</span>`);
+            }
+            if (gapTaskCount > 0) {
+                chips.push(`<span class="triage-chip" data-tone="${escapeHtml(tone)}">chronology tasks: ${escapeHtml(String(gapTaskCount))}</span>`);
+            }
+            chips.push(`<span class="triage-chip">proof readiness: ${escapeHtml(proofScore.toFixed(2))}</span>`);
+            if (failedRuleFrameIds.length) {
+                chips.push(`<span class="triage-chip">failed frames: ${escapeHtml(failedRuleFrameIds.join(', '))}</span>`);
+            }
+
+            const claimSupportUrl = '/claim-support-review';
+            return `
+                <div class="intake-handoff-card" id="document-chronology-blocker-summary" data-tone="${escapeHtml(tone)}">
+                    <div class="readiness-subtitle">Chronology</div>
+                    <div class="readiness-card-header">
+                        <h3>${blocked ? 'Chronology blockers present' : 'Chronology issues pending'}</h3>
+                        ${renderStatusPill(statusLabel)}
+                    </div>
+                    ${summary ? `<div class="preview-meta">${escapeHtml(summary)}</div>` : ''}
+                    <div class="triage-chip-row">${chips.join('')}</div>
+                    <div class="inline-link-row" style="margin-top: 12px;">
+                        <a class="inline-link" data-review-intent-link="true" href="${escapeHtml(claimSupportUrl)}">Review Claim Support</a>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderReadiness(readiness, exhibits, reviewLinks, intakeCaseSummary, chronologyBlockerSummary, builderSummary = {}) {
             if (!readiness || typeof readiness !== 'object') {
                 return '';
             }
@@ -3484,10 +3977,13 @@
                 <section class="readiness-banner" data-status="${escapeHtml(readiness.status || 'ready')}">
                     <div class="readiness-title">Drafting Readiness</div>
                     <div class="preview-meta">Overall status: ${escapeHtml(readiness.status || 'ready')} | Warnings: ${escapeHtml(String(warningCount))}</div>
+                    ${renderMikeWorkflowJourney(getEffectiveUserId())}
                     ${renderReviewLinks(reviewLinks)}
                     ${renderWorkflowPriority(reviewLinks, workflowPhasePlan)}
+                    ${renderChronologyBlockerSummary(chronologyBlockerSummary)}
                     ${renderIntakeSummaryConfirmation(reviewLinks, intakeCaseSummary)}
                     ${renderWorkflowPhaseGuidance(workflowPhasePlan)}
+                    ${renderBuilderSupportSummary(builderSummary)}
                     <div class="readiness-grid">${sectionCards}</div>
                     <div class="readiness-subtitle">Section Readiness</div>
                     ${renderSectionReadiness(readiness.sections || {}, reviewLinks, manualReviewClaims, pendingReviewClaims)}
@@ -3541,7 +4037,7 @@
             `;
         }
 
-        function renderFilingChecklist(items, manualReviewClaims, pendingReviewClaims) {
+        function renderFilingChecklist(items, manualReviewClaims, pendingReviewClaims, reviewLinks = {}) {
             const values = Array.isArray(items) ? items.filter((item) => item && typeof item === 'object') : [];
             if (!values.length) {
                 return '';
@@ -3561,6 +4057,13 @@
                         pendingReviewClaims,
                     );
                 }
+                checklistReviewUrl = appendClaimElementFocusToReviewUrl(
+                    checklistReviewUrl,
+                    resolvePreferredClaimElementFocus(reviewLinks, {
+                        claimType: checklistClaimType,
+                        sectionKey: checklistSectionKey,
+                    }),
+                );
                 return `
                 <article class="checklist-card">
                     <div class="checklist-card-header">
@@ -3998,6 +4501,14 @@
                 claimSupportPacketSummary.proof_readiness_score != null
                     ? `Packet proof readiness: ${Number(claimSupportPacketSummary.proof_readiness_score || 0).toFixed(2)}`
                     : '',
+                (() => {
+                    const laneLine = formatSummaryCountLine(normalizeSummaryCountMap(claimSupportPacketSummary.support_lane_label_counts));
+                    return laneLine ? `Packet support lanes: ${laneLine}` : '';
+                })(),
+                (() => {
+                    const qualityLine = formatSummaryCountLine(normalizeSummaryCountMap(claimSupportPacketSummary.support_quality_counts));
+                    return qualityLine ? `Packet support quality: ${qualityLine}` : '';
+                })(),
                 claimSupportPacketSummary.claim_support_unresolved_without_review_path_count != null
                     ? `Packet unresolved without path: ${Number(claimSupportPacketSummary.claim_support_unresolved_without_review_path_count || 0)}`
                     : '',
@@ -4025,6 +4536,18 @@
                     : '',
                 claimSupportPacketSummary.temporal_warning_count != null
                     ? `Packet temporal warnings: ${Number(claimSupportPacketSummary.temporal_warning_count || 0)}`
+                    : '',
+                claimSupportPacketSummary.temporal_rule_profile_available_element_count != null
+                    ? `Packet rule profiles: ${Number(claimSupportPacketSummary.temporal_rule_profile_available_element_count || 0)}`
+                    : '',
+                claimSupportPacketSummary.temporal_rule_profile_satisfied_element_count != null
+                    ? `Packet rule satisfied: ${Number(claimSupportPacketSummary.temporal_rule_profile_satisfied_element_count || 0)}`
+                    : '',
+                claimSupportPacketSummary.temporal_rule_profile_partial_element_count != null
+                    ? `Packet rule partial: ${Number(claimSupportPacketSummary.temporal_rule_profile_partial_element_count || 0)}`
+                    : '',
+                claimSupportPacketSummary.temporal_rule_profile_failed_element_count != null
+                    ? `Packet rule failed: ${Number(claimSupportPacketSummary.temporal_rule_profile_failed_element_count || 0)}`
                     : '',
                 claimSupportPacketSummary.temporal_gap_task_count != null
                     ? `Packet chronology tasks: ${Number(claimSupportPacketSummary.temporal_gap_task_count || 0)}`
@@ -4448,6 +4971,9 @@
             const readiness = payload.drafting_readiness || draft.drafting_readiness || {};
             const filingChecklist = payload.filing_checklist || draft.filing_checklist || [];
             const reviewLinks = payload.review_links || {};
+            const builderSummary = payload.document_builder_summary && typeof payload.document_builder_summary === 'object'
+                ? payload.document_builder_summary
+                : {};
             const optimizationReport = payload.document_optimization || null;
             const readinessIntakeCaseSummary = optimizationReport && optimizationReport.intake_case_summary && typeof optimizationReport.intake_case_summary === 'object'
                 ? optimizationReport.intake_case_summary
@@ -4455,6 +4981,10 @@
                     ? payload.intake_case_summary
                     : (reviewLinks.intake_case_summary && typeof reviewLinks.intake_case_summary === 'object' ? reviewLinks.intake_case_summary : {}));
             const { manualReviewClaims, pendingReviewClaims } = buildClaimQueueIntentSets(optimizationReport && optimizationReport.intake_case_summary);
+            const draftSourceContext = draft.source_context && typeof draft.source_context === 'object' ? draft.source_context : {};
+            const chronologyBlockerSummary = draftSourceContext.chronology_blocker_summary && typeof draftSourceContext.chronology_blocker_summary === 'object'
+                ? draftSourceContext.chronology_blocker_summary
+                : null;
             const payloadReviewIntent = normalizeReviewIntent(payload.review_intent);
             if (payloadReviewIntent) {
                 persistReviewIntent(payloadReviewIntent);
@@ -4483,8 +5013,8 @@
             const html = `
                 ${renderArtifacts(payload.artifacts || {})}
                 <div class="draft-shell">
-                    ${renderReadiness(readiness, draft.exhibits || [], reviewLinks, readinessIntakeCaseSummary)}
-                    ${renderFilingChecklist(filingChecklist, manualReviewClaims, pendingReviewClaims)}
+                    ${renderReadiness(readiness, draft.exhibits || [], reviewLinks, readinessIntakeCaseSummary, chronologyBlockerSummary, builderSummary)}
+                    ${renderFilingChecklist(filingChecklist, manualReviewClaims, pendingReviewClaims, reviewLinks)}
                     ${renderOptimizationReport(optimizationReport, reviewLinks)}
                     <div class="court-header">${escapeHtml(draft.court_header || '')}</div>
                     <div class="caption-block">
@@ -4526,7 +5056,7 @@
                         </article>
                     </div>
 
-                    ${renderClaims(draft.claims_for_relief || [], readiness.claims || [])}
+                    ${renderClaims(draft.claims_for_relief || [], readiness.claims || [], reviewLinks)}
 
                     <section>
                         <h2>Requested Relief</h2>
@@ -4816,6 +5346,7 @@
                 }
 
                 renderPreview(result);
+                await refreshMikeIntegrationStatus({ silent: true });
                 showBox('successBox', 'Formal complaint package generated successfully.');
                 showBox('statusBox', '');
             } catch (error) {
@@ -4844,6 +5375,55 @@
             persistReviewIntent(null);
         }
 
+        async function refreshMikeIntegrationStatus(options = {}) {
+            const silent = Boolean(options.silent);
+            const userId = getEffectiveUserId();
+            if (!userId) {
+                state.mikeIntegrationStatus = null;
+                state.mikeStatusUpdatedAt = null;
+                return null;
+            }
+            try {
+                const workspaceClient = getComplaintWorkspaceClient();
+                const mikeStatus = workspaceClient
+                    ? await workspaceClient.getMikeIntegrationStatus(userId)
+                    : await fetch(`/api/complaint-workspace/mike/status?user_id=${encodeURIComponent(userId)}`, {
+                        credentials: 'same-origin',
+                    }).then((response) => response.json());
+                state.mikeIntegrationStatus = mikeStatus && typeof mikeStatus === 'object' ? mikeStatus : null;
+                state.mikeStatusUpdatedAt = new Date().toISOString();
+                if (state.generatedPayload) {
+                    renderPreview(state.generatedPayload);
+                }
+                if (!silent) {
+                    showBox('statusBox', 'Mike integration status refreshed.');
+                }
+                return state.mikeIntegrationStatus;
+            } catch (error) {
+                if (state.generatedPayload) {
+                    renderPreview(state.generatedPayload);
+                }
+                if (!silent) {
+                    showBox('statusBox', `Unable to refresh Mike status: ${String((error && error.message) || error || 'Unknown error')}`);
+                }
+                return null;
+            }
+        }
+
+        async function handleBuilderSyncEvent(detail) {
+            const syncDetail = detail && typeof detail === 'object' ? detail : {};
+            const eventType = String(syncDetail.event_type || '').trim();
+            if (!eventType || (eventType !== 'workspace.updated' && eventType !== 'workspace.reset')) {
+                return;
+            }
+            const incomingUserId = String(syncDetail.user_id || (((syncDetail.payload || {}).session || {}).user_id) || '').trim();
+            const currentUserId = String(getEffectiveUserId() || '').trim();
+            if (currentUserId && incomingUserId && incomingUserId !== currentUserId) {
+                return;
+            }
+            await refreshMikeIntegrationStatus({ silent: true });
+        }
+
         async function bootstrap() {
             restoreReviewIntent();
             restoreDraftState();
@@ -4864,6 +5444,7 @@
                 showBox('errorBox', 'Unable to prefill the document form from the current profile. You can still build the document manually.');
             }
             syncBuilderSynopsis();
+            await refreshMikeIntegrationStatus({ silent: true });
         }
 
         document.getElementById('documentForm').addEventListener('submit', generateDocument);
@@ -4872,6 +5453,19 @@
         document.getElementById('documentForm').addEventListener('change', persistDraftState);
         document.getElementById('optimizationAdvancedConfig').addEventListener('input', validateOptimizationAdvancedConfig);
         document.getElementById('optimizationAdvancedConfig').addEventListener('change', validateOptimizationAdvancedConfig);
+        window.addEventListener(SYNC_EVENT_NAME, (event) => {
+            handleBuilderSyncEvent(event && event.detail);
+        });
+        window.addEventListener('storage', (event) => {
+            if (!event || event.key !== SYNC_EVENT_STORAGE_KEY || !event.newValue) {
+                return;
+            }
+            try {
+                handleBuilderSyncEvent(JSON.parse(event.newValue));
+            } catch (error) {
+                console.warn('Failed to parse sync event:', error);
+            }
+        });
         bootstrap();
     </script>
 </body>

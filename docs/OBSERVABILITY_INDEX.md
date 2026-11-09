@@ -20,6 +20,62 @@ Complete guide to implementing, testing, and deploying the MCP++ observability s
 
 ---
 
+## Long-Running Automation Operations
+
+The repository's background workflows expose operational JSON in addition to
+Prometheus metrics and traces. Run commands in this section from the repository
+root. The status command is the source of truth: it reports the resolved paths,
+so consult it before reading or changing a runtime file.
+
+### Runtime artifact map
+
+| Automation | Status command | PID, status, and log files | Queue or resumable-work file |
+|------------|----------------|----------------------------|------------------------------|
+| Refactor supervisor | `python scripts/refactor_agent_supervisor.py status` | `data/refactor_supervisor/refactor_supervisor.pid`, `data/refactor_supervisor/refactor_supervisor_status.json`, and `data/refactor_supervisor/refactor_supervisor.log` | `data/refactor_supervisor/refactor_taskboard.duckdb` |
+| UI optimizer | `python -m complaint_generator.ui_optimizer_daemon status --user-id <user-id> --json` | `artifacts/ui-optimizer-daemon/<user-id>/ui_optimizer_daemon.pid`, `ui_optimizer_daemon_status.json`, and `ui_optimizer_daemon.log` | No durable queue. The latest cycle manifest is named by `artifacts.cycle_manifest_path` in status. |
+| Gmail/DuckDB importer | `python scripts/gmail_duckdb_daemon.py status --user-id <user-id> --json` | `output/email_duckdb/<user-id>/gmail_duckdb_daemon.pid`, `gmail_duckdb_daemon_status.json`, and `gmail_duckdb_daemon.log` | No task queue. Resume state is named by `status_payload.artifacts.checkpoint_path` and `progress_path`. |
+| Agentic scraper | Call `ScraperDaemon.status_payload()` in the hosting process. | None. `ScraperDaemon` is currently an in-process runner; its returned payload is not persisted by this module. | None. `artifacts.iteration_report_count` and result counts summarize the run. |
+
+`<user-id>` is filesystem-normalized by the UI daemon. If a daemon was started
+with `--artifact-root`, `--duckdb-output-dir`, `--pid-file`, `--status-file`, or
+`--log-file`, its paths differ from the defaults above. Pass the same root/path
+options to `status` where supported and use the returned top-level paths or
+`artifacts.pid_file`, `artifacts.status_file`, and `artifacts.log_file`. The
+refactor supervisor always returns these canonical paths under `artifacts`.
+The log files are the output sink for background `start` commands; a foreground
+`run` writes process output to its controlling terminal instead.
+
+The UI optimizer and Gmail importer do not use the refactor task queue. Do not
+interpret Gmail's `estimated_remaining_messages`, a UI cycle's pending goals,
+or scraper result counts as `queue_counts`.
+
+### Queue and last-cycle metrics
+
+All persisted daemon status payloads provide `status`, `pid`, `updated_at`,
+`artifacts`, and `last_error`. Interpret the workflow-specific fields as follows:
+
+| Automation | Backlog/queue signal | Last-cycle and freshness signal |
+|------------|----------------------|---------------------------------|
+| Refactor supervisor | `counts.queue` and its alias `queue_counts`: `queued`, `running`, `completed`, `failed`, plus corresponding `*_work_items` counts when available. `counts.todo`/`todo_counts` describes Markdown board state. | `heartbeat_at`, `heartbeat_age_seconds`, `heartbeat_source`, `cycle`, `last_seed`, and `scan_summary.scanned_at`. `next_tasks` previews up to ten queued bundles. |
+| UI optimizer | No queue metric. | `status_payload.cycle_count`, `phase`, `phase_elapsed_seconds`, `consecutive_errors`, `last_result.cycle_number`, `last_result.summary`, and `recommendation_coverage`. Status is refreshed about every 15 seconds even while sleeping or backing off. |
+| Gmail/DuckDB importer | `status_payload.progress_summary.estimated_remaining_messages` is resumable source work, not a queue count. Also inspect `imported_count`, `searched_message_count`, and `eml_file_count`. | `status_payload.cycle_count`, `phase`, `consecutive_errors`, `last_result`, `progress_summary.progress_updated_at`, and `checkpoint_updated_at`. Status is refreshed about every 15 seconds. |
+| Agentic scraper | No queue metric. | The completed result includes `iterations`, `final_results`, `coverage_ledger`, and `final_quality`; `artifacts` contains their compact counts. `updated_at` is the most recent in-process state transition. |
+
+For the refactor supervisor, bundle counts and work-item counts answer different
+questions: one queue row may contain several task IDs. Use `queued`/`running` for
+scheduler capacity and `queued_work_items`/`running_work_items` for user-visible
+backlog size. A nonzero `running` count is not by itself a stall; correlate it
+with PID liveness, heartbeat age, lane state, and the running row's `updated_at`.
+Likewise, a stable UI or Gmail `cycle_count` is normal while `phase` is
+`sleeping` or a documented backoff phase.
+
+See [Long-Running Automation Stalls](observability/TROUBLESHOOTING.md#long-running-automation-stalls)
+for diagnosis, clean restart, stale PID handling, and stale running task
+recovery. Never delete a PID file or requeue a task until the recorded process
+and its worker have been confirmed stopped.
+
+---
+
 ## Core Concepts
 
 ### Three Pillars of Observability
@@ -355,6 +411,7 @@ def handle_call(request):
 | Missing traces | [Troubleshooting](docs/observability/TROUBLESHOOTING.md) | Tracer init, span lifecycle, export |
 | Circuit breaker not opening | [Troubleshooting](docs/observability/TROUBLESHOOTING.md) | Threshold, timeout, exception handling |
 | Metrics/traces don't correlate | [Troubleshooting](docs/observability/TROUBLESHOOTING.md) | Component names, timestamps, context |
+| Background workflow appears stalled | [Troubleshooting](observability/TROUBLESHOOTING.md#long-running-automation-stalls) | PID and heartbeat checks, logs, last-cycle fields, safe task release |
 
 ---
 

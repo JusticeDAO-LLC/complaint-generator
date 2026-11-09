@@ -39,6 +39,25 @@ window.ProfileDataPage = (function() {
         return data || {};
     }
 
+    function isSensitiveProfileKey(key) {
+        return /(^|_)(password|hashed_password|password_hash|credential|secret|token|api_key|session_key|private_key)($|_)/i.test(String(key || ""));
+    }
+
+    function sanitizeProfileData(value) {
+        if (Array.isArray(value)) {
+            return value.map(sanitizeProfileData);
+        }
+        if (!value || typeof value !== "object") {
+            return value;
+        }
+        return Object.keys(value).reduce(function(accumulator, key) {
+            accumulator[key] = isSensitiveProfileKey(key)
+                ? "[redacted]"
+                : sanitizeProfileData(value[key]);
+            return accumulator;
+        }, {});
+    }
+
     function normalizeChatEntry(entry) {
         if (typeof chatEntryUtils.normalizeChatEntry === "function") {
             return chatEntryUtils.normalizeChatEntry(entry);
@@ -81,7 +100,8 @@ window.ProfileDataPage = (function() {
 
     function renderProfileData(profileData, jsonSelector, historySelector) {
         const normalized = normalizeProfileData(profileData);
-        $(jsonSelector).text(JSON.stringify(normalized, null, 2));
+        const sanitized = sanitizeProfileData(normalized);
+        $(jsonSelector).text(JSON.stringify(sanitized, null, 2));
         renderChatHistory(normalized.chat_history || {}, historySelector);
     }
 
@@ -130,5 +150,6 @@ window.ProfileDataPage = (function() {
         renderChatHistory,
         normalizeChatEntry,
         normalizeProfileData,
+        sanitizeProfileData,
     };
 })();

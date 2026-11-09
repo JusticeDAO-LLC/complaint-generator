@@ -53,6 +53,39 @@ def test_execute_command_dispatches_run_to_mediator():
     cli = _load_cli_module()
     mediator = Mock()
     mediator.state = SimpleNamespace(username=None)
+    mediator.enqueue_agentic_scraper_job = Mock(return_value={'queued': True, 'job_id': 14})
+
+    args = SimpleNamespace(
+        command='run',
+        keywords=['employment discrimination'],
+        domains=['eeoc.gov'],
+        iterations=3,
+        sleep_seconds=0.0,
+        quality_domain='caselaw',
+        user_id='testuser',
+        claim_type='employment discrimination',
+        min_relevance=0.6,
+        priority=20,
+        ready_in_seconds=0.0,
+        direct=False,
+        no_store_results=False,
+    )
+
+    result = cli.execute_command(args, mediator)
+
+    assert result == {'queued': True, 'job_id': 14}
+    mediator.enqueue_agentic_scraper_job.assert_called_once()
+    kwargs = mediator.enqueue_agentic_scraper_job.call_args.kwargs
+    assert kwargs['user_id'] == 'testuser'
+    assert kwargs['store_results'] is True
+    assert kwargs['priority'] == 20
+    assert kwargs['metadata']['queued_by'] == 'agentic_scraper_cli.run'
+
+
+def test_execute_command_run_direct_dispatches_bounded_run_to_mediator():
+    cli = _load_cli_module()
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username=None)
     mediator.run_agentic_scraper_cycle = Mock(return_value={'iterations': [], 'final_results': []})
 
     args = SimpleNamespace(
@@ -65,6 +98,9 @@ def test_execute_command_dispatches_run_to_mediator():
         user_id='testuser',
         claim_type='employment discrimination',
         min_relevance=0.6,
+        priority=20,
+        ready_in_seconds=0.0,
+        direct=True,
         no_store_results=False,
     )
 
@@ -129,6 +165,23 @@ def test_execute_command_worker_exits_cleanly_when_queue_is_empty():
     assert result['idle'] is True
     assert result['processed_jobs'] == []
     mediator.run_next_agentic_scraper_job.assert_called_once_with(worker_id='worker-1', user_id=None)
+
+
+def test_execute_command_queue_state_inspects_without_claiming_jobs():
+    cli = _load_cli_module()
+    mediator = Mock()
+    mediator.state = SimpleNamespace(username=None)
+    mediator.get_scraper_queue_state = Mock(return_value={
+        'job_count': 1,
+        'ready_queued_count': 1,
+        'jobs': [{'id': 22, 'status': 'queued'}],
+    })
+
+    args = SimpleNamespace(command='queue-state', user_id='testuser', status='all', limit=5)
+    result = cli.execute_command(args, mediator)
+
+    assert result['job_count'] == 1
+    mediator.get_scraper_queue_state.assert_called_once_with(user_id='testuser', status=None, limit=5)
 
 
 def test_format_history_rows_renders_summary_lines():

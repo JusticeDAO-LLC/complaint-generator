@@ -1,0 +1,29 @@
+def rejected_browser_case(page):
+    page.evaluate("""() => {
+            const original = window.fetch.bind(window);
+            let armed = true;
+            window.__ux06OldRead = {aborted: false, bodyError: null};
+            window.fetch = async function (input, options) {
+                const path = new URL(typeof input === 'string' ? input : input.url, location.origin).pathname;
+                if (armed && path.endsWith('/transient') && options.method === 'POST') {
+                    armed = false;
+                    window.__ux06OldRead.signal = options.signal;
+                    options.signal.addEventListener('abort', () => {window.__ux06OldRead.aborted = true;}, {once:true});
+                    const response = await original(input, options);
+                    const json = response.json.bind(response);
+                    response.json = async function () {
+                        if (options.signal && options.signal.aborted) {
+                            const error = new DOMException("The operation was aborted.", "AbortError");
+                            window.__ux06OldRead.bodyError = error.name;
+                            throw error;
+                        }
+                        try {return await json();}
+                        catch (error) {window.__ux06OldRead.bodyError = error.name; throw error;}
+                    };
+                    await new Promise(resolve => {window.__ux06Release = resolve;});
+                    return response;
+                }
+                return original(input, options);
+            };
+            document.getElementById('save-draft').click();
+        }""")

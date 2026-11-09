@@ -1,0 +1,1226 @@
+{
+  "abstraction_ids": [],
+  "actors": [
+    {
+      "actor_id": "actor.operator",
+      "authority_ids": [],
+      "capabilities": [
+        "public_connector_registration"
+      ],
+      "contract_version": 1,
+      "kind": "human",
+      "metadata": {
+        "boundary": "Publishes the connector URL. That registration is not a task on this plan.",
+        "title": "Operator"
+      },
+      "principal_id": "operator",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-actor@1"
+    },
+    {
+      "actor_id": "actor.watchdog",
+      "authority_ids": [],
+      "capabilities": [
+        "board_repair",
+        "local_verification"
+      ],
+      "contract_version": 1,
+      "kind": "service",
+      "metadata": {
+        "title": "Complaint alignment watchdog"
+      },
+      "principal_id": "complaint-generator",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-actor@1"
+    }
+  ],
+  "contract_version": 1,
+  "effects": [],
+  "events": [],
+  "evidence_requirements": [
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_check",
+      "metadata": {
+        "title": "Multimedia, knowledge graphs, legal datasets, and logic stay behind the datasets adapters."
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence.datasets_modules",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "goal.datasets_modules"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_check",
+      "metadata": {
+        "title": "Accelerate llm, embedding, and multimodal routers own inference."
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence.inference_routers",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "goal.inference_routers"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_check",
+      "metadata": {
+        "title": "ipfs_kit_py owns storage only when the kit gate is enabled."
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence.kit_storage",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "goal.kit_storage"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_check",
+      "metadata": {
+        "title": "Mike registers the complaint connector through the current MCP handshake."
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence.mike_connector",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "goal.mike_connector"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "fallback_check_ids": [],
+      "freshness_seconds": null,
+      "kind": "plan_check",
+      "metadata": {
+        "title": "Supervisor jobs stay off the request path, and the watchdog can finish this board."
+      },
+      "minimum_code_assurance": "unverified",
+      "requirement_id": "evidence.supervisor_autonomy",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-evidence-requirement@1",
+      "source_scope_ids": [],
+      "subject_ids": [
+        "goal.supervisor_autonomy"
+      ]
+    }
+  ],
+  "fluents": [],
+  "formulas": [
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "subgoal.routers",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "subgoal.mike_stamp",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "subgoal.mike_handshake",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "subgoal.watchdog_repair",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "goal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "goal",
+          "value": "goal.datasets_modules",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "goal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "goal",
+          "value": "goal.kit_storage",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "goal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "goal",
+          "value": "goal.supervisor_autonomy",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "goal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "goal",
+          "value": "goal.mike_connector",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "subgoal.datasets_graphs",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "goal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "goal",
+          "value": "goal.inference_routers",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "subgoal.datasets_logic",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "subgoal.datasets_legal",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "subgoal.supervisor_jobs",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "subgoal.datasets_multimedia",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    },
+    {
+      "lower_bound": null,
+      "operands": [],
+      "operator": "atom",
+      "predicate": "subgoal_satisfied",
+      "profile_id": "supervisor-reviewed",
+      "profile_version": 2,
+      "schema": "ipfs_accelerate_py/agent-supervisor/reviewed-formula@1",
+      "terms": [
+        {
+          "kind": "constant",
+          "schema": "ipfs_accelerate_py/agent-supervisor/logic-term@1",
+          "sort": "subgoal",
+          "value": "subgoal.kit_gate",
+          "vocabulary_version": 2
+        }
+      ],
+      "upper_bound": null,
+      "vocabulary_version": 2
+    }
+  ],
+  "goals": [
+    {
+      "contract_version": 1,
+      "evidence_requirement_ids": [
+        "evidence.datasets_modules"
+      ],
+      "goal_id": "goal.datasets_modules",
+      "metadata": {
+        "domain": "ipfs_datasets",
+        "title": "Multimedia, knowledge graphs, legal datasets, and logic stay behind the datasets adapters."
+      },
+      "owner_actor_id": "actor.watchdog",
+      "satisfaction_formula_id": "baguqeeraccdyecxtq6r3zhw45jzksaalnadlzx24dm66jfwek4q6bzu2syfq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-goal@1",
+      "source_ids": [
+        "complaint-generator"
+      ],
+      "terminal_states": [
+        "satisfied"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "evidence_requirement_ids": [
+        "evidence.inference_routers"
+      ],
+      "goal_id": "goal.inference_routers",
+      "metadata": {
+        "domain": "inference",
+        "title": "Accelerate llm, embedding, and multimodal routers own inference."
+      },
+      "owner_actor_id": "actor.watchdog",
+      "satisfaction_formula_id": "baguqeeraicqzkhysisbnx7vne22cpbwoxxkam5ju5melpqlda4uzmqxmltqa",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-goal@1",
+      "source_ids": [
+        "complaint-generator"
+      ],
+      "terminal_states": [
+        "satisfied"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "evidence_requirement_ids": [
+        "evidence.kit_storage"
+      ],
+      "goal_id": "goal.kit_storage",
+      "metadata": {
+        "domain": "ipfs_kit",
+        "title": "ipfs_kit_py owns storage only when the kit gate is enabled."
+      },
+      "owner_actor_id": "actor.watchdog",
+      "satisfaction_formula_id": "baguqeeracd655se7mz5baqxormmgkuxhwxm3ncrhalj7vn4q34l5eehpi34a",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-goal@1",
+      "source_ids": [
+        "complaint-generator"
+      ],
+      "terminal_states": [
+        "satisfied"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "evidence_requirement_ids": [
+        "evidence.mike_connector"
+      ],
+      "goal_id": "goal.mike_connector",
+      "metadata": {
+        "domain": "mike",
+        "title": "Mike registers the complaint connector through the current MCP handshake."
+      },
+      "owner_actor_id": "actor.watchdog",
+      "satisfaction_formula_id": "baguqeeraf6ncfdzmsccaxcyewq5tvygudsplq2zur7bnyhz5uz3w3mfkmjsa",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-goal@1",
+      "source_ids": [
+        "complaint-generator"
+      ],
+      "terminal_states": [
+        "satisfied"
+      ]
+    },
+    {
+      "contract_version": 1,
+      "evidence_requirement_ids": [
+        "evidence.supervisor_autonomy"
+      ],
+      "goal_id": "goal.supervisor_autonomy",
+      "metadata": {
+        "domain": "agent_supervisor",
+        "title": "Supervisor jobs stay off the request path, and the watchdog can finish this board."
+      },
+      "owner_actor_id": "actor.watchdog",
+      "satisfaction_formula_id": "baguqeeradvdyp3ewvpckreee4zebvh3xwgkezhfvdntbw6rdaqlxpbbznm3q",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-goal@1",
+      "source_ids": [
+        "complaint-generator"
+      ],
+      "terminal_states": [
+        "satisfied"
+      ]
+    }
+  ],
+  "metadata": {
+    "autonomy": "The complaint watchdog completes these tasks with local file checks. It does not start a control-plane plan.",
+    "title": "Complaint-generator alignment with Mike, datasets, kit, and accelerate"
+  },
+  "norms": [],
+  "plan_id": "baguqeeraal5dqwy6oovwusjyem3ut6kl72inutanmavzaa76ceyq22etxl3a",
+  "preconditions": [],
+  "repository_tree_id": "complaint-alignment",
+  "schema": "ipfs_accelerate_py/agent-supervisor/formal-work-plan@1",
+  "source_ids": [
+    "complaint-generator",
+    "docs/task_boards/complaint_alignment_formal_work_plan.json"
+  ],
+  "subgoals": [
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "evidence.datasets_modules"
+      ],
+      "goal_id": "goal.datasets_modules",
+      "metadata": {
+        "title": "Graph snapshots use the knowledge-graph client."
+      },
+      "parent_id": "goal.datasets_modules",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerahz6agzg7bdxen6pu3kywjvzrkf6nmgonan2eklzwp3obv5fwuasq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "subgoal.datasets_graphs"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "evidence.datasets_modules"
+      ],
+      "goal_id": "goal.datasets_modules",
+      "metadata": {
+        "title": "Legal dataset symbols load through the adapter."
+      },
+      "parent_id": "goal.datasets_modules",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraqmafoiv4l4o7on2z2yhaijoff7ix4445rnezhxmwi4kdpf2y77cq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "subgoal.datasets_legal"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "evidence.datasets_modules"
+      ],
+      "goal_id": "goal.datasets_modules",
+      "metadata": {
+        "title": "Logic checks use the logic adapter and leave theorem export local."
+      },
+      "parent_id": "goal.datasets_modules",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeralu3j6torq3iahngegfxsbrsfxbjybvvbsjdjxp7o4igc4vhcfwjq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "subgoal.datasets_logic"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "evidence.datasets_modules"
+      ],
+      "goal_id": "goal.datasets_modules",
+      "metadata": {
+        "title": "Attachment text goes through the multimedia adapter."
+      },
+      "parent_id": "goal.datasets_modules",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraxntoe5565xoj7zhpluqkjzyphitmouhugvamk3lhjiatkemhbkwa",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "subgoal.datasets_multimedia"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "evidence.kit_storage"
+      ],
+      "goal_id": "goal.kit_storage",
+      "metadata": {
+        "title": "The default storage path stays on the datasets router and the local cache."
+      },
+      "parent_id": "goal.kit_storage",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerayltwlmtclh65irsqgixyvdvruo6pwk4ayyebmoe6ftvpezcuds5q",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "subgoal.kit_gate"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "evidence.mike_connector"
+      ],
+      "goal_id": "goal.mike_connector",
+      "metadata": {
+        "title": "The Streamable HTTP handshake echoes a supported protocol version and lists the four connector tools."
+      },
+      "parent_id": "goal.mike_connector",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeera5wqexlxhch3ssxxze6ug42t5gvi22amqnyujefjxr4y7ht2q4zta",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "subgoal.mike_handshake"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "subgoal.mike_handshake"
+      ],
+      "evidence_requirement_ids": [
+        "evidence.mike_connector"
+      ],
+      "goal_id": "goal.mike_connector",
+      "metadata": {
+        "title": "The Mike monkey patch remains a compatibility stamp for the connector."
+      },
+      "parent_id": "goal.mike_connector",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeera4p7psu6t5wlonbzdzb43k3cpjvfdgg77xbh556iglzs65pah3xpq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "subgoal.mike_stamp"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "evidence.inference_routers"
+      ],
+      "goal_id": "goal.inference_routers",
+      "metadata": {
+        "title": "The complaint facade loads the three accelerate routers."
+      },
+      "parent_id": "goal.inference_routers",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeera2z7fqexizk2n6xwx3a6xmeuv65iscf7a7dnopw2pt6gababb36zq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "subgoal.routers"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [],
+      "evidence_requirement_ids": [
+        "evidence.supervisor_autonomy"
+      ],
+      "goal_id": "goal.supervisor_autonomy",
+      "metadata": {
+        "title": "Evidence, draft repair, and graph refresh run as local jobs."
+      },
+      "parent_id": "goal.supervisor_autonomy",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeeraumoaj7ftg2xtnvhasreytebufgapd5lahi4cmfag5jsqjhtrhoma",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "subgoal.supervisor_jobs"
+    },
+    {
+      "contract_version": 1,
+      "depends_on": [
+        "subgoal.supervisor_jobs"
+      ],
+      "evidence_requirement_ids": [
+        "evidence.supervisor_autonomy"
+      ],
+      "goal_id": "goal.supervisor_autonomy",
+      "metadata": {
+        "title": "The watchdog repairs a stalled or blocked board and advances ready tasks."
+      },
+      "parent_id": "goal.supervisor_autonomy",
+      "refinement_mode": "sufficient",
+      "satisfaction_formula_id": "baguqeerabimucmwnzcooyy6lnhdlpbvpntwajqymoxgrac3dkvztzukdt7qa",
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-subgoal@1",
+      "subgoal_id": "subgoal.watchdog_repair"
+    }
+  ],
+  "tasks": [
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "task.llm_router_facade"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.inference_routers"
+      ],
+      "goal_id": "goal.inference_routers",
+      "metadata": {
+        "domain": "inference",
+        "title": "Load embedding calls from the accelerate embeddings router."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.routers",
+      "task_id": "task.embedding_router_facade",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.datasets_modules"
+      ],
+      "goal_id": "goal.datasets_modules",
+      "metadata": {
+        "domain": "ipfs_datasets",
+        "title": "Persist graph snapshots through knowledge_graphs.Client."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.datasets_graphs",
+      "task_id": "task.graph_client_persist",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.kit_storage"
+      ],
+      "goal_id": "goal.kit_storage",
+      "metadata": {
+        "domain": "ipfs_kit",
+        "title": "Enable IPFSSimpleAPI only when COMPLAINT_GENERATOR_ENABLE_IPFS_KIT is set."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.kit_gate",
+      "task_id": "task.kit_gate_default_off",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.datasets_modules"
+      ],
+      "goal_id": "goal.datasets_modules",
+      "metadata": {
+        "domain": "ipfs_datasets",
+        "title": "Load legal symbols lazily through load_legal_symbol."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.datasets_legal",
+      "task_id": "task.legal_symbol_loader",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.inference_routers"
+      ],
+      "goal_id": "goal.inference_routers",
+      "metadata": {
+        "domain": "inference",
+        "title": "Load generate_text from the accelerate llm router."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.routers",
+      "task_id": "task.llm_router_facade",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.datasets_modules"
+      ],
+      "goal_id": "goal.datasets_modules",
+      "metadata": {
+        "domain": "ipfs_datasets",
+        "title": "Select logic.fol, logic.deontic, and the local theorem exporter."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.datasets_logic",
+      "task_id": "task.logic_adapter_paths",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "task.mike_http_route_gate"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.mike_connector"
+      ],
+      "goal_id": "goal.mike_connector",
+      "metadata": {
+        "domain": "mike",
+        "title": "Keep mike-llm-router-patch-v1 as a compatibility-only connector stamp."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.mike_stamp",
+      "task_id": "task.mike_compatibility_stamp",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "task.mike_protocol_versions"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.mike_connector"
+      ],
+      "goal_id": "goal.mike_connector",
+      "metadata": {
+        "domain": "mike",
+        "title": "Publish the four complaint connector tool names."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.mike_handshake",
+      "task_id": "task.mike_connector_tools",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "task.mike_connector_tools"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.mike_connector"
+      ],
+      "goal_id": "goal.mike_connector",
+      "metadata": {
+        "domain": "mike",
+        "title": "Serve one stateless JSON-RPC POST with an optional bearer gate, off the supervisor job path."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.mike_handshake",
+      "task_id": "task.mike_http_route_gate",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.mike_connector"
+      ],
+      "goal_id": "goal.mike_connector",
+      "metadata": {
+        "domain": "mike",
+        "title": "Negotiate MCP protocol versions 2024-11-05, 2025-03-26, and 2025-06-18."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.mike_handshake",
+      "task_id": "task.mike_protocol_versions",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "task.mike_compatibility_stamp"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.mike_connector"
+      ],
+      "goal_id": "goal.mike_connector",
+      "metadata": {
+        "domain": "mike",
+        "title": "Tell the operator that Mike needs a public https connector URL and the same bearer."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.mike_stamp",
+      "task_id": "task.mike_registration_text",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.datasets_modules"
+      ],
+      "goal_id": "goal.datasets_modules",
+      "metadata": {
+        "domain": "ipfs_datasets",
+        "title": "Route attachment text through processors.multimedia.attachment_text_extractor."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.datasets_multimedia",
+      "task_id": "task.multimedia_attachment_adapter",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "task.embedding_router_facade"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.inference_routers"
+      ],
+      "goal_id": "goal.inference_routers",
+      "metadata": {
+        "domain": "inference",
+        "title": "Load multimodal calls from the accelerate multimodal router."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.routers",
+      "task_id": "task.multimodal_router_facade",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "task.legal_symbol_loader"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.datasets_modules"
+      ],
+      "goal_id": "goal.datasets_modules",
+      "metadata": {
+        "domain": "ipfs_datasets",
+        "title": "Keep operator scripts off direct processors.legal_data imports."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.datasets_legal",
+      "task_id": "task.operator_scripts_use_adapter",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "task.kit_gate_default_off"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.kit_storage"
+      ],
+      "goal_id": "goal.kit_storage",
+      "metadata": {
+        "domain": "ipfs_kit",
+        "title": "Store bytes through an injected backend, then kit, then the datasets router, then the local cache."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.kit_gate",
+      "task_id": "task.storage_fallback_order",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "task.supervisor_jobs_off_request_path"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.supervisor_autonomy"
+      ],
+      "goal_id": "goal.supervisor_autonomy",
+      "metadata": {
+        "domain": "agent_supervisor",
+        "title": "Expose the three jobs through the off-request-path CLI."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.supervisor_jobs",
+      "task_id": "task.supervisor_cli_has_three_operations",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.supervisor_autonomy"
+      ],
+      "goal_id": "goal.supervisor_autonomy",
+      "metadata": {
+        "domain": "agent_supervisor",
+        "title": "Keep the three supervisor jobs out of the HTTP route."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.supervisor_jobs",
+      "task_id": "task.supervisor_jobs_off_request_path",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "task.watchdog_repairs_board"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.supervisor_autonomy"
+      ],
+      "goal_id": "goal.supervisor_autonomy",
+      "metadata": {
+        "domain": "agent_supervisor",
+        "title": "Run the watchdog loop without constructing a control-plane request."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.watchdog_repair",
+      "task_id": "task.watchdog_cli_off_control_plane",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    {
+      "actor_ids": [
+        "actor.watchdog"
+      ],
+      "contract_version": 1,
+      "depends_on": [
+        "task.supervisor_cli_has_three_operations"
+      ],
+      "effect_ids": [],
+      "event_ids": [],
+      "evidence_requirement_ids": [
+        "evidence.supervisor_autonomy"
+      ],
+      "goal_id": "goal.supervisor_autonomy",
+      "metadata": {
+        "domain": "agent_supervisor",
+        "title": "Repair stalled claims, dead owners, and dependency blocks on the execution board."
+      },
+      "precondition_ids": [],
+      "schema": "ipfs_accelerate_py/agent-supervisor/formal-plan-task@1",
+      "subgoal_id": "subgoal.watchdog_repair",
+      "task_id": "task.watchdog_repairs_board",
+      "terminal_states": [
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    }
+  ],
+  "temporal_constraints": [],
+  "trace_bound": 1,
+  "vocabulary_profile_id": "supervisor-reviewed",
+  "vocabulary_version": 2
+}

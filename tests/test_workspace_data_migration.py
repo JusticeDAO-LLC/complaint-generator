@@ -412,3 +412,50 @@ def test_search_workspace_dataset_supports_schema_filters(tmp_path):
         },
     )
     assert mcp_search["search_results"]["result_count"] >= 1
+
+
+def test_view_workspace_dataset_supports_filtered_previews(tmp_path):
+    service = ComplaintWorkspaceService(root_dir=tmp_path / "workspace-view-sessions")
+    user_id = "workspace-view-user"
+    service.submit_intake_answers(
+        user_id,
+        {
+            "party_name": "Morgan Example",
+            "opposing_party": "Housing Authority of Clackamas County",
+            "protected_activity": "Requested a reasonable accommodation.",
+            "adverse_action": "Received an eviction notice.",
+            "timeline": "Request in January 2026; notice in February 2026.",
+            "harm": "Housing instability and lost time.",
+            "court_header": "FOR THE DISTRICT OF OREGON",
+        },
+    )
+    evidence_db = _build_evidence_db(tmp_path / "workspace-view-evidence.duckdb", user_id=user_id)
+    migrated = service.migrate_legacy_workspace_data(
+        user_id,
+        output_dir=tmp_path / "workspace-view-output",
+        evidence_db_path=evidence_db,
+        include_car=False,
+    )
+
+    view_payload = service.view_workspace_dataset(
+        migrated["manifest_json_path"],
+        claim_type="housing_discrimination",
+        claim_element_id="causation",
+        document_limit=5,
+    )
+    assert view_payload["source"] == "complaint_workspace_dataset_view"
+    assert view_payload["applied_filters"]["claim_type"] == "housing_discrimination"
+    assert len(view_payload["documents"]) >= 1
+
+    mcp_view = _call_mcp_tool(
+        service,
+        204,
+        "complaint.view_workspace_dataset",
+        {
+            "input_path": migrated["manifest_json_path"],
+            "claim_type": "housing_discrimination",
+            "claim_element_id": "causation",
+            "document_limit": 5,
+        },
+    )
+    assert len(mcp_view["documents"]) >= 1

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import backends
+import pytest
 from typer.testing import CliRunner
 
 try:
@@ -74,6 +75,16 @@ from applications import complaint_cli as applications_cli_module
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(autouse=True)
+def _fake_implicit_export_review(monkeypatch):
+    """Package flows exercise export plumbing without invoking a provider."""
+
+    monkeypatch.setattr(
+        "applications.ui_review.review_complaint_output_with_llm_router",
+        lambda *_args, **_kwargs: {"review": {}, "backend": {}},
+    )
 
 
 def _script_path(script_name: str) -> Path:
@@ -278,7 +289,7 @@ def test_package_workspace_wrappers_execute_full_complaint_flow(tmp_path):
     assert any(item["id"] == "workspace_schema_refresh" for item in tooling_contract_payload["schema_guided_recommendations"])
     assert filing_provenance_payload["draft_strategy"] == "template"
     assert "draft_backend" in filing_provenance_payload
-    assert provider_diagnostics_payload["default_order"][:4] == ["codex_cli", "openai", "copilot_cli", "hf_inference_api"]
+    assert provider_diagnostics_payload["default_order"][:4] == ["codex_cli", "copilot_cli", "openai", "hf_inference_api"]
     assert provider_diagnostics_payload["complaint_draft_default_order"] == ["codex_cli", "copilot_cli", "hf_inference_api"]
     assert provider_diagnostics_payload["effective_complaint_draft_provider"] == "codex_cli"
     assert provider_diagnostics_payload["ui_review_default_provider"] == "codex_cli"

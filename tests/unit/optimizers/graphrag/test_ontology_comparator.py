@@ -1,6 +1,7 @@
 """Comprehensive tests for OntologyComparator comparison and ranking methods."""
 
 import pytest
+pytest.importorskip("hypothesis")
 from dataclasses import dataclass
 from typing import Dict, Any, List
 from hypothesis import given, settings, HealthCheck

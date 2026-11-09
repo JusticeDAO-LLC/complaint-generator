@@ -422,7 +422,10 @@ def normalize_external_url(raw: str, base_url: str) -> str | None:
         absolute, _fragment = urldefrag(absolute)
         absolute = maybe_unwrap_google(absolute)
         parsed = urlparse(absolute)
-    except Exception:
+    except ValueError:
+        # urllib.parse raises ValueError for malformed inputs such as an
+        # unmatched IPv6 bracket. Treat those links as unusable, but allow
+        # unexpected implementation failures to remain visible to callers.
         return None
     return absolute if parsed.scheme in {"http", "https"} else None
 
@@ -435,7 +438,10 @@ def is_quantum_domain(domain: str) -> bool:
 def score_candidate_url(url: str) -> tuple[int, str] | None:
     try:
         parsed = urlparse(url)
-    except Exception:
+    except ValueError:
+        # Candidate URLs originate in untrusted HTML and may contain malformed
+        # bracketed hosts or invalid Unicode in the authority component. Those
+        # links are unusable; unexpected scorer failures should remain visible.
         return None
     path = (parsed.path or "").lower()
     qs = parse_qs(parsed.query or "")

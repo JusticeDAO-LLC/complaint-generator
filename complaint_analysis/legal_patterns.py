@@ -15,7 +15,7 @@ New complaint types can be added by registering additional patterns.
 """
 
 import re
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union
 from datetime import datetime
 from .base import BaseLegalPatternExtractor
 
@@ -29,6 +29,78 @@ MIN_KEYWORDS_FOR_THRESHOLD = 10
 
 # Registry for legal term patterns by category
 LEGAL_TERMS_REGISTRY: Dict[str, List[str]] = {}
+
+# Temporal rule profile patterns are kept separate from LEGAL_TERMS_REGISTRY so
+# legacy "all legal terms" extraction does not change its provision counts.
+TEMPORAL_LEGAL_PATTERNS: Dict[str, Dict[str, List[str]]] = {
+    'retaliation': {
+        'protected_activity': [
+            r"\b(protected activity)\b",
+            r"\b(reported discrimination|complained to HR|filed a complaint)\b",
+            r"\b(whistleblow(?:ing|er)?|opposed unlawful conduct)\b",
+        ],
+        'adverse_action': [
+            r"\b(adverse action|adverse employment action)\b",
+            r"\b(terminated|fired|demoted|suspended|reduced hours)\b",
+            r"\b(denied promotion|disciplinary action)\b",
+        ],
+        'causal_connection': [
+            r"\b(causal connection|causal link|causation)\b",
+            r"\b(temporal proximity|soon after|shortly after)\b",
+            r"\b(because of|in response to|retaliated after)\b",
+        ],
+        'limitations_or_exhaustion': [
+            r"\b(EEOC charge|administrative charge|exhaustion)\b",
+            r"\b(180 days|300 days|filing deadline|limitations period)\b",
+        ],
+    },
+}
+
+TEMPORAL_LEGAL_PATTERN_ALIASES: Dict[str, str] = {
+    'employment_retaliation': 'retaliation',
+    'employment_discrimination_retaliation': 'retaliation',
+}
+
+
+def get_temporal_legal_patterns(
+    claim_type: Optional[str] = None,
+    event_role: Optional[str] = None,
+) -> Union[Dict[str, Dict[str, List[str]]], List[str]]:
+    """
+    Return legal-pattern hints tied to explicit temporal rule profiles.
+
+    This is a data-layer companion to ``temporal_rule_profiles``.  It does not
+    register patterns into the legacy extractor by default, so chronology proof
+    discovery can evolve without changing broad complaint categorization.
+    """
+    if claim_type is None:
+        return {
+            profile_claim_type: {
+                role: list(patterns)
+                for role, patterns in role_patterns.items()
+            }
+            for profile_claim_type, role_patterns in TEMPORAL_LEGAL_PATTERNS.items()
+        }
+
+    normalized_claim_type = TEMPORAL_LEGAL_PATTERN_ALIASES.get(
+        _normalize_pattern_key(claim_type),
+        _normalize_pattern_key(claim_type),
+    )
+    role_patterns = TEMPORAL_LEGAL_PATTERNS.get(normalized_claim_type, {})
+    if event_role is None:
+        return {
+            normalized_claim_type: {
+                role: list(patterns)
+                for role, patterns in role_patterns.items()
+            }
+        } if role_patterns else {}
+
+    normalized_role = _normalize_pattern_key(event_role)
+    return list(role_patterns.get(normalized_role, []))
+
+
+def _normalize_pattern_key(value: Any) -> str:
+    return "_".join(str(value or "").strip().lower().replace("-", " ").split())
 
 
 def register_legal_terms(category: str, patterns: List[str]) -> None:

@@ -17,7 +17,7 @@ def _safe_float(value: Any) -> float | None:
 		if isinstance(value, bool):
 			return float(value)
 		return float(value)
-	except Exception:
+	except (TypeError, ValueError, OverflowError):
 		return None
 
 
@@ -109,7 +109,7 @@ def _parse_weights(s: str | None) -> Dict[str, float]:
 		v = v.strip()
 		try:
 			out[k] = float(v)
-		except Exception:
+		except ValueError:
 			continue
 	return out
 

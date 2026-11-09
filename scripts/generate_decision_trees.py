@@ -3,10 +3,6 @@
 Generate decision tree JSON files for all complaint types.
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.abspath('.'))
-
 from complaint_analysis.decision_trees import DecisionTreeGenerator
 
 def main():

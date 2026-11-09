@@ -4,7 +4,9 @@ import argparse
 import getpass
 import sys
 
-from ipfs_datasets_py.processors.legal_data import email_auth as _email_auth
+from integrations.ipfs_datasets.legal_data import legal_module
+
+_email_auth = legal_module("email_auth")
 
 
 KEYRING_SERVICE = _email_auth.KEYRING_SERVICE

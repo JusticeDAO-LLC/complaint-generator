@@ -955,3 +955,23 @@ def test_review_complaint_export_artifacts_falls_back_to_artifact_metadata_when_
     assert report["aggregate"]["missing_formal_sections"] == ["claim_count", "signature_block"]
     assert report["aggregate"]["critic_gates"][0]["verdict"] == "warning"
     assert report["aggregate"]["ui_priority_repairs"][0]["target_surface"] == "draft"
+
+
+def test_ui_review_timeout_honors_environment_override(monkeypatch):
+    monkeypatch.setenv("COMPLAINT_GENERATOR_UI_REVIEW_TIMEOUT_SECONDS", "3")
+    monkeypatch.setenv("COMPLAINT_GENERATOR_UI_REVIEW_TIMEOUT_SECONDS_CODEX_CLI", "4")
+
+    assert ui_review_module._ui_review_timeout_for_provider("codex_cli") == 4
+    assert ui_review_module._ui_review_timeout_for_provider("hf_inference_api") == 3
+
+
+def test_ui_review_timeout_emits_heartbeat(monkeypatch, capsys):
+    monkeypatch.setenv("COMPLAINT_GENERATOR_UI_REVIEW_HEARTBEAT_SECONDS", "0.01")
+
+    def slow_call():
+        time.sleep(0.04)
+        return "ok"
+
+    assert ui_review_module._call_with_timeout(slow_call, timeout_s=0.2, label="test_page") == "ok"
+    captured = capsys.readouterr()
+    assert "[ui_review] stage=test_page" in captured.out

@@ -1,829 +1,106 @@
 # Complaint Generator
-### by JusticeDAO
 
-[![Focused Claim Support Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/claim-support-regression.yml)
-[![Standard Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/standard-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/standard-regression.yml)
-[![HACC Unit Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-unit-regression.yml/badge.svg)](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-unit-regression.yml)
+Remote: [endomorphosis/complaint-generator](https://github.com/endomorphosis/complaint-generator)
 
-Regression workflows: [Manual HACC Grounding Regression](https://github.com/JusticeDAO-LLC/complaint-generator/actions/workflows/hacc-grounding-regression.yml)
+This repository prepares legal complaints through question-driven intake, evidence gathering, and formal complaint generation. `complaint_phases` implements that preparation as three phases named in its package initializer: initial intake and denoising (knowledge and dependency graphs, and questions), evidence gathering, and neurosymbolic representation that matches against law graphs and generates a formal complaint. The primary intake command is `python -m complaint_generator.cli chat --user-id USER_ID`.
 
-An AI-powered legal automation system that assists in preparing legal complaints through intelligent question-driven intake, evidence gathering, and formal complaint generation.
+Workflow status for this repository is not the JusticeDAO-LLC Actions badges. Those badge URLs are not this checkout's status.
 
----
+The module inventory is [`docs/architecture/repository_module_map.json`](docs/architecture/repository_module_map.json). Package notes live next to each package. This file does not link to root session or batch reports.
 
-## 🎯 What It Does
+## Current packages
 
-The Complaint Generator helps users create comprehensive legal complaints by:
+A current package is a top-level directory that contains `__init__.py`, as recorded by the module map:
 
-1. **Understanding Your Situation** - Intelligent question-driven dialogue to gather facts
-2. **Analyzing Legal Issues** - Automated classification of claim types and applicable laws
-3. **Organizing Evidence** - Systematic evidence management with gap analysis
-4. **Researching Authorities** - Multi-source legal research (statutes, regulations, case law)
-5. **Generating Complaints** - Formal complaint documents meeting legal requirements
+| Package | Role in this checkout |
+| --- | --- |
+| `adversarial_harness` | Adversarial complainant, critic, and optimizer harness |
+| `applications` | HTTP, case-route, and process-launch surface |
+| `backends` | Model backend adapters |
+| `complaint_analysis` | Complaint-type analysis, keywords, and decision trees |
+| `complaint_generator` | Versioned facade for workspace services, the package CLI, and the MCP tool surface |
+| `complaint_phases` | Phase pipeline, intake case file, and separate legal-document and deontic modules |
+| `integrations` | Facades for accelerate, datasets, and mike |
+| `lib` | Shared logging, formal logic, and document helpers |
+| `mediator` | Orchestration between the application surface and complaint workflows |
+| `scripts` | Operator and validation scripts |
+| `static` | Static assets package |
+| `templates` | HTML templates package |
+| `tests` | Pytest package |
 
----
+## Where the consolidated code lives
 
-## ✨ Key Features
+Session reports live in [`docs/archive/sessions`](docs/archive/sessions/INDEX.md). Plans and profiles live in [`docs/archive/reports`](docs/archive/reports/INDEX.md). The document pipeline, document optimization, intake status, and workflow guidance bodies live in `complaint_phases` with root shims. Claim-support review lives in `mediator/claim_support_review.py`. The sibling map is [`docs/architecture/consolidation_modules.md`](docs/architecture/consolidation_modules.md).
 
-### 🔄 Three-Phase Intelligent Processing
+## Layout
 
-A sophisticated workflow inspired by denoising diffusion:
+### Intake
 
-- **Phase 1: Intake & Denoising** - Build knowledge and dependency graphs through iterative questioning
-- **Phase 2: Evidence Gathering** - Identify and fill evidence gaps with intelligent web discovery
-- **Phase 3: Formalization** - Generate formal complaints using neurosymbolic legal matching
+Intake commands enter through `complaint_generator`. Public entry for new code is `complaint_generator.interface`. The workspace Typer application is re-exported by `complaint_generator.cli` from `applications.complaint_cli`. Session controls and privacy mode are arguments of that CLI (`chat`, `--privacy-mode`), not a separate product surface.
 
-Includes convergence detection, graph persistence, and comprehensive tests.
+Phase intake records live in `complaint_phases.intake_case_file` and `complaint_phases.intake_claim_registry`. Those modules are named by `complaint_phases`. New code that needs the phase pipeline imports `complaint_phases.interface`.
 
-[Learn more →](docs/THREE_PHASE_SYSTEM.md) | [Example →](examples/three_phase_example.py)
+### Mediator
 
-### 📋 14 Legal Complaint Types
+`mediator` coordinates complaint processing workflows. Public entry for new code is `mediator.interface`. Owner modules recorded by that interface are `mediator.workflow_service`, `mediator.hook_runtime`, and `mediator.state`. Package notes are in [`mediator/readme.md`](mediator/readme.md).
 
-Comprehensive support for:
-- Civil Rights (Discrimination, Housing, Employment)
-- Consumer Protection, Healthcare Law
-- Immigration, Family Law
-- Criminal Defense, Tax Law
-- Intellectual Property, Environmental Law
-- Probate & Estate
-- **DEI Policy Analysis** (Special focus)
+### Phases
 
-Each type includes 390+ domain keywords, 90+ legal patterns, and automated decision trees.
+`complaint_phases` holds the phase pipeline. Public entry for new code is `complaint_phases.interface`. Owner modules recorded by that interface are `complaint_phases.phase_manager`, `complaint_phases.knowledge_graph`, and `complaint_phases.intake_case_file`. `complaint_phases.legal_document`, `complaint_phases.legal_document_facade`, and `complaint_phases.deontic_logic` are separate from that pipeline. Package notes are in [`complaint_phases/README.md`](complaint_phases/README.md).
 
-[Complaint Analysis →](docs/COMPLAINT_ANALYSIS_INTEGRATION.md) | [DEI Analysis →](docs/HACC_INTEGRATION.md) | [Probate Integration →](docs/PROBATE_INTEGRATION.md)
+### Applications
 
-### 🤖 Multi-Provider LLM Support
+`applications` is the HTTP, case-route, and process-launch surface. Public entry for new code is `applications.interface`. Owner modules recorded by that interface are `applications.server`, `applications.case_routes`, and `applications.launcher`. Package notes are in [`applications/README.md`](applications/README.md).
 
-Flexible AI backend integration with automatic fallback:
+### Integrations
 
-- Codex (`gpt-5.3-codex`)
-- OpenAI
-- Anthropic Claude (via OpenRouter)
-- Google Gemini
-- GitHub Copilot
-- Hugging Face local models and Hugging Face router/inference endpoints
-- Codex CLI
+`integrations` holds the accelerate, datasets, and mike facades. Public entries are `integrations.ipfs_accelerate.interface`, `integrations.ipfs_datasets.interface`, and `integrations.mike.interface`. Package notes are in [`integrations/README.md`](integrations/README.md).
 
-[LLM Router Guide →](docs/LLM_ROUTER.md) | [Backends →](docs/BACKENDS.md)
+Other current packages:
 
-### 🔍 Comprehensive Legal Research
+- `adversarial_harness` — see [`adversarial_harness/README.md`](adversarial_harness/README.md)
+- `backends` — backend adapters under `backends/`
+- `complaint_analysis` — see [`complaint_analysis/README.md`](complaint_analysis/README.md)
+- `lib` — public entry `lib.interface` (`lib.log`, `lib.formal_logic`, `lib.knowledge_graph_export`)
+- `scripts`, `static`, `templates`, and `tests` — the script, asset, template, and test packages recorded by the module map
 
-Automated research from authoritative sources:
+## External submodule checkouts
 
-- **US Code** - Federal statutes
-- **Federal Register** - Regulations and notices
-- **RECAP Archive** - Court decisions and case law
-- **Brave Search** - Current web content
-- **Common Crawl** - Historical web archives
+Populated SDK checkouts are the `external/` paths declared in [`.gitmodules`](.gitmodules):
 
-[Legal Research →](docs/LEGAL_AUTHORITY_RESEARCH.md) | [Web Evidence Discovery →](docs/WEB_EVIDENCE_DISCOVERY.md)
+- `external/ipfs_accelerate_py`
+- `external/ipfs_datasets_py`
+- `external/ipfs_kit_py`
+- `external/mike`
 
-### 📂 Evidence Management System
+The root directories `ipfs_datasets_py` and `mike` are empty compatibility directories. They are not those external submodule checkouts, and they are not the packages under `integrations/`.
 
-Robust evidence handling with IPFS and DuckDB:
+Clone this repository from `https://github.com/endomorphosis/complaint-generator.git` (`endomorphosis/complaint-generator`). Initializing the pinned external checkouts is `git submodule update --init external/ipfs_accelerate_py external/ipfs_datasets_py external/ipfs_kit_py external/mike`. Documentation does not advance those pins.
 
-- Immutable, content-addressable storage
-- Fast SQL queries for organization
-- AI-powered gap analysis
-- Automated web discovery
+## Versioned package interfaces
 
-[Evidence Management →](docs/EVIDENCE_MANAGEMENT.md)
+Each public facade defines `INTERFACE_SCHEMA = "complaint-generator/module-interface@1"` and `INTERFACE_VERSION = "1.0.0"`. Importing an interface records owner modules and public symbol names. That import does not import the owner implementations, start a server, or read a private workspace path.
 
-### 🎯 Adversarial Testing Framework
+| Interface module | Package |
+| --- | --- |
+| `applications.interface` | `applications` |
+| `mediator.interface` | `mediator` |
+| `complaint_phases.interface` | `complaint_phases` |
+| `complaint_generator.interface` | `complaint_generator` |
+| `lib.interface` | `lib` |
+| `integrations.ipfs_accelerate.interface` | `integrations` |
+| `integrations.ipfs_datasets.interface` | `integrations` |
+| `integrations.mike.interface` | `integrations` |
 
-Quality assurance through adversarial AI:
+New code imports these versioned interfaces. It does not import giant implementation modules. Root `document_pipeline.py`, `document_optimization.py`, `intake_status.py`, and `workflow_phase_guidance.py` are shims. Their bodies live in `complaint_phases`. Draft helpers live in `applications/complaint_workspace_drafting.py`. Intake-question helpers live in `mediator/intake_question_flow.py`. Do not import `applications.complaint_workspace`, `mediator.mediator`, `document_pipeline`, `mediator.claim_support_hooks`, or `complaint_phases.denoiser` from new code.
 
-- Complainant agents simulate diverse user personas
-- Critic agents evaluate across 5 dimensions
-- SGD optimization with convergence detection
-- 18+ comprehensive tests
+## Related package documents
 
-[Adversarial Testing →](docs/ADVERSARIAL_HARNESS.md)
-
-### 📊 Claim Support Review Dashboard
-
-Operator workflow for testimony capture, document intake, and legal sufficiency review:
-
-- Coverage summaries and follow-up execution controls
-- Manual review resolution and recent history
-- Claim coverage summary, support gaps, and contradiction candidates
-- Claim reasoning review and proof-readiness scoring
-- Accessible at `/claim-support-review`
-
-[Dashboard Improvement Plan →](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md) | [Execution Backlog →](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md)
-
-### 🧠 GraphRAG Ontology Optimization
-
-Knowledge-graph-powered document analysis and reasoning:
-
-- `OntologyGenerator` for LLM-driven entity and relationship extraction
-- `QueryUnifiedOptimizer` and `WikipediaOptimizer` for corpus enrichment
-- `StreamingExtractor` for high-throughput pipelines
-- Pre-compiled regex patterns and entity position indexing for performance
-- Statistical methods: confidence bounds, percentiles, IQR, EWMA, kurtosis
-
-[GraphRAG API →](docs/API_REFERENCE_GRAPHRAG.md) | [Common Optimizer API →](docs/API_REFERENCE_COMMON.md) | [Agentic Optimizer API →](docs/API_REFERENCE_AGENTIC.md) | [Performance Tuning →](docs/PERFORMANCE_TUNING.md)
-
----
-
-## 🚀 Quick Start
-
-### Installation
-
-```bash
-# Clone and setup
-git clone https://github.com/endomorphosis/complaint-generator.git
-cd complaint-generator
-git submodule update --init --recursive
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-
-# Note: the base environment intentionally excludes the third-party `brave-search`
-# package because its published dependency line conflicts with the MCP/httpx stack
-# used by this workspace. Install it only in an isolated optional environment if
-# you specifically need that client.
-
-# (Optional) Configure API keys
-export OPENAI_API_KEY="your-key"
-export BRAVE_SEARCH_API_KEY="your-key"
-```
-
-### Package, CLI, MCP, and SDK Surfaces
-
-After installation, the complaint workspace is available through package imports, installed console scripts, a stdio MCP server, and the browser SDK used by the unified workspace page.
-
-**Python package imports:**
-
-```python
-from complaint_generator import ComplaintWorkspaceService, create_review_surface_app
-from complaint_generator.mcp import handle_jsonrpc_message
-
-service = ComplaintWorkspaceService()
-session = service.get_session("did:key:example")
-```
-
-**Installed console scripts:**
-
-```bash
-complaint-generator --help
-complaint-workspace session --user-id did:key:example
-complaint-workspace answer --user-id did:key:example --question-id protected_activity --answer-text "Reported discrimination to HR"
-complaint-workspace generate --user-id did:key:example --requested-relief "Back pay|Injunctive relief"
-
-# Backward-compatible aliases are also installed
-complaint-generator-workspace session --user-id did:key:example
-```
-
-**MCP stdio server:**
-
-```bash
-complaint-mcp-server
-
-# Backward-compatible alias
-complaint-generator-mcp
-```
-
-**Repo-local module entrypoints:**
-
-```bash
-.venv/bin/python -m complaint_generator.cli --help
-.venv/bin/python -m complaint_generator.mcp_server
-```
-
-### HACC Master Email Corpus
-
-Email workflow ownership now lives in `ipfs_datasets_py.processors.legal_data`. The `complaint_generator.email_*` modules are compatibility shims kept for CLI stability, older imports, and test monkeypatch surfaces.
-
-The HACC workspace now has a canonical merged email corpus that combines the confirmed local case emails with the recommended packet exhibit emails.
-
-Canonical artifacts:
-
-- Manifest: `/home/barberb/HACC/evidence/email_imports/starworks5-master-case-email-import/email_import_manifest.json`
-- GraphRAG summary: `/home/barberb/HACC/evidence/email_imports/starworks5-master-case-email-import/graphrag/email_graphrag_summary.json`
-- Search index: `/home/barberb/HACC/evidence/email_imports/starworks5-master-case-email-import/graphrag/duckdb/email_search.duckdb`
-
-Use the repo-local helper to rebuild or search that corpus without retyping the long paths:
-
-```bash
-PYTHONPATH='/home/barberb/HACC/complaint-generator' \
-.venv/bin/python scripts/master_case_email.py \
-  --search-query 'hcv orientation living room' \
-  --search-limit 5
-```
-
-```bash
-PYTHONPATH='/home/barberb/HACC/complaint-generator' \
-.venv/bin/python scripts/master_case_email.py \
-  --agentic-query 'mobility accommodation retaliation' \
-  --complaint-keyword voucher \
-  --seed-term 'ashley ferron' \
-  --seed-participant aferron@clackamas.us \
-  --required-participant-domain clackamas.us
-```
-
-```bash
-PYTHONPATH='/home/barberb/HACC/complaint-generator' \
-.venv/bin/python scripts/master_case_email.py \
-  --rebuild
-```
-
-**Browser SDK and unified workspace page:**
-
-- The browser SDK is served from `/static/complaint_mcp_sdk.js`
-- The unified workspace is available at `/workspace`
-- The workspace page uses the same complaint service contract exposed by the package, CLI, and MCP server
-
-### Workspace Dataset Bundles
-
-Workspace dataset ingestion and packaging lives in `ipfs_datasets_py.processors.legal_data.workspace_dataset` and supports search + indexing for large mixed evidence corpora (emails, chat exports, drive dumps, and web captures). The `ipfs-datasets` CLI provides single-bundle exports and chain-loadable bundle packaging so you can defer deeper processing until later.
-
-```bash
-# Export a workspace dataset bundle (single parquet) from a JSON workspace payload
-ipfs-datasets workspace --action export --input-path /path/to/workspace.json \
-  --output-parquet /tmp/workspace_bundle.parquet --json
-
-# Package a workspace dataset bundle into chain-loadable parquet + optional CAR artifacts
-ipfs-datasets workspace --action package --input-path /path/to/discord_export.json \
-  --output-dir /tmp/workspace_bundle --package-name workspace_bundle --json
-
-# Inspect a packaged workspace bundle summary
-ipfs-datasets workspace --action package-summary --input-path /tmp/workspace_bundle/bundle_manifest.json --json
-```
-
-### Running
-
-**CLI Mode (Interactive):**
-```bash
-python run.py --config config.llm_router.json
-```
-
-**Web Server Mode:**
-```bash
-# Edit config.llm_router.json: "APPLICATION": {"type": ["server"]}
-python run.py --config config.llm_router.json
-# Access at http://localhost:8000
-```
-
-**Review Surface Mode:**
-```bash
-python run.py --config config.review_surface.json
-# Access the operator dashboard at http://localhost:8000/claim-support-review
-# Access the formal complaint builder at http://localhost:8000/document
-```
-
-### Regression Shortcuts
-
-**Standard Regression:**
-
-```bash
-.venv/bin/python scripts/run_standard_regression.py
-```
-
-Also available via:
-
-- VS Code tasks `Standard Regression (Lean)`, `Standard Regression (Review)`, and `Standard Regression (Full)`
-- Run and Debug entries with the same three labels
-- Make targets `package-install-smoke`, `regression`, `regression-lean`, `regression-review`, and `regression-full`
-- Make targets `complaint-workspace-cli` and `complaint-mcp-server`
-- VS Code tasks `Complaint Workspace CLI` and `Complaint MCP Server`
-- Run and Debug entries `Complaint Workspace CLI` and `Complaint MCP Server`
-- GitHub Actions workflow `standard-regression.yml`
-
-The helper now defaults to the browser-inclusive `full` slice so the review, template, document, and Playwright workflow contracts stay gated together.
-
-The browser coverage in that full slice now includes both the claim-support dashboard smoke and the cohesive site-flow suite that exercises landing, account, chat, profile, results, builder, review, and optimization-trace navigation under one FastAPI surface.
-
-The review and full slices also gate the packaged complaint workspace surface:
-
-- `tests/test_complaint_generator_package.py` validates the importable package API, JSON-RPC tool calls, and fresh-session complaint generation.
-- `tests/test_complaint_generator_package_surface.py` validates the installed console scripts and broader package exports.
-- `tests/test_complaint_generator_site_playwright.py` validates the `/workspace` page using the shared browser MCP SDK against the real FastAPI review surface.
-
-There is also a dedicated install-smoke helper for the installed console scripts:
-
-```bash
-.venv/bin/python -m pip install -e . --no-deps
-.venv/bin/python scripts/run_package_install_smoke.py --json
-```
-
-The standard regression workflow runs that helper in a separate `package-install-smoke` CI job before the broader regression lane.
-
-The repo also includes a separate Node Playwright compatibility suite available through `npm test:e2e`, but that path runs against a stubbed server for browser-level compatibility checks. The Python regression runners remain the authoritative browser gate for the real FastAPI site surface.
-
-The stubbed Playwright server defaults to port `19030` so it does not collide as easily with local app servers already using `19000`. You can still override the port per run with `PLAYWRIGHT_TEST_PORT`, for example `PLAYWRIGHT_TEST_PORT=19045 npm run test:e2e:navigation`.
-
-The browser-focused UI/UX optimizer and screenshot-audit workflow now default to the full JavaScript complaint journey:
-
-```bash
-npm test
-npm run test:e2e:list
-npm run test:e2e:complaint-flow
-npm run test:e2e:navigation
-
-.venv/bin/python -m complaint_generator.ui_ux_workflow \
-  --screenshot-dir artifacts/ui-audit/screenshots \
-  --output-dir artifacts/ui-audit/reviews
-
-complaint-workspace browser-audit --screenshot-dir artifacts/ui-audit/screenshots
-complaint-workspace optimize-ui --screenshot-dir artifacts/ui-audit/screenshots
-python3 -m complaint_generator.ui_optimizer_daemon start \
-  --user-id demo-user \
-  --daemon-root artifacts/ui-optimizer-daemon/demo-user \
-  --poll-seconds 1800 \
-  --max-rounds 2 \
-  --goal "keep export and testimony actions obvious" \
-  --goal "make the generated complaint read like a formal pleading" \
-  --use-llm-draft \
-  --json
-```
-
-That browser journey explicitly drives intake, evidence capture, claim review, draft generation, export downloads, complaint-output analysis, actor/critic review, and browser-audit handoffs. The Playwright spec at `playwright/tests/complaint-flow.spec.js` now asserts that the generated markdown and PDF still read like a formal pleading rather than a generic summary.
-
-The overnight daemon wraps that same complaint journey into a long-running loop, leaving status JSON, logs, screenshots, export reviews, and closed-loop optimizer artifacts under `artifacts/ui-optimizer-daemon/<user-id>`. Use `python3 -m complaint_generator.ui_optimizer_daemon status --user-id demo-user --daemon-root artifacts/ui-optimizer-daemon/demo-user --json` to check whether it is still running, and `python3 -m complaint_generator.ui_optimizer_daemon stop --user-id demo-user --daemon-root artifacts/ui-optimizer-daemon/demo-user --json` to stop it cleanly.
-
-**Claim Support Regression:**
-
-```bash
-.venv/bin/python scripts/run_claim_support_review_regression.py
-```
-
-Also available via:
-
-- VS Code task `Claim Support Regression` with `No Browser`, `Require Browser`, and `Browser + Network` variants
-- GitHub Actions workflow `claim-support-regression.yml` for the focused claim-support slice
-
-The focused claim-support workflow now also runs the packaged console-script smoke as a separate `package-install-smoke` job before the matrix lanes.
-
-When browser coverage is enabled, the focused slice runs the current template, real-browser, and stub-browser surfaces together so route registration, workspace SDK behavior, and unified navigation stay aligned.
-
-The current focused review/browser coverage is centered on:
-
-- `tests/test_claim_support_review_template.py`
-- `tests/test_complaint_generator_site_playwright.py`
-- `playwright/tests/navigation.spec.js`
-
-The package/import/entrypoint coverage for the install surface is in `tests/test_complaint_generator_package_surface.py`.
-
-For local editor use, there is also a `Package Install Smoke` VS Code task and matching Run and Debug entry.
-
-If you need to proactively normalize older claim-support testimony rows after upgrading the review workflow, run:
-
-```bash
-.venv/bin/python scripts/backfill_claim_testimony_links.py \
-    --db-path statefiles/claim_support.duckdb \
-    --dry-run
-
-.venv/bin/python scripts/backfill_claim_testimony_links.py \
-    --db-path statefiles/claim_support.duckdb
-```
-
-The dry run reports legacy testimony rows that can be canonically linked to registered claim elements without updating the database. The non-dry-run invocation applies those repairs in place.
-
-**HACC Regression:**
-
-```bash
-# Lightweight HACC unit slice
-.venv/bin/python scripts/run_hacc_unit_regression.py
-
-# Grounding-focused HACC regression without the live smoke run
-.venv/bin/python scripts/run_hacc_grounding_regression.py --skip-smoke
-```
-
-The lightweight slice covers the HACC evidence loader, HACC complaint synthesis, and HACC adversarial-report runner. The grounding slice adds the HACC seed-generation checks and can optionally run the heavier live smoke path.
-The lightweight slice also covers adversarial session intake-prompt regressions that shape HACC-specific questioning and recovery behavior.
-For the sibling HACC repository's adversarial runner CLI contracts, you can also run:
-
-```bash
-make hacc-adversarial-runner HACC_REPO_DIR=../HACC
-```
-
-That validates the HACC-side runner parser, JSON mode, stdout summaries, workflow-phase autopatch CLI flags, and operator-facing output contracts in `../HACC/tests/test_hacc_adversarial_runner.py`.
-
-To inspect an existing grounded HACC run without rerunning research, upload, or synthesis, use:
-
-```bash
-.venv/bin/python scripts/show_hacc_grounded_history.py
-
-.venv/bin/python scripts/show_hacc_grounded_history.py --list-runs
-
-.venv/bin/python scripts/show_hacc_grounded_history.py --json
-
-.venv/bin/python scripts/show_hacc_grounded_history.py \
-    --output-dir output/hacc_grounded/<run_id>
-
-.venv/bin/python scripts/show_hacc_grounded_history.py --output-dir previous
-.venv/bin/python scripts/show_hacc_grounded_history.py --output-dir last-successful
-```
-
-That helper can first list the available grounded runs, the current alias targets, the best candidate to resume, and ready-to-run inspection and operational commands, then summarize the current grounded workflow status, recent transitions, completed grounded worksheet state, refreshed grounding state, and grounded follow-up answer summary for the selected run directory. The recommended operational command is stage-aware: it suggests a grounded pipeline rerun for pre-follow-up runs and switches to complaint synthesis when a worksheet-backed resume is ready. When a saved run summary is available, the rerun command preserves the original query, claim type, preset, and search-mode flags, and when a persisted grounded worksheet is present it can also emit a rerun-plus-synthesis command with `--synthesize-complaint` and `--completed-grounded-intake-worksheet`. It accepts `latest`, `previous`, and `last-successful` aliases in addition to an explicit run directory.
-
-Example output:
-
-```text
-Output directory: output/hacc_grounded/20260322_120000
-Workflow stage: post_grounded_follow_up
-Recorded transitions: 2
-Next action: continue_drafting (document_generation)
-Completed grounded worksheet items: 3
-Refreshed grounding status: chronology_supported
-Grounded follow-up answers: 3
-```
-
-Also available via:
-
-- VS Code tasks `HACC Unit Regression`, `HACC Grounding Regression`, and `HACC Grounded History`
-- VS Code task `HACC Adversarial Runner Tests`
-- Run and Debug entries `HACC Unit Regression`, `HACC Grounding Regression`, `HACC Grounding Regression (No Smoke)`, `HACC Grounded History`, and `HACC Adversarial Runner Tests`
-- Make targets `hacc-unit`, `hacc-grounding`, `hacc-grounding-no-smoke`, `hacc-grounded-history`, and `hacc-adversarial-runner`
-- GitHub Actions workflow `hacc-unit-regression.yml`
-- Manual workflow `hacc-grounding-regression.yml`
-
-The helper defaults to the latest run under `output/hacc_grounded`. Set the grounded run directory explicitly when using `make`:
-
-```bash
-make hacc-grounded-history HACC_GROUNDED_RUN_DIR=output/hacc_grounded/<run_id>
-```
-
-**Hugging Face Router Quick Start:**
-```bash
-export HF_TOKEN="your-huggingface-token"
-
-# Optional: override the routing model or the reasoning target used by the smoke tests
-export HF_ARCH_ROUTER_MODEL="katanemo/Arch-Router-1.5B"
-export HF_ROUTER_ARCH_REASONING_MODEL="meta-llama/Llama-3.3-70B-Instruct"
-
-# General server mode with Hugging Face router as the active backend.
-# The shipped config now uses Arch-Router to choose between legal-reasoning and drafting models.
-python run.py --config config.huggingface_router.json
-
-# Review surface and formal complaint builder with the same auto-routing profile
-python run.py --config config.review_surface.huggingface_router.json
-
-# Optional: real network smoke test for the HF router adapter path
-HF_TOKEN="$HF_TOKEN" .venv/bin/python -m pytest \
-    tests/test_ipfs_llm_huggingface_router.py \
-    -k live_huggingface_router_smoke \
-    --run-network --run-llm
-
-# Optional: real network smoke test through the formal complaint API path
-HF_TOKEN="$HF_TOKEN" .venv/bin/python -m pytest \
-    tests/test_document_pipeline.py \
-    -k live_huggingface_router_optimization_smoke \
-    --run-network --run-llm
-
-# Optional: real network smoke test through the review-surface app path
-HF_TOKEN="$HF_TOKEN" .venv/bin/python -m pytest \
-    tests/test_document_pipeline.py \
-    -k review_surface_live_huggingface_router_optimization_smoke \
-    --run-network --run-llm
-```
-
-**Adversarial Autopatch (Non-Interactive):**
-```bash
-# Demo mode (no live LLM required)
-./.venv/bin/python run.py --config config.adversarial_autopatch_demo.json
-
-# Live mode with Hugging Face router (requires HF_TOKEN)
-export HF_TOKEN="your-huggingface-token"
-./.venv/bin/python run.py --config config.adversarial_autopatch_live.json
-
-# Batch mode: 4 sessions, 2 parallel
-./.venv/bin/python run.py --config config.adversarial_autopatch_live_batch.json
-
-# Multi-backend: hf-router → codex_cli → accelerate fallback
-./.venv/bin/python run.py --config config.adversarial_autopatch_live_multibackend.json
-```
-
-The demo config sets `demo_backend=true`. The live config prefers the Hugging Face router first (requires `HF_TOKEN` or `HUGGINGFACE_HUB_TOKEN`). All configs emit a summary JSON payload to stdout and write patch artifacts under `tmp/` by default. The live runner records `runtime.selected_backend_id` and `runtime.probe_attempts` in the output payload.
-
-The formal complaint builder and `/api/documents/formal-complaint` endpoint also support affidavit-specific exhibit controls. Use `affidavit_supporting_exhibits` to provide a curated affidavit exhibit list, or set `affidavit_include_complaint_exhibits=false` when the affidavit should not inherit the complaint's exhibit list by default.
-
-The same formal complaint payload now carries claim-level support summaries and drafting-readiness source-context counts, so the builder can show whether each count is currently grounded in evidence, authority, archived captures, or fallback-only authority references without requiring a separate dashboard round-trip.
-
-Agentic document optimization can also use Hugging Face Inference through the same OpenAI-compatible router endpoint documented for Chat UI `llm-router`. Set `optimization_provider` to `huggingface_router`, choose a Hugging Face model in `optimization_model_name`, and pass `optimization_llm_config.base_url=https://router.huggingface.co/v1` when you need to override the default router URL. The `/document` review surface now exposes these optimization controls directly, including iteration/target tuning, routed model selection, basic router overrides, an advanced JSON editor for `optimization_llm_config`, and optional IPFS trace persistence.
-
-If you want automatic model selection for optimization requests, include `optimization_llm_config.arch_router` with a routing model such as `katanemo/Arch-Router-1.5B` and a route map like `legal_reasoning -> meta-llama/Llama-3.3-70B-Instruct` and `drafting -> Qwen/Qwen3-Coder-480B-A35B-Instruct`.
-
-When `enable_agentic_optimization=true`, the formal complaint response adds a top-level `document_optimization` report summarizing the post-knowledge-graph actor/mediator/critic loop. The current report shape includes the optimization method/backend, initial and final scores, accepted iteration count, optimized section names, router/IPFS status, router usage diagnostics, upstream optimizer selection, stage-level provider selection, packet projection summaries, serialized initial/final critic reviews, a compact section history, and an optional trace CID when `optimization_persist_artifacts=true`. The `/document` preview surfaces those summaries directly after each generation run, including effective provider/model, provider-source, task-complexity, and selected-route details from the critic metadata when routed LLM calls are available.
-
-**Agentic Scraper CLI:**
-```bash
-python scripts/agentic_scraper_cli.py enqueue \
-    --keywords employment discrimination retaliation \
-    --domains eeoc.gov dol.gov \
-    --iterations 3
-
-python scripts/agentic_scraper_cli.py worker --once
-python scripts/agentic_scraper_cli.py queue --user-id cli-user
-
-python scripts/agentic_scraper_cli.py run \
-    --keywords employment discrimination retaliation \
-    --domains eeoc.gov dol.gov \
-    --iterations 3
-
-python scripts/agentic_scraper_cli.py history --user-id cli-user
-python scripts/agentic_scraper_cli.py tactics --user-id cli-user
-```
-
-[Complete setup guide →](docs/DEPLOYMENT.md) | [Configuration →](docs/CONFIGURATION.md) | [Applications →](docs/APPLICATIONS.md)
-
----
-
-## 🧭 Canary Ops (Reranker Rollout)
-
-Use the built-in workspace tasks in `.vscode/tasks.json` for rollout monitoring:
-
-- `Canary: Run + Export + Summarize Reranker Metrics`
-- `Canary: Summarize Latest Reranker Metrics Export`
-- `Canary: Generate Sample + Summarize Reranker Metrics`
-- `Canary: Validate Ops Wiring (CI-safe)`
-
-You can also run CI-safe validation directly:
-
-```bash
-python scripts/validate_canary_ops.py
-```
-
-Or use the top-level Makefile aliases:
-
-```bash
-make canary-validate
-make canary-smoke
-make canary-sample
-```
-
-See [Canary configuration details →](docs/CONFIGURATION.md).
-
----
-
-## 📖 Usage Examples
-
-### Basic Complaint Processing
-
-```python
-from mediator import Mediator
-from backends import LLMRouterBackend
-
-# Initialize with the router-backed Codex route
-backend = LLMRouterBackend(id='llm-router', provider='codex', model='gpt-5.3-codex')
-mediator = Mediator(backends=[backend])
-
-# Process complaint
-mediator.state.complaint = "I was fired after reporting safety violations..."
-result = mediator.analyze_complaint_legal_issues()
-
-print("Claim Types:", result['classification']['claim_types'])
-print("Applicable Laws:", result['statutes'])
-```
-
-### Three-Phase Workflow
-
-```python
-from complaint_phases import PhaseManager
-
-manager = PhaseManager(mediator=mediator)
-
-# Phase 1: Intake
-manager.start_three_phase_process(initial_text)
-while manager.current_phase == 'denoising':
-    question = manager.get_next_question()
-    answer = input(question)
-    manager.process_answer(question, answer)
-
-# Phase 2 & 3: Evidence gathering and formalization
-manager.advance_to_evidence_phase()
-manager.discover_web_evidence()
-manager.advance_to_formalization_phase()
-complaint = manager.generate_formal_complaint()
-```
-
-### Export a Filing Draft
-
-```python
-draft = mediator.generate_formal_complaint(
-    district='New Mexico',
-    case_number='1:26-cv-____'
-)
-
-docx_result = mediator.export_formal_complaint(
-    'statefiles/formal_complaint.docx',
-    district='New Mexico',
-    case_number='1:26-cv-____'
-)
-
-pdf_result = mediator.export_formal_complaint(
-    'statefiles/formal_complaint.pdf',
-    district='New Mexico',
-    case_number='1:26-cv-____'
-)
-```
-
-The filing draft includes a traditional court header and caption, nature of the action,
-jurisdiction and venue, factual allegations, claims for relief with legal standards,
-requested relief, and linked exhibits sourced from stored evidence.
-
-[More examples →](docs/EXAMPLES.md) - 23 complete examples
-
----
-
-## 🏗️ Architecture
-
-```
-User Interface (CLI/Web) → Mediator → LLM Router Backend
-                              ↓
-                    Complaint Phases (3-Phase)
-                     ├─ Knowledge Graphs
-                     ├─ Dependency Graphs
-                     └─ Legal Graphs
-                              ↓
-        Analysis & Research (14 types, Multi-source, IPFS+DuckDB)
-                              ↓
-              Storage Layer (IPFS Evidence + DuckDB Metadata)
-```
-
-[Detailed architecture →](docs/ARCHITECTURE.md)
-
----
-
-## 📚 Documentation
-
-### Getting Started
-- [Configuration Guide](docs/CONFIGURATION.md) - System configuration
-- [Deployment Guide](docs/DEPLOYMENT.md) - Production deployment
-- [Applications Guide](docs/APPLICATIONS.md) - CLI and web server
-- [Security Guide](docs/SECURITY.md) - Security best practices
-
-### Core Systems
-- [Three-Phase System](docs/THREE_PHASE_SYSTEM.md) - Processing workflow
-- [LLM Router](docs/LLM_ROUTER.md) - Multi-provider integration
-- [Architecture](docs/ARCHITECTURE.md) - System design
-- [Backends](docs/BACKENDS.md) - LLM backend configuration
-
-### GraphRAG & Optimization APIs
-- [API Reference](docs/API_REFERENCE.md) - Top-level API reference index
-- [GraphRAG Optimizer API](docs/API_REFERENCE_GRAPHRAG.md) - OntologyGenerator, QueryUnifiedOptimizer, WikipediaOptimizer, StreamingExtractor
-- [Common Optimizer API](docs/API_REFERENCE_COMMON.md) - BaseOptimizer, OptimizerConfig, AsyncBatchProcessor
-- [Agentic Optimizer API](docs/API_REFERENCE_AGENTIC.md) - AgenticOptimizer, AgenticCLI, FeedbackLoop
-- [Refinement Strategy Guide](docs/REFINEMENT_STRATEGY_GUIDE.md) - OntologyMediator refinement strategy selection
-- [Optimizer Examples](docs/EXAMPLES.md) - Complete example scripts reference
-- [Performance Tuning](docs/PERFORMANCE_TUNING.md) - GraphRAG pipeline optimization guide
-
-### Claim Support & Review
-- [Payload Contracts](docs/PAYLOAD_CONTRACTS.md) - Central reference for all response payloads
-- [Claim Support Review Dashboard](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_IMPROVEMENT_PLAN.md) - Dashboard roadmap
-- [Dashboard Execution Backlog](docs/CLAIM_SUPPORT_REVIEW_DASHBOARD_EXECUTION_BACKLOG.md) - Implementation milestones
-- [Intake Evidence Plan](docs/INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md) - Phase 1/2 improvement roadmap
-
-### IPFS Datasets Py Roadmap
-- [Improvement Plan](docs/IPFS_DATASETS_PY_IMPROVEMENT_PLAN.md) - Comprehensive integration plan
-- [Integration Guide](docs/IPFS_DATASETS_PY_INTEGRATION.md) - Current production integration model
-- [Execution Backlog](docs/IPFS_DATASETS_PY_EXECUTION_BACKLOG.md) - Workstream-by-workstream backlog
-- [Batch 1 Implementation Plan](docs/IPFS_DATASETS_PY_BATCH1_IMPLEMENTATION_PLAN.md) - Issue-sized execution plan
-- [Dependency Map](docs/IPFS_DATASETS_PY_DEPENDENCY_MAP.md) - Runtime dependency map
-- [Capability Matrix](docs/IPFS_DATASETS_PY_CAPABILITY_MATRIX.md) - Validated module map
-
-### Features
-- [Complaint Analysis](docs/COMPLAINT_ANALYSIS_INTEGRATION.md) - 14 complaint types
-- [Legal Research](docs/LEGAL_AUTHORITY_RESEARCH.md) - Multi-source research
-- [Legal Analysis Hooks](docs/LEGAL_HOOKS.md) - 4-stage legal analysis pipeline (classify → statutes → requirements → questions)
-- [Search & RAG Hooks](docs/SEARCH_HOOKS.md) - Legal corpus RAG and Brave search integration
-- [Evidence Management](docs/EVIDENCE_MANAGEMENT.md) - IPFS and DuckDB
-- [Web Evidence](docs/WEB_EVIDENCE_DISCOVERY.md) - Automated discovery
-- [Adversarial Testing](docs/ADVERSARIAL_HARNESS.md) - Quality assurance
-- [DEI Analysis](docs/HACC_INTEGRATION.md) - Policy analysis
-- [Probate Integration](docs/PROBATE_INTEGRATION.md) - Probate & estate law
-
-[Complete documentation index →](DOCUMENTATION_INDEX.md) - 60+ guides, 250+ pages
-
----
-
-## 🧪 Testing
-
-- **100+ Test Files** across all components
-- **340+ Test Classes** organized by feature
-- **Unit & Integration Tests** with pytest
-
-```bash
-pytest                          # Run all tests
-pytest -m "not integration"     # Unit tests only
-pytest --cov=. --cov-report=html  # With coverage
-```
-
-[Testing guide →](TESTING.md)
-
----
-
-## 🔒 Security Notice
-
-⚠️ **Before production deployment:**
-- Move hardcoded JWT secret to environment variables
-- Configure HTTPS with SSL certificates
-- Harden authentication mechanisms
-- Enhance input validation
-
-[Security Guide →](docs/SECURITY.md) - Complete hardening checklist
-
----
-
-## 📊 System Requirements
-
-**Minimum:** Python 3.8+, 4 GB RAM, 10 GB storage
-**Recommended:** Python 3.10+, 8 GB RAM, 50 GB SSD
-**For Local LLMs:** 16+ GB RAM, GPU with CUDA, 100+ GB storage
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! [Contributing Guidelines →](CONTRIBUTING.md)
-
-1. Fork the repository
-2. Create a feature branch
-3. Write tests for changes
-4. Run test suite (`pytest`)
-5. Submit Pull Request
-
----
-
-## 📦 Project Structure
-
-```
-complaint-generator/
-├── adversarial_harness/    # Adversarial testing (complainant, critic, optimizer agents)
-├── applications/           # CLI, web server, document & review API/UI
-├── backends/               # LLM integrations (llm_router, huggingface, openai, workstation)
-├── complaint_analysis/     # 14 complaint types with keywords, patterns, decision trees
-├── complaint_phases/       # 3-phase processing (denoiser, knowledge/dependency/legal graphs)
-├── docs/                   # 62 documentation files
-├── examples/               # 23 usage example scripts
-├── integrations/           # IPFS datasets adapter layer
-├── lib/                    # Logging and shared utilities
-├── mediator/               # Core orchestration, hooks, state, formal documents
-├── patches/                # Adversarial autopatch output artifacts
-├── scripts/                # 13 CLI and utility scripts
-├── statefiles/             # DuckDB state and evidence databases
-├── templates/              # Web UI (HTML/Jinja2)
-├── tests/                  # 100+ test files, 340+ test classes
-├── claim_support_review.py         # Claim support review data models
-├── document_optimization.py        # Agentic document optimizer
-├── document_pipeline.py            # Formal complaint document pipeline
-├── intake_status.py                # Intake status and contradiction helpers
-├── config.llm_router.json          # Main LLM router configuration
-├── config.huggingface_router.json  # HF router configuration
-├── config.review_surface.json      # Review surface configuration
-└── run.py                          # Application entry point
-```
-
----
-
-## 🐛 Troubleshooting
-
-**Submodule not initialized:**
-```bash
-git submodule update --init --recursive
-```
-
-**Import errors:**
-```bash
-export PYTHONPATH="${PYTHONPATH}:$(pwd)/ipfs_datasets_py"
-```
-
-**Database locked:**
-```bash
-rm statefiles/*.duckdb-wal
-```
-
----
-
-## 📈 Project Status
-
-✅ Core systems implemented
-✅ 100+ test files, 340+ test classes passing
-✅ GraphRAG ontology optimization APIs
-✅ Claim Support Review Dashboard
-✅ Agentic document optimization with HF router
-✅ Adversarial autopatch (demo and live modes)
-🚧 Web UI polish (in progress)
-🚧 IPFS Datasets Py full integration (in progress)
-📋 Mobile app (planned)
-
----
-
-## 📬 Support
-
-- **Issues:** https://github.com/endomorphosis/complaint-generator/issues
-- **Discussions:** https://github.com/endomorphosis/complaint-generator/discussions
-
----
-
-## ⚖️ Legal Disclaimer
-
-**This system assists legal professionals but does not replace professional legal advice. Always consult with a qualified attorney for legal matters.**
-
-The Complaint Generator helps organize information and generate documents. It does not provide legal advice, representation, or counseling. Users are responsible for reviewing all generated content for accuracy and legal compliance.
-
----
-
-**Developed by JusticeDAO** | Built with [ipfs_datasets_py](https://github.com/endomorphosis/ipfs_datasets_py)
-**Version 1.0** | Last Updated: 2026-03-16
+- [`complaint_generator/README.md`](complaint_generator/README.md)
+- [`applications/README.md`](applications/README.md)
+- [`mediator/readme.md`](mediator/readme.md)
+- [`complaint_phases/README.md`](complaint_phases/README.md)
+- [`integrations/README.md`](integrations/README.md)
+- [`complaint_analysis/README.md`](complaint_analysis/README.md)
+- [`adversarial_harness/README.md`](adversarial_harness/README.md)
+- [`docs/architecture/repository_module_map.json`](docs/architecture/repository_module_map.json)

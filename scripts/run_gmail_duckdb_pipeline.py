@@ -4,16 +4,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 from pathlib import Path
 
 import anyio
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ipfs_datasets_py.processors.legal_data.email_auth import resolve_gmail_credentials
-from ipfs_datasets_py.processors.legal_data.email_workspace import (
-    run_gmail_workspace_duckdb_pipeline as run_gmail_duckdb_pipeline,
+from integrations.ipfs_datasets.legal_data import load_legal_symbol
+
+resolve_gmail_credentials = load_legal_symbol("resolve_gmail_credentials", module="email_auth")
+run_gmail_duckdb_pipeline = load_legal_symbol(
+    "run_gmail_workspace_duckdb_pipeline",
+    module="email_workspace",
 )
 
 
@@ -79,7 +80,7 @@ async def _run(args: argparse.Namespace) -> dict[str, object]:
     return await run_gmail_duckdb_pipeline(
         user_id=args.user_id,
         addresses=args.addresses,
-        collect_all_messages=bool(args.collect_all_messages),
+        collect_all_messages=bool(getattr(args, "collect_all_messages", False)),
         claim_element_id=args.claim_element_id,
         folder=args.folder,
         folders=args.scan_folder,

@@ -5,10 +5,10 @@ Status: Active execution backlog
 
 Companion docs:
 
-- [docs/INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md](/home/barberb/complaint-generator/docs/INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md)
-- [docs/ARCHITECTURE.md](/home/barberb/complaint-generator/docs/ARCHITECTURE.md)
-- [docs/EVIDENCE_MANAGEMENT.md](/home/barberb/complaint-generator/docs/EVIDENCE_MANAGEMENT.md)
-- [docs/PAYLOAD_CONTRACTS.md](/home/barberb/complaint-generator/docs/PAYLOAD_CONTRACTS.md)
+- [docs/INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md](../docs/INTAKE_EVIDENCE_IMPROVEMENT_PLAN.md)
+- [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+- [docs/EVIDENCE_MANAGEMENT.md](../docs/EVIDENCE_MANAGEMENT.md)
+- [docs/PAYLOAD_CONTRACTS.md](../docs/PAYLOAD_CONTRACTS.md)
 
 ## Purpose
 
@@ -18,7 +18,7 @@ The emphasis is execution, not redesign. The repo already has the core primitive
 
 ## Execution Principles
 
-1. Keep [complaint_phases/phase_manager.py](/home/barberb/complaint-generator/complaint_phases/phase_manager.py) as the canonical workflow controller.
+1. Keep [complaint_phases/phase_manager.py](../complaint_phases/phase_manager.py) as the canonical workflow controller.
 2. Keep normalized state and summaries in mediator and phase modules, not in application-layer request builders.
 3. Treat claim-element proof readiness as the organizing principle for both phases.
 4. Prefer thin vertical slices that improve behavior immediately and preserve degraded-mode operation.
@@ -40,7 +40,7 @@ The emphasis is execution, not redesign. The repo already has the core primitive
 
 ## Batch 0: Timeline Ledger Foundation
 
-Status: Planned
+Status: Validation Required
 Priority: P0
 
 ### Goal
@@ -56,11 +56,11 @@ Make chronology a durable cross-phase object instead of a collection of summarie
 
 ### Tasks
 
-- [ ] add canonical `event_ledger`, `timeline_relations`, `timeline_anchors`, and `timeline_issues` state to the intake case file
-- [ ] update `_apply_intake_answer_to_case_file(...)` so chronology answers create or update stable event and anchor records instead of only appending free-standing facts
-- [ ] update `advance_to_evidence_phase(...)`, `_summarize_intake_evidence_alignment(...)`, and `_build_alignment_evidence_tasks(...)` so temporal tasks carry event IDs, relation IDs, issue IDs, and proof objectives
-- [ ] extend readiness and packet summaries so unresolved timeline issues and unsupported order assumptions appear as first-class blockers
-- [ ] preserve the new ledger fields through `get_three_phase_status()` and `intake_status` review builders without recomputation loss
+- [x] add canonical `event_ledger`, `timeline_relations`, `timeline_anchors`, and `timeline_issues` state to the intake case file
+- [x] update `_apply_intake_answer_to_case_file(...)` so chronology answers create or update stable event and anchor records instead of only appending free-standing facts
+- [x] update `advance_to_evidence_phase(...)`, `_summarize_intake_evidence_alignment(...)`, and `_build_alignment_evidence_tasks(...)` so temporal tasks carry event IDs, relation IDs, issue IDs, and proof objectives
+- [x] extend readiness and packet summaries so unresolved timeline issues and unsupported order assumptions appear as first-class blockers
+- [x] preserve the new ledger fields through `get_three_phase_status()` and `intake_status` review builders without recomputation loss
 
 ### Acceptance criteria
 
@@ -75,7 +75,7 @@ Make chronology a durable cross-phase object instead of a collection of summarie
 
 ## Batch 1: Intake Structure Foundation
 
-Status: Planned
+Status: Validation Required
 Priority: P0
 
 ### Goal
@@ -84,21 +84,28 @@ Make Phase 1 emit structured state that can drive evidence tasks directly.
 
 ### Primary files
 
-- [complaint_phases/intake_case_file.py](/home/barberb/complaint-generator/complaint_phases/intake_case_file.py)
-- [mediator/mediator.py](/home/barberb/complaint-generator/mediator/mediator.py)
-- [intake_status.py](/home/barberb/complaint-generator/intake_status.py)
+- [complaint_phases/intake_case_file.py](../complaint_phases/intake_case_file.py)
+- [mediator/mediator.py](../mediator/mediator.py)
+- [intake_status.py](../intake_status.py)
 
 ### Tasks
 
-- [ ] expand `proof_leads` with owner, availability, expected format, retrieval path, and target linkage
-- [ ] expand `open_items` with blocking level, next-question strategy, and target element metadata
-- [ ] add stable `fact_id` and element-link fields to canonical facts
-- [ ] preserve new intake fields in `get_three_phase_status()` outputs and `intake_status` summaries
+- [x] expand `proof_leads` with owner, availability, expected format, retrieval path, and target linkage
+- [x] expand `open_items` with blocking level, next-question strategy, and target element metadata
+- [x] add stable `fact_id` and element-link fields to canonical facts
+- [x] preserve new intake fields in `get_three_phase_status()` outputs and `intake_status` summaries
 
 ### Acceptance criteria
 
 - a single intake answer can produce structured facts and proof leads with stable references
 - unresolved intake work is visible as explicit queue items instead of implicit narrative gaps
+
+### Emitted structure
+
+- `canonical_facts[]` carry durable `fact_id` values plus claim/element linkage through `claim_types`, `element_tags`, `target_claim_types`, `target_element_ids`, and `element_links`.
+- `proof_leads[]` carry collection-routing fields (`owner`, `custodian`, `availability`, `expected_format`, `retrieval_path`) and target linkage (`target_claim_types`, `target_element_ids`, `target_fact_ids`, `target_links`).
+- `open_items[]` are the queueable Phase 1 work list and include `blocking_level`, `next_question_strategy`, target claim/element metadata, support kind, and proof-path status.
+- `get_three_phase_status()` and intake review summaries preserve raw records and expose aggregate `proof_lead_collection_summary` and `open_item_summary` payloads for operators and API consumers.
 
 ### Suggested validation
 
@@ -107,7 +114,7 @@ Make Phase 1 emit structured state that can drive evidence tasks directly.
 
 ## Batch 2: Proof-Directed Question Planner
 
-Status: Planned
+Status: Validation Required
 Priority: P0
 
 ### Goal
@@ -116,15 +123,15 @@ Make question selection optimize for proof gain, not only generic gap reduction.
 
 ### Primary files
 
-- [complaint_phases/denoiser.py](/home/barberb/complaint-generator/complaint_phases/denoiser.py)
-- [mediator/mediator.py](/home/barberb/complaint-generator/mediator/mediator.py)
+- [complaint_phases/denoiser.py](../complaint_phases/denoiser.py)
+- [mediator/mediator.py](../mediator/mediator.py)
 
 ### Tasks
 
-- [ ] add expected update kind and proof-gain metadata to question candidates
-- [ ] rank questions by claim criticality, contradiction risk, and novelty
-- [ ] suppress duplicate question objectives using semantic similarity or recent-objective tracking
-- [ ] emit question reasons for UI, traces, and adversarial scoring
+- [x] add expected update kind and proof-gain metadata to question candidates
+- [x] rank questions by claim criticality, contradiction risk, and novelty
+- [x] suppress duplicate question objectives using semantic similarity or recent-objective tracking
+- [x] emit question reasons for UI, traces, and adversarial scoring
 
 ### Router dependencies
 
@@ -136,6 +143,13 @@ Make question selection optimize for proof gain, not only generic gap reduction.
 - the mediator can explain what proof objective each question serves
 - repeated questions fall without reducing claim-element coverage
 
+### Emitted structure
+
+- `question_candidates[]` and selected intake questions now carry `proof_objective`, `proof_objective_id`, `question_objective_key`, `coverage_key`, `expected_proof_gain_score`, `proof_gain_metadata`, `novelty_score`, and `novelty_metadata`.
+- `ranking_explanation` and `selector_signals` preserve the same proof-objective and novelty fields so UI traces, adversarial scoring, and status summaries can explain why a question was selected.
+- Candidate collection over-gathers from each source, then suppresses exact, semantic, and recent-objective repeats with coverage-aware keys so duplicate asks do not crowd out distinct claim-element targets.
+- Intake fact/proof-lead intent snapshots preserve `proof_objective`, `proof_objective_id`, `coverage_key`, and `novelty_score`; intent summaries expose proof-objective counts and average novelty.
+
 ### Suggested validation
 
 - `./.venv/bin/python -m pytest tests/test_mediator.py -q`
@@ -143,7 +157,7 @@ Make question selection optimize for proof gain, not only generic gap reduction.
 
 ## Batch 3: Claim Ambiguity and Contradiction Workflow
 
-Status: Planned
+Status: Complete
 Priority: P0
 
 ### Goal
@@ -152,16 +166,16 @@ Separate missingness from ambiguity and contradiction, and route each one differ
 
 ### Primary files
 
-- [complaint_phases/phase_manager.py](/home/barberb/complaint-generator/complaint_phases/phase_manager.py)
-- [mediator/mediator.py](/home/barberb/complaint-generator/mediator/mediator.py)
-- [intake_status.py](/home/barberb/complaint-generator/intake_status.py)
+- [complaint_phases/phase_manager.py](../complaint_phases/phase_manager.py)
+- [mediator/mediator.py](../mediator/mediator.py)
+- [intake_status.py](../intake_status.py)
 
 ### Tasks
 
-- [ ] add contradiction severity and resolution-lane metadata
-- [ ] add ambiguity flags for dates, actors, conduct, and injury
-- [ ] add readiness blockers for unresolved blocking contradictions and unresolved claim disambiguation
-- [ ] route contradictions into testimony, document, or external-record tasks where appropriate
+- [x] add contradiction severity and resolution-lane metadata
+- [x] add ambiguity flags for dates, actors, conduct, and injury
+- [x] add readiness blockers for unresolved blocking contradictions and unresolved claim disambiguation
+- [x] route contradictions into testimony, document, or external-record tasks where appropriate
 
 ### Acceptance criteria
 
@@ -175,7 +189,7 @@ Separate missingness from ambiguity and contradiction, and route each one differ
 
 ## Batch 4: Minimum Fact Bundles and Evidence Task Board
 
-Status: Planned
+Status: Complete
 Priority: P0
 
 ### Goal
@@ -184,17 +198,17 @@ Turn support gaps into concrete, element-level evidence tasks.
 
 ### Primary files
 
-- [mediator/claim_support_hooks.py](/home/barberb/complaint-generator/mediator/claim_support_hooks.py)
-- [mediator/mediator.py](/home/barberb/complaint-generator/mediator/mediator.py)
-- [complaint_phases/phase_manager.py](/home/barberb/complaint-generator/complaint_phases/phase_manager.py)
-- [complaint_phases/denoiser.py](/home/barberb/complaint-generator/complaint_phases/denoiser.py)
+- [mediator/claim_support_hooks.py](../mediator/claim_support_hooks.py)
+- [mediator/mediator.py](../mediator/mediator.py)
+- [complaint_phases/phase_manager.py](../complaint_phases/phase_manager.py)
+- [complaint_phases/denoiser.py](../complaint_phases/denoiser.py)
 
 ### Tasks
 
-- [ ] emit `missing_fact_bundle` and `satisfied_fact_bundle` per claim element during support validation
-- [ ] enrich `alignment_evidence_tasks` with task id, fallback lanes, source-quality target, and resolution notes
-- [ ] connect proof leads to target tasks through stable references
-- [ ] use prioritized tasks as the canonical Phase 2 next-action source
+- [x] emit `missing_fact_bundle` and `satisfied_fact_bundle` per claim element during support validation
+- [x] enrich `alignment_evidence_tasks` with task id, fallback lanes, source-quality target, and resolution notes
+- [x] connect proof leads to target tasks through stable references
+- [x] use prioritized tasks as the canonical Phase 2 next-action source
 
 ### Acceptance criteria
 
@@ -208,7 +222,7 @@ Turn support gaps into concrete, element-level evidence tasks.
 
 ## Batch 5: Support Lane Unification and Provenance Quality
 
-Status: Planned
+Status: Complete
 Priority: P1
 
 ### Goal
@@ -217,16 +231,16 @@ Make documentary evidence, testimony, authority, and web captures comparable sup
 
 ### Primary files
 
-- [mediator/evidence_hooks.py](/home/barberb/complaint-generator/mediator/evidence_hooks.py)
-- [mediator/claim_support_hooks.py](/home/barberb/complaint-generator/mediator/claim_support_hooks.py)
-- [docs/EVIDENCE_MANAGEMENT.md](/home/barberb/complaint-generator/docs/EVIDENCE_MANAGEMENT.md)
+- [mediator/evidence_hooks.py](../mediator/evidence_hooks.py)
+- [mediator/claim_support_hooks.py](../mediator/claim_support_hooks.py)
+- [docs/EVIDENCE_MANAGEMENT.md](../docs/EVIDENCE_MANAGEMENT.md)
 
 ### Tasks
 
-- [ ] normalize provenance fields across artifact and testimony records
-- [ ] add support-quality labels that distinguish testimony-only, documentary, corroborated, and contradicted states
-- [ ] preserve lane identity and quality through support summaries and snapshots
-- [ ] persist meaningful case-theory or support-packet snapshots through the IPFS-backed path when state materially changes
+- [x] normalize provenance fields across artifact and testimony records
+- [x] add support-quality labels that distinguish testimony-only, documentary, corroborated, and contradicted states
+- [x] preserve lane identity and quality through support summaries and snapshots (`support_lane_label_counts` and `support_quality_counts` added to per-claim alignment summary and aggregated in `build_intake_case_review_summary`)
+- [x] persist meaningful case-theory or support-packet snapshots through the IPFS-backed path when state materially changes
 
 ### Router dependencies
 
@@ -245,7 +259,7 @@ Make documentary evidence, testimony, authority, and web captures comparable sup
 
 ## Batch 6: Proof-Readiness Gates
 
-Status: Planned
+Status: Complete
 Priority: P0
 
 ### Goal
@@ -254,15 +268,15 @@ Make Phase 1 and Phase 2 transitions depend on semantic readiness, not just coar
 
 ### Primary files
 
-- [complaint_phases/phase_manager.py](/home/barberb/complaint-generator/complaint_phases/phase_manager.py)
-- [mediator/mediator.py](/home/barberb/complaint-generator/mediator/mediator.py)
+- [complaint_phases/phase_manager.py](../complaint_phases/phase_manager.py)
+- [mediator/mediator.py](../mediator/mediator.py)
 
 ### Tasks
 
-- [ ] add semantic intake gates such as `case_theory_coherent` and `minimum_proof_path_present`
-- [ ] add evidence metrics such as `credible_support_ratio` and `draft_ready_element_ratio`
-- [ ] gate formalization on proof-readiness score and explicit blocker lists
-- [ ] preserve these metrics through review and optimization summaries
+- [x] add semantic intake gates such as `case_theory_coherent` and `minimum_proof_path_present`
+- [x] add evidence metrics such as `credible_support_ratio` and `draft_ready_element_ratio`
+- [x] gate formalization on proof-readiness score and explicit blocker lists
+- [x] preserve these metrics through review and optimization summaries
 
 ### Acceptance criteria
 
@@ -276,7 +290,7 @@ Make Phase 1 and Phase 2 transitions depend on semantic readiness, not just coar
 
 ## Batch 7: Review and Trace Surfaces
 
-Status: Planned
+Status: Complete
 Priority: P1
 
 ### Goal
@@ -285,19 +299,20 @@ Expose the new intake and evidence state cleanly to operators and optimizer trac
 
 ### Primary files
 
-- [intake_status.py](/home/barberb/complaint-generator/intake_status.py)
-- [applications/review_api.py](/home/barberb/complaint-generator/applications/review_api.py)
-- [applications/document_api.py](/home/barberb/complaint-generator/applications/document_api.py)
-- [templates/claim_support_review.html](/home/barberb/complaint-generator/templates/claim_support_review.html)
-- [templates/document.html](/home/barberb/complaint-generator/templates/document.html)
-- [templates/optimization_trace.html](/home/barberb/complaint-generator/templates/optimization_trace.html)
+- [intake_status.py](../intake_status.py)
+- [applications/review_api.py](../applications/review_api.py)
+- [applications/document_api.py](../applications/document_api.py)
+- [templates/claim_support_review.html](../templates/claim_support_review.html)
+- [templates/document.html](../templates/document.html)
+- [templates/optimization_trace.html](../templates/optimization_trace.html)
 
 ### Tasks
 
-- [ ] expose new confidence, ambiguity, and proof-quality fields in normalized summaries
-- [ ] show blocking tasks, contradiction lanes, and proof-readiness signals on review surfaces
-- [ ] preserve architecture boundaries by keeping payload shaping out of application-only logic where possible
-- [ ] ensure optimizer traces retain the expanded intake and evidence state
+- [x] expose `proof_readiness_score`, `support_lane_label_counts`, and `support_quality_counts` in `build_intake_status_summary` (top-level fields)
+- [x] expose `support_lane_label_counts` and `support_quality_counts` aggregated across claims in `build_intake_case_review_summary` (inside `claim_support_packet_summary`)
+- [x] surface lane distribution and quality chips in claim_support_review.html, document.html, and optimization_trace.html
+- [x] preserve architecture boundaries by keeping payload shaping out of application-only logic where possible
+- [x] ensure optimizer traces retain the expanded intake and evidence state
 
 ### Acceptance criteria
 
@@ -311,7 +326,7 @@ Expose the new intake and evidence state cleanly to operators and optimizer trac
 
 ## Batch 8: Validation Harness and Metrics
 
-Status: Planned
+Status: Complete
 Priority: P0
 
 ### Goal
@@ -320,16 +335,16 @@ Make the improvements measurable in automated runs.
 
 ### Primary files
 
-- [adversarial_harness/harness.py](/home/barberb/complaint-generator/adversarial_harness/harness.py)
-- [adversarial_harness/critic.py](/home/barberb/complaint-generator/adversarial_harness/critic.py)
+- [adversarial_harness/harness.py](../adversarial_harness/harness.py)
+- [adversarial_harness/critic.py](../adversarial_harness/critic.py)
 - targeted complaint-phase tests
 
 ### Tasks
 
-- [ ] add Phase 1 metrics for chronology completeness, contradiction count, duplicate-question rate, and proof-lead density
-- [ ] add Phase 2 metrics for support sufficiency, support quality, and proof readiness
-- [ ] add fixtures for retaliation, discrimination, housing, and consumer scenarios with distinct proof burdens
-- [ ] update critic prompts or scoring rubrics to reward question relevance and proof progress instead of verbosity
+- [x] add Phase 1 metrics for chronology completeness, contradiction count, duplicate-question rate, and proof-lead density
+- [x] add Phase 2 metrics for support sufficiency, support quality, and proof readiness
+- [x] add fixtures for retaliation, discrimination, housing, and consumer scenarios with distinct proof burdens
+- [x] update critic prompts or scoring rubrics to reward question relevance and proof progress instead of verbosity
 
 ### Acceptance criteria
 

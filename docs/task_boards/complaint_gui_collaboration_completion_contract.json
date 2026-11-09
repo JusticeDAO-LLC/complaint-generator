@@ -1,0 +1,275 @@
+{
+  "schema": "complaint-gui-collaboration-completion-contract@1",
+  "contract_version": 2,
+  "task_id": "CIMP-GUI-60",
+  "goal_id": "goal.gui.operations",
+  "subgoal_id": "subgoal.gui.operations.closure",
+  "baseline_commit": "2c1439a7029eb9035338133210d8b43319add8a4",
+  "completion_authority": false,
+  "provider_authority": false,
+  "state_authority": false,
+  "publication_authority": false,
+  "recursive_campaign_read": false,
+  "manufactures_own_completion": false,
+  "self_task": {
+    "status": "self_pending",
+    "validation_closes_task": false,
+    "native_callback_owner": "Native",
+    "status_scope": "pre_callback_instruction_only"
+  },
+  "audit_phases": {
+    "pre_completion": {
+      "accepts_native_completion": false,
+      "own_task_remains": "self_pending",
+      "records_validation_only": true
+    },
+    "post_native_callback": {
+      "requires": [
+        "task_id",
+        "canonical_task_cid",
+        "goal_id",
+        "subgoal_id",
+        "native_member_receipt",
+        "native_callback",
+        "settled_merge_queue",
+        "current_canonical_identity"
+      ],
+      "missing_evidence_status": "unavailable",
+      "blocked_status": "blocked",
+      "does_not_infer_from_pre_completion": true,
+      "rejects_callback_issued_by_this_task": true,
+      "rejects_synthetic_callback": true,
+      "packet_shape_does_not_complete": true,
+      "ingestion_does_not_complete": true,
+      "old_program_completion_does_not_complete": true,
+      "native_callback_owner": "Native",
+      "operator_role": "invoke_existing_read_only_verifier_after_native_callback",
+      "caller_packet_authenticates_evidence": false
+    }
+  },
+  "new_plan": {
+    "spec_relative": "docs/task_boards/complaint_gui_collaboration_spec.json",
+    "plan_relative": "docs/task_boards/complaint_gui_collaboration_formal_work_plan.json",
+    "board_relative": "docs/task_boards/complaint_gui_collaboration_task_board.md",
+    "namespace": "complaint-gui-collaboration",
+    "task_id_prefix": "CIMP-GUI-",
+    "task_count": 60,
+    "goal_id": "goal.gui.operations",
+    "subgoal_id": "subgoal.gui.operations.closure"
+  },
+  "historical_programs": [
+    {
+      "program_id": "complaint-intake-58",
+      "task_id_prefix": "CIMP-INTAKE-",
+      "task_count": 58,
+      "role": "historical_scoped_evidence"
+    },
+    {
+      "program_id": "complaint-mediator-grounding-44",
+      "task_id_prefix": "CIMP-MGND-",
+      "task_count": 44,
+      "role": "historical_scoped_evidence"
+    }
+  ],
+  "historical_policy": {
+    "remap_to_new_task_ids": false,
+    "old58_completion_completes_gui": false,
+    "old44_completion_completes_gui": false,
+    "preserve_boards_histories_and_qualifications": true
+  },
+  "non_completion_evidence": [
+    "packet_shape",
+    "ingestion",
+    "old58_completion",
+    "old44_completion"
+  ],
+  "authorization": {
+    "actor_distinct_from_encrypted_owner": true,
+    "lawyer_role_alone_grants_case_access": false,
+    "admin_ambient_plaintext": false,
+    "actors": {
+      "case_owner": {
+        "case_content": true,
+        "collaborators": true,
+        "processing_choices": true
+      },
+      "assigned_lawyer": {
+        "case_content": "accepted_grant_required",
+        "role_alone": false
+      },
+      "operational_admin": {
+        "operational_metadata": true,
+        "case_content": false
+      },
+      "unassigned": {
+        "case_content": false
+      }
+    }
+  },
+  "key_grant_recovery": {
+    "missing_key_mints_replacement": false,
+    "revocation_denies_future_access": true,
+    "revocation_erases_downloaded_content": false,
+    "grant_fields": [
+      "recipient",
+      "scope",
+      "expiry",
+      "revocation",
+      "rotation"
+    ]
+  },
+  "consent": {
+    "modes": [
+      "local",
+      "grok"
+    ],
+    "omitted_flag_creates_consent": false,
+    "encryption_unlock_is_consent": false,
+    "development_authorization_is_egress_consent": false,
+    "recheck_before_late_result": true
+  },
+  "private_messaging": {
+    "default_state": "conversation",
+    "accepted_actions": [
+      "evidence",
+      "intake_answer",
+      "model_input"
+    ],
+    "qualified_transport": "http_polling",
+    "unqualified_transports": [
+      "websocket",
+      "sse",
+      "streaming"
+    ],
+    "outside_campaign": [
+      "email",
+      "sms",
+      "court_filing"
+    ]
+  },
+  "graph_provenance": {
+    "not_governing_law": [
+      "snippet",
+      "llm_text",
+      "parsed_ir",
+      "training_metric",
+      "unexecuted_proof"
+    ],
+    "legal_sufficiency_must_equal": false,
+    "factual_answer_rewrites_rule": false
+  },
+  "finite_stopping": {
+    "stop_reasons": [
+      "no_actionable_question",
+      "declared_limit",
+      "pause",
+      "cancellation",
+      "unavailable_capability",
+      "user_quit"
+    ],
+    "saturation_is_legal_sufficiency": false,
+    "user_input_wait_is_stalled_worker": false,
+    "max_task_attempts": 3,
+    "implementation_timeout_seconds": 900,
+    "max_agent_turns": 64
+  },
+  "watchdog": {
+    "authenticated_operation_required": true,
+    "doctor_or_pid_alone_establishes_startup": false,
+    "required_observations": [
+      "grok_route",
+      "canonical_active_task",
+      "fresh_owned_activity",
+      "measured_validation",
+      "merge",
+      "completion_callback"
+    ],
+    "provider": "grok_cli",
+    "model": "grok-4.7",
+    "router": "ipfs_accelerate_py.llm_router",
+    "allow_fallback": false,
+    "preserves_holds_and_attempts": true,
+    "reconciliation": "verified_bounded"
+  },
+  "merge_queue": {
+    "must_be_settled": true,
+    "pending_count_must_equal": 0
+  },
+  "member_receipt": {
+    "owner": "Native",
+    "accepted_must_equal": true,
+    "must_match_task_id": true,
+    "must_match_canonical_task_cid": true
+  },
+  "guide_relative": "docs/task_boards/complaint_gui_collaboration_operator_guide.md",
+  "guide_required_phrases": [
+    "case owner",
+    "assigned lawyer",
+    "operational admin",
+    "unassigned",
+    "lawyer role alone",
+    "actual actor",
+    "canonical encrypted owner",
+    "key grant",
+    "missing key",
+    "does not mint",
+    "revocation",
+    "previously downloaded",
+    "consent",
+    "--privacy-mode local",
+    "--privacy-mode grok",
+    "development authorization",
+    "egress",
+    "private messaging",
+    "conversation",
+    "http polling",
+    "WebSocket",
+    "graph provenance",
+    "not governing law",
+    "legal sufficiency",
+    "finite stopping",
+    "awaiting_user",
+    "stalled worker",
+    "authenticated watchdog",
+    "doctor",
+    "PID",
+    "settled merge queue",
+    "Native member",
+    "callback",
+    "canonical task",
+    "packet shape",
+    "ingestion",
+    "old 58",
+    "old 44",
+    "CIMP-GUI-60",
+    "self-pending",
+    "complaint-gui-collaboration"
+  ],
+  "scope": "non_authoritative_instructional_operations_contract",
+  "instructional_only": true,
+  "current_campaign_status": "not_observed_by_this_document",
+  "production_verifier": {
+    "callable": "integrations.ipfs_accelerate.campaign_completion.verify_campaign_completion",
+    "arguments": [
+      "repo_root",
+      "spec_path",
+      "state_dir"
+    ],
+    "read_only": true,
+    "run_after_native_callbacks": true,
+    "required_result_field": "verified",
+    "historical_execution_only": true,
+    "current_source_qualification": false,
+    "does_not_issue_native_completion": true
+  },
+  "current_source_acceptance": {
+    "callable": "scripts.validate_gui_collaboration.current_main",
+    "process_cli": "python scripts/validate_gui_collaboration.py --output-root NONEXISTENT_PRIVATE_OUTPUT",
+    "required_groups": 12,
+    "run_separately_after_final_source_settles": true,
+    "outside_native_task_900_second_validation": true,
+    "subset_is_full_acceptance": false,
+    "legacy_main_or_probes_are_closure": false,
+    "saved_json_or_caller_flags_are_evidence": false
+  }
+}

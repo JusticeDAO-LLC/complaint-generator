@@ -1,0 +1,46 @@
+{
+  "skill_asset_id": "complaint-authority-graphs",
+  "version": "1.0.0",
+  "name": "Complaint authority graph enrichment",
+  "description": "Enriches a complaint draft with authority graph data: regulatory agency hierarchies, statutory citation graphs, and jurisdiction chains. Uses the GraphRAG ontology pipeline to surface which authorities govern each claim element.",
+  "capability": "authority_graph_enrichment",
+  "adapter": "integrations/ipfs_datasets/graphs.py",
+  "entry_point": "get_authority_graph_api_version",
+  "required_for_grounding_modes": ["legal_corpus_only", "strict_legal_containment"],
+  "inputs": {
+    "text": {
+      "type": "string",
+      "description": "The complaint draft text to enrich with authority graph data."
+    },
+    "state": {
+      "type": "string",
+      "description": "Optional two-letter US state code to include state authority chains.",
+      "nullable": true
+    }
+  },
+  "outputs": {
+    "authority_nodes": {
+      "type": "array",
+      "description": "Authority graph nodes (agencies, statutes, regulations) related to the complaint.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node_id": {"type": "string"},
+          "node_type": {"type": "string"},
+          "label": {"type": "string"},
+          "jurisdiction": {"type": "string"}
+        }
+      }
+    },
+    "authority_edges": {
+      "type": "array",
+      "description": "Directed relationships between authority nodes."
+    },
+    "graph_api_version": {"type": "string"}
+  },
+  "editor_integration": {
+    "panel": "authority_citations",
+    "displays": ["authority_nodes"],
+    "block_on_empty_graph": false
+  }
+}

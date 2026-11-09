@@ -1,0 +1,380 @@
+{
+  "api_count": 14,
+  "apis": [
+    {
+      "authority_role": "candidate_evidence",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/knowledge_graphs/extraction/extractor.py",
+      "conditional_engineering": false,
+      "error_type": "",
+      "module": "ipfs_datasets_py.knowledge_graphs.extraction.extractor",
+      "owner": "ipfs_datasets_py",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "KnowledgeGraphExtractor",
+        "KnowledgeGraphExtractor.extract_knowledge_graph"
+      ]
+    },
+    {
+      "authority_role": "candidate_evidence",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/knowledge_graphs/__init__.py",
+      "conditional_engineering": false,
+      "error_type": "",
+      "module": "ipfs_datasets_py.knowledge_graphs",
+      "owner": "ipfs_datasets_py",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "Client",
+        "GraphTarget"
+      ]
+    },
+    {
+      "authority_role": "candidate_acquisition",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/processors/legal_scrapers/legal_dataset_api.py",
+      "conditional_engineering": false,
+      "error_type": "",
+      "module": "ipfs_datasets_py.processors.legal_scrapers.legal_dataset_api",
+      "owner": "ipfs_datasets_py",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "search_state_law_corpus_from_parameters",
+        "search_us_code_corpus_from_parameters",
+        "search_federal_register_corpus_from_parameters",
+        "search_court_rules_corpus_from_parameters"
+      ]
+    },
+    {
+      "authority_role": "proof_adapter",
+      "canonical_source_path": "integrations/ipfs_datasets/logic.py",
+      "conditional_engineering": false,
+      "error_type": "",
+      "module": "integrations.ipfs_datasets.logic",
+      "owner": "first_party",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "compile_canonical_legal_ir",
+        "generate_bound_legal_ir_proof_obligations",
+        "route_bound_legal_ir_proof",
+        "proof_cache_identity",
+        "replay_satisfied_element_proof"
+      ]
+    },
+    {
+      "authority_role": "conditional_engineering",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/autoformal/legal_source_sampling_review_context.py",
+      "conditional_engineering": true,
+      "error_type": "",
+      "module": "ipfs_datasets_py.logic.autoformal.legal_source_sampling_review_context",
+      "owner": "ipfs_datasets_py",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "prepare",
+        "validate",
+        "record_response",
+        "validate_response",
+        "summarize"
+      ]
+    },
+    {
+      "authority_role": "conditional_engineering",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/autoformal/legal_source_sampling_context_definition_binding_v2.py",
+      "conditional_engineering": true,
+      "error_type": "",
+      "module": "ipfs_datasets_py.logic.autoformal.legal_source_sampling_context_definition_binding_v2",
+      "owner": "ipfs_datasets_py",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "prepare",
+        "validate"
+      ]
+    },
+    {
+      "authority_role": "conditional_engineering",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/autoformal/legal_source_sampling_context_definition_review_v2.py",
+      "conditional_engineering": true,
+      "error_type": "",
+      "module": "ipfs_datasets_py.logic.autoformal.legal_source_sampling_context_definition_review_v2",
+      "owner": "ipfs_datasets_py",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "prepare",
+        "validate"
+      ]
+    },
+    {
+      "authority_role": "conditional_engineering",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/autoformal/legal_norm_definition_evidence_v1.py",
+      "conditional_engineering": true,
+      "error_type": "",
+      "module": "ipfs_datasets_py.logic.autoformal.legal_norm_definition_evidence_v1",
+      "owner": "ipfs_datasets_py",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "prepare_norm_definition_evidence_v1",
+        "validate_norm_definition_evidence_v1"
+      ]
+    },
+    {
+      "authority_role": "conditional_engineering",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/autoformal/legal_norm_scope_correspondence_v1.py",
+      "conditional_engineering": true,
+      "error_type": "",
+      "module": "ipfs_datasets_py.logic.autoformal.legal_norm_scope_correspondence_v1",
+      "owner": "ipfs_datasets_py",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "prepare_norm_scope_correspondence_v1",
+        "validate_norm_scope_correspondence_v1"
+      ]
+    },
+    {
+      "authority_role": "conditional_engineering",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/autoformal/legal_norm_interpretation_review_v1.py",
+      "conditional_engineering": true,
+      "error_type": "",
+      "module": "ipfs_datasets_py.logic.autoformal.legal_norm_interpretation_review_v1",
+      "owner": "ipfs_datasets_py",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "prepare_norm_review_evidence_v1",
+        "build_norm_review_subject_v1",
+        "assess_norm_reviews_v1",
+        "validate_norm_review_assessment_v1"
+      ]
+    },
+    {
+      "authority_role": "conditional_engineering",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/autoformal/legal_bound_variable_definition_v1.py",
+      "conditional_engineering": true,
+      "error_type": "",
+      "module": "ipfs_datasets_py.logic.autoformal.legal_bound_variable_definition_v1",
+      "owner": "ipfs_datasets_py",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "prepare_bound_variable_definition_v1",
+        "validate_bound_variable_definition_v1"
+      ]
+    },
+    {
+      "authority_role": "conditional_engineering",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/formalization/autoencoder/legal_compact_content_persistent_v1.py",
+      "conditional_engineering": true,
+      "error_type": "",
+      "module": "ipfs_datasets_py.logic.formalization.autoencoder.legal_compact_content_persistent_v1",
+      "owner": "ipfs_datasets_py",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "load_compact_content_persistent_v1",
+        "score_compact_content_persistent_v1"
+      ]
+    },
+    {
+      "authority_role": "conditional_engineering",
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/logic/formalization/autoencoder/legal_compact_content_predicate_training_v1.py",
+      "conditional_engineering": true,
+      "error_type": "",
+      "module": "ipfs_datasets_py.logic.formalization.autoencoder.legal_compact_content_predicate_training_v1",
+      "owner": "ipfs_datasets_py",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "inspect",
+        "checkpoint_sha256"
+      ]
+    },
+    {
+      "authority_role": "private_storage",
+      "canonical_source_path": "integrations/ipfs_datasets/storage.py",
+      "conditional_engineering": false,
+      "error_type": "",
+      "module": "integrations.ipfs_datasets.storage",
+      "owner": "first_party",
+      "proof_authority": false,
+      "semantic_authority": false,
+      "source_present": true,
+      "status": "present",
+      "symbols": [
+        "store_automatic_private_artifact",
+        "store_private_artifact",
+        "retrieve_private_artifact",
+        "publish_encrypted_replicas",
+        "reconcile_encrypted_replicas",
+        "restore_encrypted_replicas",
+        "restore_encrypted_workspace"
+      ]
+    }
+  ],
+  "conditional_engineering_count": 9,
+  "feature_flags": {
+    "COMPLAINT_ENABLE_IPFS_STATE_LAWS_STREAM": false,
+    "COMPLAINT_GENERATOR_ENABLE_IPFS_KIT": false,
+    "actually_enabled_path": "KnowledgeGraphExtractor.extract_knowledge_graph",
+    "enhanced_path": "KnowledgeGraphExtractor.extract_enhanced_knowledge_graph",
+    "enhanced_path_enabled": false,
+    "environment_mutated": false,
+    "extractor_options": {
+      "use_spacy": false,
+      "use_srl": false,
+      "use_tracer": false,
+      "use_transformers": false
+    },
+    "global_enable_all": false,
+    "ipfs_kit_explicitly_enabled": false,
+    "model_setup_enabled": false,
+    "scraping_enabled": false,
+    "wikipedia_enrichment_enabled": false
+  },
+  "owners": [
+    {
+      "canonical_source_path": "external/ipfs_accelerate_py/ipfs_accelerate_py/__init__.py",
+      "checked_out_commit": "",
+      "checked_out_commit_error_type": "GitdirPointer",
+      "checked_out_commit_status": "unavailable",
+      "checkout_kind": "populated_checkout",
+      "committed_gitlink": "",
+      "committed_gitlink_observed": false,
+      "declared_pin": "947f873e407efd9b12c551a5e69a9b62819b9c4e",
+      "declared_submodule": true,
+      "name": "ipfs_accelerate_py",
+      "pin_is_observed_head": false,
+      "populated": true,
+      "relative_path": "external/ipfs_accelerate_py"
+    },
+    {
+      "canonical_source_path": "external/ipfs_datasets_py/ipfs_datasets_py/__init__.py",
+      "checked_out_commit": "",
+      "checked_out_commit_error_type": "GitdirPointer",
+      "checked_out_commit_status": "unavailable",
+      "checkout_kind": "populated_checkout",
+      "committed_gitlink": "",
+      "committed_gitlink_observed": false,
+      "declared_pin": "b857f28462bfbb9cbf02232a79cdefcaa1ef1bc7",
+      "declared_submodule": true,
+      "name": "ipfs_datasets_py",
+      "pin_is_observed_head": false,
+      "populated": true,
+      "relative_path": "external/ipfs_datasets_py"
+    },
+    {
+      "canonical_source_path": "external/ipfs_kit_py/ipfs_kit_py/__init__.py",
+      "checked_out_commit": "",
+      "checked_out_commit_error_type": "GitdirPointer",
+      "checked_out_commit_status": "unavailable",
+      "checkout_kind": "populated_checkout",
+      "committed_gitlink": "",
+      "committed_gitlink_observed": false,
+      "declared_pin": "0007f735b90215fa611f39aa558eb512a493b8af",
+      "declared_submodule": true,
+      "name": "ipfs_kit_py",
+      "pin_is_observed_head": false,
+      "populated": true,
+      "relative_path": "external/ipfs_kit_py"
+    }
+  ],
+  "schema_version": "complaint-mediator-grounding-owner-inventory/v1",
+  "seams": {
+    "knowledge_graph": {
+      "available": true,
+      "called": true,
+      "enhanced_called": false,
+      "entity_count": 0,
+      "error_type": "",
+      "method": "KnowledgeGraphExtractor.extract_knowledge_graph",
+      "status": "available",
+      "use_spacy": false,
+      "use_transformers": false,
+      "wikipedia_enrichment_enabled": false
+    },
+    "legal": {
+      "available": false,
+      "called": true,
+      "early_parameter_refusal": true,
+      "error": "query_vector is required",
+      "error_type": "ParameterError",
+      "network_requested": false,
+      "operation": "search_cases",
+      "scraping_requested": false,
+      "status": "error",
+      "symbol": "search_us_code_corpus_from_parameters"
+    },
+    "logic": {
+      "available": true,
+      "cache_identity_present": true,
+      "called": true,
+      "error_type": "",
+      "proof_authority": false,
+      "satisfied": false,
+      "schema_version": "legal-ir-satisfied-element-cache/v1",
+      "status": "available",
+      "symbol": "proof_cache_identity"
+    },
+    "private_storage": {
+      "available": true,
+      "called": true,
+      "error_type": "",
+      "kit_enabled_by_probe": false,
+      "network_durable": false,
+      "plaintext_observed": false,
+      "status": "available",
+      "stored_local": false,
+      "symbol": "store_private_artifact",
+      "verified": true
+    }
+  },
+  "task_id": "CIMP-MGND-02",
+  "training_and_definition": {
+    "authority_all_false": true,
+    "authority_flag_count": 12,
+    "authority_role": "conditional_engineering",
+    "available": true,
+    "called": true,
+    "checkpoint_sha256_present": true,
+    "error_type": "",
+    "governing_law": false,
+    "inspect_called": false,
+    "model_setup": false,
+    "module": "ipfs_datasets_py.logic.formalization.autoencoder.legal_compact_content_predicate_training_v1",
+    "proof_authority": false,
+    "semantic_authority": false,
+    "status": "available",
+    "symbol": "checkpoint_sha256",
+    "training_executed": false
+  }
+}

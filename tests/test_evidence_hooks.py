@@ -390,10 +390,43 @@ class TestEvidenceStateHook:
                 assert result['cid'] == 'QmTest789'
                 assert result['type'] == 'video'
                 assert 'provenance' in result
+                assert hook.get_evidence_by_cid('QmMissing') is None
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
                     
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_get_evidence_by_cid_surfaces_query_failure(self):
+        """A failed lookup must not masquerade as a missing evidence record."""
+        try:
+            import duckdb
+            from mediator.evidence_hooks import EvidenceQueryError, EvidenceStateHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_connection = Mock()
+            query_error = duckdb.Error('evidence database unavailable')
+            mock_connection.execute.side_effect = query_error
+
+            hook = object.__new__(EvidenceStateHook)
+            hook.mediator = mock_mediator
+            hook.db_path = 'unavailable-evidence.duckdb'
+
+            with patch('mediator.evidence_hooks.duckdb.connect', return_value=mock_connection):
+                with pytest.raises(EvidenceQueryError, match='Failed to query evidence by CID QmUnavailable') as exc_info:
+                    hook.get_evidence_by_cid('QmUnavailable')
+
+            assert exc_info.value.__cause__ is query_error
+            mock_connection.close.assert_called_once_with()
+            mock_mediator.log.assert_called_once_with(
+                'evidence_query_error',
+                operation='get_evidence_by_cid',
+                error='evidence database unavailable',
+                error_type='Error',
+                cid='QmUnavailable',
+            )
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
@@ -712,6 +745,11 @@ class TestEvidenceStateHook:
                 assert record['graph_relationship_count'] >= 1
                 assert len(chunks) == 2
                 assert chunks[0]['chunk_id'] == 'chunk-0'
+                assert chunks[0]['metadata']['source_span']['char_start'] == 0
+                assert chunks[0]['metadata']['source_span']['char_end'] == 11
+                assert chunks[0]['metadata']['page_start'] == 1
+                assert chunks[0]['metadata']['page_end'] == 1
+                assert chunks[0]['metadata']['section_label'] == ''
                 assert chunks[0]['metadata']['intake_summary_handoff'] == {
                     'current_phase': 'intake',
                     'ready_to_advance': True,
@@ -743,6 +781,18 @@ class TestEvidenceStateHook:
                 assert facts[0]['record_scope'] == 'evidence'
                 assert facts[0]['parse_source'] == 'bytes'
                 assert facts[0]['input_format'] == 'text'
+                assert facts[0]['chunk_id'] in {'chunk-0', 'chunk-1'}
+                assert facts[0]['chunk_index'] in {0, 1}
+                assert facts[0]['source_passage']['chunk_id'] == facts[0]['chunk_id']
+                assert facts[0]['source_passage']['chunk_index'] == facts[0]['chunk_index']
+                assert facts[0]['source_passage']['text']
+                assert facts[0]['source_passage']['text'] in {
+                    facts[0]['text'],
+                    chunks[facts[0]['chunk_index']]['text'].strip(),
+                }
+                assert facts[0]['metadata']['chunk_id'] == facts[0]['chunk_id']
+                assert facts[0]['metadata']['source_passage']['chunk_id'] == facts[0]['chunk_id']
+                assert facts[0]['metadata']['source_passage']['text'] == facts[0]['source_passage']['text']
                 assert facts[0]['metadata']['parse_lineage']['source'] == 'bytes'
                 assert facts[0]['metadata']['intake_summary_handoff'] == {
                     'current_phase': 'intake',
@@ -847,6 +897,91 @@ class TestEvidenceStateHook:
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
 
+    def test_get_evidence_facts_reads_legacy_json_only_fact_rows(self):
+        """Test old evidence_facts rows still expose the flattened corpus contract."""
+        try:
+            from mediator.evidence_hooks import EvidenceStateHook
+            import duckdb
+
+            fd, db_path = tempfile.mkstemp(suffix='.duckdb')
+            os.close(fd)
+            os.unlink(db_path)
+
+            try:
+                conn = duckdb.connect(db_path)
+                conn.execute(
+                    """
+                    CREATE TABLE evidence_facts (
+                        evidence_id BIGINT,
+                        fact_id VARCHAR,
+                        fact_text TEXT,
+                        source_artifact_id VARCHAR,
+                        confidence FLOAT,
+                        metadata JSON,
+                        provenance JSON
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO evidence_facts
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        7,
+                        'fact:legacy',
+                        'Legacy archived fact',
+                        'artifact-legacy',
+                        0.72,
+                        json.dumps({
+                            'parse_lineage': {
+                                'source': 'web_document',
+                                'input_format': 'html',
+                                'quality_tier': 'high',
+                                'quality_score': 95.0,
+                                'content_origin': 'historical_archive_capture',
+                                'artifact_family': 'archived_web_page',
+                                'corpus_family': 'web_page',
+                            },
+                            'chunk_id': 'legacy-chunk-0',
+                            'chunk_index': 0,
+                            'source_passage': {
+                                'chunk_id': 'legacy-chunk-0',
+                                'chunk_index': 0,
+                            },
+                        }),
+                        json.dumps({'metadata': {}}),
+                    ],
+                )
+                conn.close()
+
+                mock_mediator = Mock()
+                mock_mediator.log = Mock()
+                hook = EvidenceStateHook.__new__(EvidenceStateHook)
+                hook.mediator = mock_mediator
+                hook.db_path = db_path
+                hook._memory_facts = {}
+
+                facts = hook.get_evidence_facts(7)
+
+                assert len(facts) == 1
+                assert facts[0]['source_family'] == 'evidence'
+                assert facts[0]['source_record_id'] == 7
+                assert facts[0]['source_ref'] == 'artifact-legacy'
+                assert facts[0]['artifact_family'] == 'archived_web_page'
+                assert facts[0]['corpus_family'] == 'web_page'
+                assert facts[0]['content_origin'] == 'historical_archive_capture'
+                assert facts[0]['parse_source'] == 'web_document'
+                assert facts[0]['input_format'] == 'html'
+                assert facts[0]['quality_tier'] == 'high'
+                assert facts[0]['chunk_id'] == 'legacy-chunk-0'
+                assert facts[0]['source_passage']['chunk_id'] == 'legacy-chunk-0'
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
     def test_scraper_queue_claim_and_complete_job(self):
         """Test scraper jobs can be queued, claimed, and completed from DuckDB state."""
         try:
@@ -897,16 +1032,28 @@ class TestEvidenceStateHook:
                     priority=10,
                 )
                 queue_rows = hook.get_scraper_queue(user_id='testuser', status='queued', limit=5)
+                queue_state = hook.get_scraper_queue_state(user_id='testuser', status='queued', limit=5)
+                premature_completion = hook.complete_scraper_job(queued['job_id'], run_id=20)
                 claimed = hook.claim_next_scraper_job(worker_id='worker-1', user_id='testuser')
+                mismatched_worker_completion = hook.complete_scraper_job(
+                    queued['job_id'],
+                    run_id=20,
+                    worker_id='worker-2',
+                )
                 completed = hook.complete_scraper_job(
                     queued['job_id'],
                     run_id=21,
                     metadata={'storage_summary': {'stored': 1}},
+                    worker_id='worker-1',
                 )
                 detail = hook.get_scraper_queue_job(queued['job_id'])
 
                 assert queued['queued'] is True
                 assert queue_rows[0]['id'] == queued['job_id']
+                assert queue_state['inspection_only'] is True
+                assert queue_state['job_count'] == 1
+                assert queue_state['status_counts']['queued'] == 1
+                assert queue_state['ready_queued_count'] == 1
                 assert queue_rows[0]['metadata']['intake_summary_handoff'] == {
                     'current_phase': 'intake',
                     'ready_to_advance': True,
@@ -929,8 +1076,14 @@ class TestEvidenceStateHook:
                         },
                     },
                 }
+                assert premature_completion['updated'] is False
+                assert premature_completion['error'] == 'job_not_running'
+                assert premature_completion['current_status'] == 'queued'
                 assert claimed['claimed'] is True
                 assert claimed['job']['status'] == 'running'
+                assert mismatched_worker_completion['updated'] is False
+                assert mismatched_worker_completion['error'] == 'worker_mismatch'
+                assert mismatched_worker_completion['claimed_worker_id'] == 'worker-1'
                 assert completed['updated'] is True
                 assert completed['job']['status'] == 'completed'
                 assert completed['job']['run_id'] == 21
@@ -958,6 +1111,69 @@ class TestEvidenceStateHook:
                         },
                     },
                 }
+            finally:
+                if os.path.exists(db_path):
+                    os.unlink(db_path)
+
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_scraper_queue_state_counts_beyond_preview_limit(self):
+        """Queue state should aggregate all matching rows, not just the preview jobs."""
+        try:
+            from mediator.evidence_hooks import EvidenceStateHook
+
+            mock_mediator = Mock()
+            mock_mediator.log = Mock()
+            mock_mediator.state = Mock()
+            mock_mediator.state.username = "testuser"
+            mock_mediator.get_three_phase_status = Mock(return_value={})
+
+            with tempfile.NamedTemporaryFile(suffix='.duckdb', delete=False) as f:
+                db_path = f.name
+
+            try:
+                hook = EvidenceStateHook(mock_mediator, db_path=db_path)
+
+                first = hook.enqueue_scraper_job(
+                    user_id='testuser',
+                    keywords=['first'],
+                    claim_type='employment discrimination',
+                    priority=10,
+                )
+                hook.enqueue_scraper_job(
+                    user_id='testuser',
+                    keywords=['second'],
+                    claim_type='retaliation',
+                    priority=20,
+                )
+                hook.enqueue_scraper_job(
+                    user_id='otheruser',
+                    keywords=['other'],
+                    claim_type='other claim',
+                    priority=30,
+                )
+                claimed = hook.claim_next_scraper_job(worker_id='worker-1', user_id='testuser')
+                completed = hook.complete_scraper_job(
+                    first['job_id'],
+                    run_id=31,
+                    worker_id='worker-1',
+                )
+
+                state = hook.get_scraper_queue_state(user_id='testuser', limit=1)
+
+                assert claimed['claimed'] is True
+                assert completed['updated'] is True
+                assert len(state['jobs']) == 1
+                assert state['job_count'] == 2
+                assert state['status_counts'] == {'completed': 1, 'queued': 1}
+                assert state['claim_type_counts'] == {
+                    'employment discrimination': 1,
+                    'retaliation': 1,
+                }
+                assert state['queue_owner_counts'] == {'testuser': 2}
+                assert state['ready_queued_count'] == 1
+                assert state['completed_count'] == 1
             finally:
                 if os.path.exists(db_path):
                     os.unlink(db_path)
@@ -1399,6 +1615,9 @@ class TestMediatorEvidenceIntegration:
                 assert any(rel['relation_type'] == 'supports' for rel in graph['relationships'])
                 assert len(facts) >= 1
                 assert facts[0]['fact_id'].startswith('fact:')
+                assert facts[0]['chunk_id']
+                assert facts[0]['source_passage']['chunk_id'] == facts[0]['chunk_id']
+                assert facts[0]['source_passage']['text']
 
                 projected_kg = mediator.phase_manager.get_phase_data(ComplaintPhase.INTAKE, 'knowledge_graph')
                 assert result['artifact_id'] in projected_kg.entities

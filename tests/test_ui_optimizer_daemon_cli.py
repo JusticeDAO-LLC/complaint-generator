@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from complaint_generator import ui_optimizer_daemon as module
@@ -126,6 +127,11 @@ def test_run_daemon_writes_cycle_status_and_artifacts(tmp_path, monkeypatch):
     assert Path(payload["status_file"]).exists()
     status_payload = json.loads(status_file.read_text(encoding="utf-8"))
     assert status_payload["status"] == "completed"
+    assert status_payload["pid"] == os.getpid()
+    assert status_payload["updated_at"]
+    assert status_payload["artifacts"]["status_file"] == str(status_file.resolve())
+    assert status_payload["artifacts"]["cycle_manifest_path"] == status_payload["last_result"]["cycle_manifest_path"]
+    assert status_payload["last_error"] is None
     assert status_payload["phase"] == "completed"
     assert status_payload["cycle_count"] == 1
     assert status_payload["last_result"]["summary"]["browser_artifact_count"] == 4
@@ -216,6 +222,9 @@ def test_start_status_and_stop_daemon_commands(tmp_path, monkeypatch):
     status_payload = module._status_payload(status_args)
     assert status_payload["running"] is True
     assert status_payload["status_payload"]["cycle_count"] == 3
+    assert status_payload["updated_at"]
+    assert status_payload["artifacts"]["status_file"] == str(status_file.resolve())
+    assert status_payload["last_error"] is None
 
     stop_args = argparse.Namespace(
         command="stop",

@@ -100,6 +100,29 @@ class TestLLMRouterBackend:
                 assert call_args.kwargs['provider'] == 'local_hf'
         except ImportError as e:
             pytest.skip(f"Test requires dependencies: {e}")
+
+    def test_llm_router_backend_normalizes_p2p_provider_alias(self):
+        """Test that P2P provider aliases route through the shared task-queue provider."""
+        try:
+            mock_generate = Mock(return_value=self._metadata_payload("Remote queue response"))
+
+            with patch('backends.llm_router_backend.generate_text_with_metadata', mock_generate):
+                from backends.llm_router_backend import LLMRouterBackend
+
+                backend = LLMRouterBackend(
+                    id='test-router',
+                    provider='p2p',
+                    model='gpt2'
+                )
+
+                response = backend("Test prompt")
+
+                assert response == "Remote queue response"
+                assert backend.provider == 'p2p_task_queue'
+                call_args = mock_generate.call_args
+                assert call_args.kwargs['provider'] == 'p2p_task_queue'
+        except ImportError as e:
+            pytest.skip(f"Test requires dependencies: {e}")
     
     def test_llm_router_backend_with_config(self):
         """Test that LLMRouterBackend passes config to generate_text"""

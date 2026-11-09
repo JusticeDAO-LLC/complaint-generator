@@ -79,3 +79,42 @@ def test_create_ui_review_report_skips_multimodal_for_text_only_provider(monkeyp
     assert report["backend"]["multimodal_skipped"] is True
     assert "text-only provider" in report["backend"]["fallback_error"]
     assert report["review"]["summary"] == "Text-only review succeeded."
+
+
+def test_create_ui_review_report_resolves_router_aliases_before_backend_call(monkeypatch, tmp_path: Path):
+    screenshot = tmp_path / "workspace.png"
+    screenshot.write_bytes(b"fake-png")
+    observed_kwargs = {}
+
+    class FakeMultimodalBackend:
+        def __init__(self, **kwargs):
+            observed_kwargs.update(kwargs)
+            self.id = kwargs.get("id", "ui-review")
+            self.provider = kwargs.get("provider")
+            self.model = kwargs.get("model")
+
+        def __call__(self, prompt, *, image_paths=None, system_prompt=None):
+            assert image_paths == [screenshot]
+            return (
+                '{"summary":"Router alias review succeeded.",'
+                '"issues":[],"recommended_changes":[],"workflow_gaps":[],"playwright_followups":[]}'
+            )
+
+    monkeypatch.setattr(ui_review_module, "MultimodalRouterBackend", FakeMultimodalBackend)
+
+    report = ui_review_module.create_ui_review_report(
+        [str(screenshot)],
+        provider="llm_router",
+        model="multimodal_router",
+    )
+
+    assert observed_kwargs["provider"] == "codex_cli"
+    assert observed_kwargs["model"] == "gpt-5.3-codex"
+    assert "llm_router" not in {observed_kwargs["provider"], observed_kwargs["model"]}
+    assert "multimodal_router" not in {observed_kwargs["provider"], observed_kwargs["model"]}
+    assert report["backend"]["strategy"] == "multimodal_router"
+    assert report["backend"]["provider"] == "codex_cli"
+    assert report["backend"]["requested_provider_alias"] == "llm_router"
+    assert report["backend"]["requested_model_alias"] == "multimodal_router"
+    assert report["backend"]["route_alias_resolved"] is True
+    assert report["review"]["summary"] == "Router alias review succeeded."

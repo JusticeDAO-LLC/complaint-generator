@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scoped lawyer review</title>
+    <style>
+        :root {
+            --ink: #182229;
+            --muted: #58656e;
+            --line: rgba(24, 34, 41, 0.14);
+            --panel: #fffaf4;
+            --stale: #9a3412;
+            --human: #1e3a5f;
+            --model: #6b4c1e;
+            --machine: #1f4d3a;
+        }
+        body {
+            margin: 0;
+            color: var(--ink);
+            background: #f6efe4;
+            font-family: "Public Sans", "Segoe UI", sans-serif;
+        }
+        main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+        h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+        p.limit { color: var(--muted); }
+        section {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 16px;
+        }
+        h2 { margin: 0 0 8px; font-size: 1.05rem; }
+        .human h2 { color: var(--human); }
+        .model h2 { color: var(--model); }
+        .machine h2 { color: var(--machine); }
+        table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+        th, td { text-align: left; vertical-align: top; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+        .stale { color: var(--stale); font-weight: 700; }
+        .current { font-weight: 700; }
+        code { font-size: 0.82rem; }
+        form { display: grid; gap: 8px; margin-top: 12px; }
+        label { display: grid; gap: 4px; font-size: 0.9rem; }
+        input, textarea, select, button { font: inherit; padding: 8px; }
+        button { width: fit-content; }
+    </style>
+</head>
+<body>
+<main id="lawyer-workspace" data-task-id="CIMP-GUI-32">
+    <h1>Scoped lawyer review</h1>
+    <p class="limit" id="lawyer-review-limitations">Human legal review, model suggestions, and machine proof are separate records. A stale approval does not promote changed law or facts. This page is not governing law.</p>
+    <section>
+        <h2>Review access</h2>
+        <p>Sign in again to authorize changes. Credentials are cleared after verification and never saved by this page.</p>
+        <form id="review-login"><label for="review-credential">Account credential</label>
+            <input id="review-credential" type="password" autocomplete="current-password" required>
+            <button type="submit">Authorize this review session</button></form>
+        <div><button type="button" id="review-refresh">Reload current reviews</button>
+            <button type="button" id="review-clear">Clear private view</button>
+            <button type="button" id="review-logout">Log out</button></div>
+    </section>
+    <section id="review-owner-sharing" hidden>
+        <h2>Share the latest complaint version</h2>
+        <p>Choose an accepted reviewer assignment. The reviewer uses their own key grant; this does not share your master key.</p>
+        <form id="review-share-form">
+            <label for="review-membership">Accepted assignment id</label><input id="review-membership" name="membership_id" required maxlength="128">
+            <label for="review-membership-version">Assignment version</label><input id="review-membership-version" name="membership_version" type="number" min="1" step="1" required>
+            <button type="submit">Share latest version with reviewer</button>
+        </form><p id="review-share-result" role="status"></p>
+    </section>
+    <section id="live-revisions">
+        <h2>Bound revisions</h2>
+        <dl id="revision-list"></dl>
+    </section>
+    <section class="human" id="human-legal-reviews">
+        <h2>Human legal review</h2>
+        <table>
+            <thead><tr><th>Actor</th><th>Decision</th><th>Interpretation</th><th>Revisions</th><th>Applies now</th></tr></thead>
+            <tbody id="human-review-rows"></tbody>
+        </table>
+        <form id="lawyer-review-form">
+            <label>Operation
+                <select name="operation">
+                    <option value="propose">Propose sourced interpretation</option>
+                    <option value="review">Review proposal</option>
+                    <option value="promote">Promote fresh approval</option>
+                    <option value="record_model_suggestion">Record model suggestion</option>
+                    <option value="record_machine_proof">Record machine proof</option>
+                </select>
+            </label>
+            <label>Request id <input name="request_id" required maxlength="80"></label>
+            <label>Interpretation <textarea name="interpretation" maxlength="2000"></textarea></label>
+            <label>Source citation <input name="source_citation" maxlength="512"></label>
+            <label>Proposal or approval id <input name="target_id" maxlength="80"></label>
+            <label>Review decision
+                <select name="decision">
+                    <option value="approved">approved</option>
+                    <option value="rejected">rejected</option>
+                    <option value="withheld">withheld</option>
+                </select>
+            </label>
+            <label>Model id <input name="model_id" maxlength="80"></label>
+            <label>Suggestion <textarea name="suggestion" maxlength="2000"></textarea></label>
+            <button type="submit">Record under the live revisions</button>
+            <p id="lawyer-review-result" role="status"></p>
+        </form>
+    </section>
+    <section class="model" id="model-suggestions">
+        <h2>Model suggestions</h2>
+        <p>A model suggestion is not a human legal review and cannot approve law or facts.</p>
+        <table>
+            <thead><tr><th>Model</th><th>Suggestion</th><th>Status</th></tr></thead>
+            <tbody id="model-suggestion-rows"></tbody>
+        </table>
+    </section>
+    <section class="machine" id="machine-proofs">
+        <h2>Machine proof</h2>
+        <p>Machine proof is not legal sufficiency and is not a human approval.</p>
+        <table>
+            <thead><tr><th>Status</th><th>Engine</th><th>Proof revision</th></tr></thead>
+            <tbody id="machine-proof-rows"></tbody>
+        </table>
+    </section>
+    <section id="assigned-lawyer-review" data-task-id="CIMP-GUI-45">
+        <h2>Assigned case review</h2>
+        <p class="limit" id="assigned-review-limitations">This view lists only accepted assigned-lawyer grants. An operational-admin role is not a case-content bypass. Expired and revoked grants are omitted or denied. Factual assertions and legal source rules stay in separate graphs. Unresolved work stays unresolved. Private messages stay conversations. This page does not use WebSocket or SSE and is not governing law.</p>
+        <div id="rendered-assigned-review">__ASSIGNED_REVIEW_HTML__</div>
+    </section>
+</main>
+<script id="lawyer-review-state" type="application/json">__LAWYER_REVIEW_JSON__</script>
+<script id="lawyer-case-review-state" type="application/json">__LAWYER_CASE_REVIEW_JSON__</script>
+<script>
+(function () {
+    let bootstrap = JSON.parse(document.getElementById('lawyer-review-state').textContent);
+    document.getElementById('lawyer-review-state').textContent = '';
+    const context = Object.freeze({...bootstrap.case_context});
+    const actor = bootstrap.actor_principal_id;
+    const originalPath = location.pathname;
+    let generation = bootstrap.session_generation;
+    let privacyEpoch = 0;
+    let requestEpoch = 0;
+    let csrfToken = '';
+    let state = null;
+    let closed = false;
+    const result = document.getElementById('lawyer-review-result');
+    const form = document.getElementById('lawyer-review-form');
+
+    function emptyPrivateDom() {
+        ['revision-list','human-review-rows','model-suggestion-rows','machine-proof-rows'].forEach(id => document.getElementById(id).replaceChildren());
+    }
+    function clearPrivate(message) {
+        privacyEpoch += 1; requestEpoch += 1; state = null; csrfToken = ''; closed = true;
+        emptyPrivateDom(); form.reset(); document.getElementById('review-share-form').reset();
+        document.getElementById('review-credential').value = '';
+        document.getElementById('review-share-result').textContent = '';
+        result.textContent = message || 'Private review view cleared.';
+    }
+    function capture() {
+        return {privacy:privacyEpoch,request:++requestEpoch,actor,generation,caseId:context.case_id};
+    }
+    function current(value) {
+        return !closed && value.privacy===privacyEpoch && value.request===requestEpoch
+            && value.actor===actor && value.generation===generation && value.caseId===context.case_id
+            && location.pathname===originalPath;
+    }
+    function headers(mutate) {
+        const value={'x-tenant-id':context.tenant_id,'x-case-id':context.case_id,'x-resource-id':context.resource_id,
+            'x-expected-revision':String(context.revision),'x-expected-membership-revision':String(context.membership_revision)};
+        if (mutate) {
+            if (!csrfToken) throw new Error('review_sign_in_required');
+            value['x-csrf-token']=csrfToken;value['content-type']='application/json';
+        }
+        return value;
+    }
+    async function verifySession(value) {
+        const response=await fetch('/api/complaint-workspace/auth/session',{credentials:'same-origin'});
+        if (!response.ok) throw new Error('review_session_unavailable');
+        const session=await response.json();
+        if (!current(value) || session.principal_id!==actor || session.generation!==generation) throw new Error('review_session_changed');
+    }
+    async function request(path,method,body,value) {
+        await verifySession(value);
+        if (!current(value)) throw new Error('review_request_superseded');
+        const response=await fetch(path,{method,credentials:'same-origin',headers:headers(method!=='GET'),
+            ...(body===undefined?{}:{body:JSON.stringify(body)})});
+        const payload=await response.json();
+        if (!current(value)) throw new Error('review_request_superseded');
+        if (!response.ok) {
+            const error=new Error(payload.error==='review_source_changed'
+                ? 'Complaint changed; owner must share latest version.' : 'Review access or result could not be verified.');
+            error.sourceChanged=payload.error==='review_source_changed';throw error;
+        }
+        await verifySession(value);
+        return payload;
+    }
+    function render(payload,value) {
+        if (!current(value) || payload.case_id!==context.case_id) return;
+        state=payload;emptyPrivateDom();
+        const live=payload.live_revisions || {};
+        ['case_revision','source_revision','fact_revision','proof_revision'].forEach(key => {
+            const item=document.createElement('div');item.dataset.revisionKey=key;
+            item.textContent=key+': '+String(live[key]??'unavailable');document.getElementById('revision-list').appendChild(item);
+        });
+        const revisions=row => [row.case_revision,row.source_revision,row.fact_revision,row.proof_revision].join(' | ');
+        function fill(id,rows,cells) {
+            (Array.isArray(rows)?rows:[]).forEach(row => {
+                const tr=document.createElement('tr');tr.dataset.stale=String(row.stale===true);
+                tr.dataset.recordKind=row.record_kind || '';tr.dataset.authorKind=row.author_kind || '';
+                tr.dataset.promotesChangedLaw='false';tr.dataset.promotesChangedFacts='false';
+                const values=cells(row).concat(row.stale?'Historical review; complaint version changed.':'Review for the displayed version; not governing law or proof.');
+                values.forEach(text => {const td=document.createElement('td');td.textContent=String(text??'');tr.appendChild(td);});
+                document.getElementById(id).appendChild(tr);
+            });
+        }
+        fill('human-review-rows',payload.human_legal_reviews,row=>[row.actor_principal_id,row.decision,row.interpretation,revisions(row)]);
+        fill('model-suggestion-rows',payload.model_suggestions,row=>[row.reported_model_id||row.model_id,row.suggestion,'Human-reported model suggestion; producer not verified.']);
+        fill('machine-proof-rows',payload.machine_proofs,row=>['Unverified report; not an executed proof.','No checked producer',row.proof_revision]);
+        document.getElementById('review-owner-sharing').hidden=payload.owner_can_share!==true;
+        result.textContent='Current encrypted review view loaded. Human review is not governing law or proof.';
+    }
+    function failed(error,value) {
+        if (!current(value)) return;
+        clearPrivate(error && error.sourceChanged ? 'Complaint changed; owner must share latest version.'
+            : 'Review response could not be verified. A request may have completed; reload before retrying.');
+    }
+    async function refresh() {
+        const value=capture();
+        try {render(await request('/api/legal-analysis/'+encodeURIComponent(context.case_id)+'/lawyer-reviews','GET',undefined,value),value);}
+        catch(error){failed(error,value);}
+    }
+    document.getElementById('review-login').addEventListener('submit',async event => {
+        event.preventDefault();
+        const credential=document.getElementById('review-credential').value;
+        clearPrivate('Verifying the current account.');closed=false;
+        const value=capture();
+        try {
+            const response=await fetch('/api/complaint-workspace/auth/login',{method:'POST',credentials:'same-origin',
+                headers:{'content-type':'application/json'},body:JSON.stringify({credential})});
+            const issued=await response.json();
+            if (!current(value)) return;
+            if (!response.ok || issued.principal_id!==actor || typeof issued.csrf_token!=='string') {
+                clearPrivate('This case page does not match the current account. Reopen the case.');return;
+            }
+            csrfToken=issued.csrf_token;generation=issued.generation;requestEpoch+=1;
+            await refresh();
+        }catch(error){failed(error,value);}
+        finally {document.getElementById('review-credential').value='';}
+    });
+    form.addEventListener('submit',async event => {
+        event.preventDefault();
+        const fields=new FormData(form);
+        const prior=state;
+        const operation=String(fields.get('operation')||'');
+        const draft={operation,request_id:String(fields.get('request_id')||'')};
+        if(operation==='propose'){draft.interpretation=fields.get('interpretation');draft.source_citation=fields.get('source_citation');}
+        else if(operation==='review'){draft.proposal_id=fields.get('target_id');draft.decision=fields.get('decision');}
+        else if(operation==='promote'){draft.approval_id=fields.get('target_id');}
+        else if(operation==='record_model_suggestion'){draft.model_id=fields.get('model_id');draft.suggestion=fields.get('suggestion');}
+        const value=capture();
+        try {
+            if(!prior || !csrfToken)throw new Error('review_sign_in_required');
+            const fresh=await request('/api/legal-analysis/'+encodeURIComponent(context.case_id)+'/lawyer-reviews','GET',undefined,value);
+            if(!current(value))return;
+            if(fresh.private_revision!==prior.private_revision || fresh.live_revisions.source_revision!==prior.live_revisions.source_revision
+                    || fresh.live_revisions.fact_revision!==prior.live_revisions.fact_revision || fresh.live_revisions.proof_revision!==prior.live_revisions.proof_revision)
+                throw new Error('review_current_version_required');
+            const live=fresh.live_revisions;
+            const body={...draft,expected_review_revision:fresh.review_revision,expected_case_revision:live.case_revision,
+                expected_source_revision:live.source_revision,expected_fact_revision:live.fact_revision,expected_proof_revision:live.proof_revision};
+            const posted=await request('/api/legal-analysis/'+encodeURIComponent(context.case_id)+'/lawyer-reviews','POST',body,value);
+            if(!current(value))return;
+            render(posted,value);
+            result.textContent='Review recorded in encrypted case storage. It is not governing law or an executed proof.';
+        }catch(error){failed(error,value);}
+    });
+    document.getElementById('review-share-form').addEventListener('submit',async event => {
+        event.preventDefault();
+        const fields=new FormData(event.currentTarget);
+        const member=String(fields.get('membership_id')||'');
+        const version=Number(fields.get('membership_version'));
+        const value=capture();
+        try {
+            if(!state || state.owner_can_share!==true || !Number.isSafeInteger(version) || version<1)throw new Error('owner_share_required');
+            const prefix='/api/legal-analysis/'+encodeURIComponent(context.case_id)+'/lawyer-reviews';
+            const currentSource=await request(prefix+'/sharing','GET',undefined,value);
+            if(!current(value))return;
+            const shared=await request(prefix+'/share','POST',{membership_id:member,expected_membership_version:version,
+                expected_private_revision:currentSource.private_revision},value);
+            if(!current(value))return;
+            const node=document.getElementById('review-share-result');node.textContent='Latest complaint version shared with the accepted reviewer. ';
+            if(typeof shared.review_url==='string' && shared.review_url.startsWith('/api/legal-analysis/')) {
+                const link=document.createElement('a');link.href=shared.review_url;link.textContent='Reviewer case link';node.appendChild(link);
+            }
+        }catch(error){failed(error,value);}
+    });
+    document.getElementById('review-refresh').addEventListener('click',async()=>{if(!closed)await refresh();});
+    document.getElementById('review-clear').addEventListener('click',()=>clearPrivate());
+    document.getElementById('review-logout').addEventListener('click',async()=>{
+        const token=csrfToken;clearPrivate('Private view cleared; verifying browser logout.');
+        try {
+            if(!token)throw new Error('review_sign_in_required');
+            const response=await fetch('/api/complaint-workspace/auth/logout',{method:'POST',credentials:'same-origin',headers:{'x-csrf-token':token}});
+            result.textContent=response.ok?'Browser session logged out; private view cleared.':'Logout could not be verified; private view cleared.';
+        }catch(_error){result.textContent='Logout could not be verified; private view cleared.';}
+    });
+    window.addEventListener('pagehide',()=>clearPrivate());
+    window.addEventListener('popstate',()=>clearPrivate());
+    const initial=capture();
+    verifySession(initial).then(()=>render(bootstrap,initial)).catch(error=>failed(error,initial)).finally(()=>{bootstrap=null;});
+}());
+</script>
+<script>
+(function () {
+    var node = document.getElementById("lawyer-case-review-state");
+    if (!node || node.textContent.indexOf("__LAWYER_CASE_REVIEW") === 0) {
+        return;
+    }
+    var review = JSON.parse(node.textContent);
+    var root = document.getElementById("assigned-lawyer-review");
+    if (!root || !review || review.task_id !== "CIMP-GUI-45") {
+        return;
+    }
+    root.dataset.adminBypass = "false";
+    root.dataset.membership = review.membership || "";
+    var transport = review.transport || {};
+    root.dataset.websocket = transport.websocket === true ? "true" : "false";
+    root.dataset.sse = transport.sse === true ? "true" : "false";
+}());
+</script>
+</body>
+</html>

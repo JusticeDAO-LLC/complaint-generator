@@ -1,5 +1,7 @@
 import importlib.util
 from pathlib import Path
+import sys
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -16,6 +18,15 @@ def _load_cli_module():
     return module
 
 
+def _install_fake_playwright(monkeypatch, sync_playwright):
+    playwright_module = ModuleType('playwright')
+    sync_api_module = ModuleType('playwright.sync_api')
+    sync_api_module.sync_playwright = sync_playwright
+    playwright_module.sync_api = sync_api_module
+    monkeypatch.setitem(sys.modules, 'playwright', playwright_module)
+    monkeypatch.setitem(sys.modules, 'playwright.sync_api', sync_api_module)
+
+
 def test_create_parser_supports_browser_mode_and_list():
     cli = _load_cli_module()
     parser = cli.create_parser()
@@ -25,6 +36,40 @@ def test_create_parser_supports_browser_mode_and_list():
     assert args.browser == 'on'
     assert args.network == 'on'
     assert args.list is True
+
+
+def test_playwright_availability_propagates_cleanup_failure(monkeypatch, tmp_path):
+    cli = _load_cli_module()
+    executable = tmp_path / 'chromium'
+    executable.touch()
+    cleanup_error = RuntimeError('playwright driver did not stop')
+
+    class FakePlaywright:
+        chromium = SimpleNamespace(executable_path=str(executable))
+
+        def stop(self):
+            raise cleanup_error
+
+    manager = SimpleNamespace(start=lambda: FakePlaywright())
+    _install_fake_playwright(monkeypatch, lambda: manager)
+
+    with pytest.raises(RuntimeError) as raised:
+        cli.playwright_chromium_available()
+
+    assert raised.value is cleanup_error
+
+
+def test_playwright_availability_handles_start_failure_without_cleanup(monkeypatch):
+    cli = _load_cli_module()
+    start_error = RuntimeError('playwright driver failed to start')
+
+    def fail_start():
+        raise start_error
+
+    manager = SimpleNamespace(start=fail_start)
+    _install_fake_playwright(monkeypatch, lambda: manager)
+
+    assert cli.playwright_chromium_available() is False
 
 
 def test_resolve_test_targets_auto_includes_browser_when_available():
@@ -73,6 +118,10 @@ def test_resolve_test_targets_on_includes_all_browser_suites():
     assert targets[:len(cli.BASE_TESTS)] == cli.BASE_TESTS
     assert targets[len(cli.BASE_TESTS):] == cli.BROWSER_TESTS
     assert 'tests/test_complaint_generator_package.py' in targets
+    assert 'tests/test_t1_t3_temporal_next_steps.py' in targets
+    assert 'tests/test_temporal_rule_profiles.py' in targets
+    assert 'tests/test_mediator_three_phase.py' in targets
+    assert 'tests/test_intake_status.py' in targets
     assert 'tests/test_complaint_generator_site_playwright.py' in targets
 
 

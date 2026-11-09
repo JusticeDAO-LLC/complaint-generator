@@ -39,7 +39,7 @@ The main remaining Batch 1 work is not “add parsing.” It is to finish contra
 
 | Slice | Status | Summary |
 |---|---|---|
-| Slice 1: Canonical parse envelope completion | Partial | The shared parse contract exists and is already used, but richer format-level semantics and stronger page- or passage-oriented metadata are still incomplete. |
+| Slice 1: Canonical parse envelope completion | Complete | The shared parse contract now includes normalized chunk rows with stable IDs, offsets, per-chunk source/page spans, parser version, input format, extraction method, quality tier, and section-label placeholders. |
 | Slice 2: Provenance and transform-lineage alignment | Complete | Provenance records now carry durable normalized metadata, archived web evidence and authority text persist that metadata, and claim-support review summaries consume provenance-backed lineage consistently. |
 | Slice 3: Archived-page corpus normalization | Complete | Web evidence, authority provenance, and claim-support summaries now carry explicit corpus and artifact identity for archived versus live web artifacts and authority-backed artifacts. |
 | Slice 4: Legal authority text as corpus asset | Mostly Complete | Authority text parsing, chunks, facts, and graph metadata already exist, but passage-level review semantics and explicit fallback distinctions can still be improved. |
@@ -49,7 +49,7 @@ The main remaining Batch 1 work is not “add parsing.” It is to finish contra
 
 ## Slice 1: Canonical parse envelope completion
 
-Status: Partial
+Status: Complete
 
 ### What is already true
 
@@ -68,6 +68,7 @@ Status: Partial
   - parse summary
   - transform lineage
   - metadata including parser version, input format, chunk count, and source
+  - per-chunk source/page spans, quality tier, extraction method, and section-label placeholders
 
 ### Evidence supporting that assessment
 
@@ -75,16 +76,16 @@ Status: Partial
 - `tests/test_web_evidence_hooks.py` already asserts request-level `parse_summary` and per-record `parse_details`.
 - `tests/test_legal_authority_hooks.py` already asserts persisted parser version, parse source, and transform lineage on authority records.
 
-### What is still missing or incomplete
+### Completed closure
 
-- page-oriented semantics are still weak for richer source families where later review and proof workflows may need passage fidelity.
-- OCR and format-specific quality signals are not yet exposed as a clearly complete contract family.
-- office-document behavior is normalized behind the adapter in part, but Batch 1 still needs to confirm there are no remaining hook-local format assumptions.
-- the current parse envelope is strong enough for fallback workflows, but not yet obviously complete for citation-grade passage review across all supported formats.
+- page-oriented chunk semantics are now part of the canonical parse envelope and persisted chunk metadata.
+- OCR and format-specific quality signals are exposed through summary, parse-quality, lineage, and chunk metadata.
+- office-document behavior remains adapter-owned and covered by focused parse-contract tests rather than hook-local format assumptions.
+- the parse envelope is now sufficient for Batch 1 citation-grade passage review across the supported fallback formats.
 
 ### Audit conclusion
 
-The parse envelope exists and is already useful, but it should still be treated as a contract-completion pass rather than as fully finished baseline for every richer format and passage-fidelity use case.
+The parse envelope is complete for the Batch 1 contract surface. Later batches can deepen richer format extraction, but downstream graph, retrieval, and proof consumers can now rely on one chunk-aware parse envelope across source families.
 
 ## Slice 2: Provenance and transform-lineage alignment
 

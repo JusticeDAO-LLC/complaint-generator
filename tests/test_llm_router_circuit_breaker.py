@@ -107,16 +107,17 @@ class TestLLMRouterCircuitBreaker:
         # Wait for timeout (2 seconds configured)
         time.sleep(2.1)
         
-        # Next call should transition to HALF_OPEN
-        # We need to catch the exception since the mock still raises
+        # The next call should transition to HALF_OPEN and execute one probe.
+        # A failed probe must propagate its router error and reopen the circuit.
         mock_generate_text.call_count = 0  # Reset counter
-        try:
+        with pytest.raises(
+            Exception,
+            match=r"^llm_router_error: Service unavailable$",
+        ):
             backend_with_breaker("test prompt")
-        except Exception:
-            pass
         
-        # Should have attempted the call (HALF_OPEN allows试)
-        assert mock_generate_text.call_count > 0
+        assert mock_generate_text.call_count == 1
+        assert backend_with_breaker.get_circuit_breaker_state()['state'] == 'OPEN'
 
     def test_circuit_closes_after_successful_half_open_call(self, backend_with_breaker, mock_generate_text):
         """Circuit breaker closes after successful call in HALF_OPEN state."""

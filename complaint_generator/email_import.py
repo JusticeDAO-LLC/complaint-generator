@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from ipfs_datasets_py.processors.legal_data import email_import as _email_import
+from integrations.ipfs_datasets.legal_data import legal_module
+
+_email_import = legal_module("email_import")
 
 build_complaint_terms = _email_import.build_complaint_terms
 build_xoauth2_bytes = _email_import.build_xoauth2_bytes

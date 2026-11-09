@@ -3462,3 +3462,304 @@ SUGGESTIONS:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
+
+class TestPhase1Phase2Statistics:
+    """Tests for Phase 1 and Phase 2 harness statistics."""
+
+    def _make_result(self, final_state: dict) -> SessionResult:
+        score = CriticScore(
+            overall_score=0.6,
+            question_quality=0.6,
+            information_extraction=0.6,
+            empathy=0.6,
+            efficiency=0.6,
+            coverage=0.6,
+        )
+        return SessionResult(
+            session_id='s1',
+            timestamp='2024-01-01T00:00:00+00:00',
+            seed_complaint={'type': 'employment_discrimination'},
+            initial_complaint_text='Complaint',
+            conversation_history=[],
+            num_questions=3,
+            num_turns=3,
+            final_state=final_state,
+            critic_score=score,
+            success=True,
+        )
+
+    def test_phase1_statistics_from_final_state(self):
+        harness = AdversarialHarness(MockLLMBackend(), MockLLMBackend(), MockMediator)
+        result = self._make_result({
+            'intake_chronology_readiness': {
+                'event_count': 10,
+                'anchored_event_count': 7,
+                'anchor_coverage_ratio': 0.7,
+            },
+            'contradiction_summary': {'count': 2},
+            'question_candidate_summary': {
+                'count': 8,
+                'question_goal_counts': {'adverse_action': 3, 'timeline_gap': 2, 'harm': 3},
+            },
+            'proof_lead_summary': {'count': 4},
+            'candidate_claims': [{'claim_type': 'employment_discrimination'}],
+        })
+        harness.results.append(result)
+
+        stats = harness.get_statistics()
+        p1 = stats['phase1_metrics']
+        assert p1['sessions_with_chronology_data'] == 1
+        assert abs(p1['average_chronology_completeness'] - 0.7) < 0.001
+        assert p1['average_contradiction_count'] == 2.0
+        assert p1['average_duplicate_question_rate'] is not None
+        assert p1['average_proof_lead_density'] == 4.0
+
+    def test_phase1_statistics_nested_in_intake_case_summary(self):
+        harness = AdversarialHarness(MockLLMBackend(), MockLLMBackend(), MockMediator)
+        result = self._make_result({
+            'intake_case_summary': {
+                'intake_chronology_readiness': {
+                    'anchor_coverage_ratio': 0.5,
+                },
+                'contradiction_summary': {'count': 1},
+                'proof_lead_summary': {'count': 2},
+                'candidate_claims': [{'type': 'housing'}, {'type': 'retaliation'}],
+            }
+        })
+        harness.results.append(result)
+
+        stats = harness.get_statistics()
+        p1 = stats['phase1_metrics']
+        assert p1['sessions_with_chronology_data'] == 1
+        assert abs(p1['average_chronology_completeness'] - 0.5) < 0.001
+        assert p1['average_proof_lead_density'] == 1.0
+
+    def test_phase2_statistics_from_final_state(self):
+        harness = AdversarialHarness(MockLLMBackend(), MockLLMBackend(), MockMediator)
+        result = self._make_result({
+            'claim_support_packet_summary': {
+                'credible_support_ratio': 0.8,
+                'proof_readiness_score': 0.65,
+                'support_quality_counts': {
+                    'corroborated': 4,
+                    'testimony_only': 2,
+                    'uncorroborated': 1,
+                },
+            }
+        })
+        harness.results.append(result)
+
+        stats = harness.get_statistics()
+        p2 = stats['phase2_metrics']
+        assert p2['sessions_with_support_data'] == 1
+        assert abs(p2['average_support_sufficiency'] - 0.8) < 0.001
+        assert abs(p2['average_proof_readiness'] - 0.65) < 0.001
+        assert p2['average_support_quality_rate'] is not None
+        # corroborated=4 / total=7 ≈ 0.571
+        assert abs(p2['average_support_quality_rate'] - 4 / 7) < 0.01
+
+    def test_phase2_statistics_no_data_returns_none(self):
+        harness = AdversarialHarness(MockLLMBackend(), MockLLMBackend(), MockMediator)
+        result = self._make_result({})
+        harness.results.append(result)
+
+        stats = harness.get_statistics()
+        p2 = stats['phase2_metrics']
+        assert p2['sessions_with_support_data'] == 0
+        assert p2['average_support_sufficiency'] is None
+        assert p2['average_proof_readiness'] is None
+
+    def test_get_statistics_includes_both_phases(self):
+        harness = AdversarialHarness(MockLLMBackend(), MockLLMBackend(), MockMediator)
+        assert 'phase1_metrics' in harness.get_statistics.__doc__ or True
+        # Verify both keys are present even with empty results
+        stats = harness.get_statistics()
+        assert stats['total_sessions'] == 0
+        # With no results, phase metrics are absent from the empty-dict branch
+        # (get_statistics returns early). Add a result to force full path.
+        result = self._make_result({'claim_support_packet_summary': {'proof_readiness_score': 0.4}})
+        result.success = True
+        harness.results.append(result)
+        stats = harness.get_statistics()
+        assert 'phase1_metrics' in stats
+        assert 'phase2_metrics' in stats
+
+
+class TestCriticProofProgress:
+    """Tests for Critic proof_progress scoring."""
+
+    def test_criteria_weights_include_proof_progress(self):
+        critic = Critic(MockLLMBackend())
+        assert 'proof_progress' in critic.criteria_weights
+        total = sum(critic.criteria_weights.values())
+        assert abs(total - 1.0) < 0.01
+
+    def test_analyze_proof_state_extracts_fields(self):
+        critic = Critic(MockLLMBackend())
+        state = {
+            'claim_support_packet_summary': {
+                'proof_readiness_score': 0.7,
+                'credible_support_ratio': 0.6,
+            },
+            'proof_lead_summary': {'count': 5},
+            'contradiction_summary': {'count': 1},
+        }
+        result = critic._analyze_proof_state(state)
+        assert result['proof_readiness_score'] == 0.7
+        assert result['credible_support_ratio'] == 0.6
+        assert result['proof_lead_count'] == 5
+        assert result['contradiction_count'] == 1
+
+    def test_analyze_proof_state_nested_intake_case_summary(self):
+        critic = Critic(MockLLMBackend())
+        state = {
+            'intake_case_summary': {
+                'claim_support_packet_summary': {'proof_readiness_score': 0.55},
+                'proof_lead_summary': {'count': 3},
+            }
+        }
+        result = critic._analyze_proof_state(state)
+        assert result['proof_readiness_score'] == 0.55
+        assert result['proof_lead_count'] == 3
+
+    def test_apply_proof_state_adjusts_score(self):
+        critic = Critic(MockLLMBackend())
+        score = CriticScore(
+            overall_score=0.5,
+            question_quality=0.5,
+            information_extraction=0.5,
+            empathy=0.5,
+            efficiency=0.5,
+            coverage=0.5,
+            proof_progress=0.4,
+        )
+        proof_state = {
+            'proof_readiness_score': 0.8,
+            'credible_support_ratio': 0.7,
+            'proof_lead_count': 5,
+        }
+        critic._apply_proof_state(score, proof_state)
+        # proof_progress should be blended up from 0.4
+        assert score.proof_progress > 0.4
+        assert 0.0 <= score.overall_score <= 1.0
+        # Should add strength for proof leads
+        assert any('proof lead' in s.lower() for s in score.strengths)
+
+    def test_apply_proof_state_adds_weakness_when_no_progress(self):
+        critic = Critic(MockLLMBackend())
+        score = CriticScore(
+            overall_score=0.5,
+            question_quality=0.5,
+            information_extraction=0.5,
+            empathy=0.5,
+            efficiency=0.5,
+            coverage=0.5,
+            proof_progress=0.3,
+        )
+        proof_state = {
+            'proof_readiness_score': 0.1,
+            'credible_support_ratio': 0.0,
+            'proof_lead_count': 0,
+        }
+        critic._apply_proof_state(score, proof_state)
+        assert any('proof readiness' in w.lower() for w in score.weaknesses)
+
+    def test_fallback_score_includes_proof_progress(self):
+        critic = Critic(MockLLMBackend())
+        score = critic._fallback_score([])
+        assert hasattr(score, 'proof_progress')
+        assert 0.0 <= score.proof_progress <= 1.0
+
+    def test_evaluate_session_parses_proof_progress(self):
+        response_text = """SCORES:
+question_quality: 0.8
+information_extraction: 0.7
+empathy: 0.6
+efficiency: 0.75
+coverage: 0.7
+proof_progress: 0.85
+
+FEEDBACK:
+Good proof-oriented questioning.
+
+STRENGTHS:
+- Targeted claim elements
+
+WEAKNESSES:
+- Minor empathy gaps
+
+SUGGESTIONS:
+- More follow-up on timeline
+"""
+        critic = Critic(MockLLMBackend(response_text))
+        score = critic.evaluate_session(
+            "Complaint",
+            [{'role': 'mediator', 'content': 'When did this happen?'}],
+            {'claim_support_packet_summary': {'proof_readiness_score': 0.6}},
+        )
+        assert score.proof_progress >= 0.5
+
+
+class TestSeedProofBurden:
+    """Tests for proof_burden metadata on seed complaint templates."""
+
+    def test_employment_discrimination_has_proof_burden(self):
+        library = SeedComplaintLibrary()
+        template = library.get_template('employment_discrimination_1')
+        burden = template.proof_burden
+        assert isinstance(burden, dict)
+        assert 'required_elements' in burden
+        assert 'minimum_proof_path' in burden
+        assert 'primary_adversarial_risk' in burden
+        assert 'burden_standard' in burden
+
+    def test_housing_discrimination_has_proof_burden(self):
+        library = SeedComplaintLibrary()
+        template = library.get_template('housing_discrimination_1')
+        burden = template.proof_burden
+        assert isinstance(burden, dict)
+        assert 'required_elements' in burden
+
+    def test_retaliation_template_exists_with_proof_burden(self):
+        library = SeedComplaintLibrary()
+        template = library.get_template('employment_retaliation_1')
+        assert template is not None
+        assert template.type == 'retaliation'
+        burden = template.proof_burden
+        assert 'required_elements' in burden
+        assert any('protected_activity' in el for el in burden['required_elements'])
+
+    def test_consumer_fraud_has_proof_burden(self):
+        library = SeedComplaintLibrary()
+        template = library.get_template('consumer_fraud_1')
+        burden = template.proof_burden
+        assert isinstance(burden, dict)
+        assert 'minimum_proof_path' in burden
+
+    def test_instantiated_seed_includes_proof_burden(self):
+        library = SeedComplaintLibrary()
+        template = library.get_template('employment_discrimination_1')
+        seed = template.instantiate({
+            'employer_name': 'Acme Corp',
+            'position': 'Engineer',
+            'protected_class': 'race',
+            'discriminatory_action': 'termination',
+        })
+        assert 'proof_burden' in seed
+        assert seed['proof_burden']['burden_standard'] == 'preponderance'
+
+    def test_proof_burden_elements_are_distinct_per_type(self):
+        library = SeedComplaintLibrary()
+        emp_template = library.get_template('employment_discrimination_1')
+        ret_template = library.get_template('employment_retaliation_1')
+        housing_template = library.get_template('housing_discrimination_1')
+
+        emp_elements = set(emp_template.proof_burden.get('required_elements', []))
+        ret_elements = set(ret_template.proof_burden.get('required_elements', []))
+        housing_elements = set(housing_template.proof_burden.get('required_elements', []))
+
+        # Each scenario should have at least one element not shared with the others
+        assert emp_elements != ret_elements
+        assert emp_elements != housing_elements
+

@@ -1,0 +1,83 @@
+{
+  "skill_asset_id": "complaint-draft-logic-pipeline",
+  "version": "1.0.0",
+  "name": "Complaint draft-text \u2192 formal-logic \u2192 theorem-prover pipeline",
+  "description": "Orchestrates the full five-step proof pipeline for a complaint draft body: (A) text_to_fol, (B) legal_text_to_deontic, (C) constrain_assertions_to_corpus, (D) prove_claim_elements, (E) check_policy_rules_with_deontic_norms. Returns a DraftProofReport with proof_status, contradictions, corpus coverage, deontic norms, policy violations, and Lean 4 / Coq theorem exports.",
+  "capability": "draft_logic_pipeline",
+  "adapter": "integrations/ipfs_datasets/draft_logic_pipeline.py",
+  "entry_point": "run_pipeline",
+  "env_gate": "COMPLAINT_USE_DRAFT_LOGIC_PIPELINE",
+  "required_for_grounding_modes": ["legal_corpus_only", "strict_legal_containment"],
+  "pipeline_steps": [
+    {
+      "step": "A",
+      "name": "text_to_fol",
+      "description": "Convert draft body to FOL predicates.",
+      "adapter": "integrations/ipfs_datasets/logic.py",
+      "entry_point": "text_to_fol"
+    },
+    {
+      "step": "B",
+      "name": "legal_text_to_deontic",
+      "description": "Extract deontic norms from the draft.",
+      "adapter": "integrations/ipfs_datasets/logic.py",
+      "entry_point": "legal_text_to_deontic"
+    },
+    {
+      "step": "C",
+      "name": "constrain_assertions_to_corpus",
+      "description": "Ground FOL assertions against the legal corpus.",
+      "adapter": "integrations/ipfs_datasets/legal.py",
+      "entry_point": "constrain_assertions_to_corpus"
+    },
+    {
+      "step": "D",
+      "name": "prove_claim_elements",
+      "description": "Run hybrid reasoner + Z3 SMT proof.",
+      "adapter": "integrations/ipfs_datasets/logic.py",
+      "entry_point": "prove_claim_elements"
+    },
+    {
+      "step": "E",
+      "name": "check_policy_rules_with_deontic_norms",
+      "description": "Check deontic policy rule compliance.",
+      "adapter": "integrations/ipfs_datasets/policy_rules.py",
+      "entry_point": "check_policy_rules_with_deontic_norms"
+    }
+  ],
+  "inputs": {
+    "body": {"type": "string", "description": "The full draft complaint body text."},
+    "state": {"type": "string", "description": "Optional US state code.", "nullable": true},
+    "allow_live_scrape_fallback": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to permit live-scrape calls for corpus searches."
+    }
+  },
+  "outputs": {
+    "proof_status": {"type": "string", "enum": ["passed", "needs_review", "error", "failed"]},
+    "contradiction_count": {"type": "integer"},
+    "chronology_blocked": {"type": "boolean"},
+    "ungrounded_assertions": {"type": "array"},
+    "corpus_coverage_percent": {"type": "integer", "nullable": true},
+    "norms": {"type": "array"},
+    "policy_violations": {"type": "array"},
+    "policy_warnings": {"type": "array"},
+    "has_blockers": {"type": "boolean"},
+    "theorem_export": {
+      "type": "object",
+      "description": "Lean 4 and Coq exports of the TDFOL/DCEC formula set.",
+      "properties": {
+        "lean4": {"type": "string"},
+        "coq": {"type": "string"},
+        "export_version": {"type": "string"}
+      }
+    },
+    "pipeline_version": {"type": "string"}
+  },
+  "editor_integration": {
+    "panel": "proof_readiness_flags",
+    "displays": ["proof_status", "contradiction_count", "corpus_coverage_percent", "has_blockers", "theorem_export"],
+    "block_on_blockers": true
+  }
+}

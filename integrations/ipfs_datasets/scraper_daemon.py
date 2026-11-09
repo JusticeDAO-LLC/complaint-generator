@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 from urllib.parse import urlparse
 
@@ -109,6 +111,38 @@ class ScraperDaemon:
         self.config = config or ScraperDaemonConfig()
         self.coverage_ledger: Dict[str, Dict[str, Any]] = {}
         self.tactic_history: Dict[str, List[float]] = {}
+        self._last_status = self._build_status_payload(status="idle")
+
+    def _build_status_payload(
+        self,
+        *,
+        status: str,
+        artifacts: Optional[Dict[str, Any]] = None,
+        last_error: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return {
+            "status": status,
+            "pid": os.getpid(),
+            "updated_at": datetime.now(UTC).isoformat(),
+            "artifacts": dict(artifacts or {}),
+            "last_error": last_error,
+        }
+
+    def status_payload(self) -> Dict[str, Any]:
+        """Return the most recent run status using the common daemon contract."""
+
+        payload = dict(self._last_status)
+        payload["artifacts"] = dict(payload.get("artifacts") or {})
+        return payload
+
+    @staticmethod
+    def _artifact_summary(result: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "iteration_report_count": len(result.get("iterations") or []),
+            "final_result_count": len(result.get("final_results") or []),
+            "coverage_ledger_entry_count": len(result.get("coverage_ledger") or {}),
+            "tactic_history_count": len(result.get("tactic_history") or {}),
+        }
 
     def _default_tactics(self) -> List[ScraperTactic]:
         return [
@@ -312,11 +346,11 @@ class ScraperDaemon:
             )
         return sorted(optimized, key=lambda tactic: tactic.weight, reverse=True)
 
-    def run(self,
-            *,
-            keywords: Sequence[str],
-            domains: Optional[Sequence[str]] = None,
-            tactics: Optional[Sequence[ScraperTactic]] = None) -> Dict[str, Any]:
+    def _run_iterations(self,
+                        *,
+                        keywords: Sequence[str],
+                        domains: Optional[Sequence[str]] = None,
+                        tactics: Optional[Sequence[ScraperTactic]] = None) -> Dict[str, Any]:
         active_tactics = list(tactics or self._default_tactics())
         iterations: List[Dict[str, Any]] = []
         all_accepted: List[Dict[str, Any]] = []
@@ -391,6 +425,31 @@ class ScraperDaemon:
                 domain=self.config.quality_domain,
             ),
         }
+
+    def run(self,
+            *,
+            keywords: Sequence[str],
+            domains: Optional[Sequence[str]] = None,
+            tactics: Optional[Sequence[ScraperTactic]] = None) -> Dict[str, Any]:
+        """Run the scraper and return legacy results plus standard status fields."""
+
+        self._last_status = self._build_status_payload(status="running")
+        try:
+            result = self._run_iterations(keywords=keywords, domains=domains, tactics=tactics)
+        except Exception as exc:
+            self._last_status = self._build_status_payload(
+                status="error",
+                last_error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+
+        status_payload = self._build_status_payload(
+            status="completed",
+            artifacts=self._artifact_summary(result),
+        )
+        result.update(status_payload)
+        self._last_status = dict(status_payload)
+        return result
 
 
 __all__ = [

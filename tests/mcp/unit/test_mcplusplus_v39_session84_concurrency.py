@@ -408,10 +408,7 @@ class TestLoggingConcurrentStress:
         with ThreadPoolExecutor(max_workers=250) as executor:
             futures = [executor.submit(worker, i) for i in range(500)]
             for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception:
-                    pass
+                future.result()
         
         metrics.total_duration_seconds = time.time() - start
         

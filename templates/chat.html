@@ -7,6 +7,15 @@
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="/static/complaint_app_shell.css">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script>
+        (function() {
+            const params = new URLSearchParams(window.location.search || '');
+            const source = String(params.get('source') || '');
+            if (params.get('chat_context') && /docket|filing|document/i.test(source)) {
+                window.__complaintAppShellDisabled = true;
+            }
+        })();
+    </script>
     <style>
         :root {
             --bg-top: #f7efe3;
@@ -48,6 +57,8 @@
             width: min(var(--content-width), calc(100% - 30px));
             margin: 0 auto;
             padding: 24px 0 56px;
+            display: flex;
+            flex-direction: column;
         }
 
         .masthead,
@@ -130,11 +141,46 @@
             font-weight: 700;
         }
 
+        .surface-nav-disclosure {
+            margin-top: 12px;
+        }
+
+        .surface-nav-summary {
+            cursor: pointer;
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .surface-nav-disclosure .surface-links {
+            margin-top: 10px;
+        }
+
+        .topbar-links {
+            display: none;
+        }
+
         .hero {
-            margin-top: 24px;
+            margin-top: 16px;
             display: grid;
-            grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
-            gap: 22px;
+            grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+            gap: 18px;
+            order: 3;
+        }
+
+        body.has-selected-filing-chat .hero {
+            display: none;
+        }
+
+        body.has-selected-filing-chat .topbar-links,
+        body.has-selected-filing-chat .masthead > .surface-links {
+            display: none;
+        }
+
+        body.has-selected-filing-chat .masthead {
+            padding-bottom: 16px;
         }
 
         .hero-card,
@@ -152,10 +198,10 @@
         }
 
         h1 {
-            margin-top: 10px;
-            max-width: 11ch;
-            font-size: clamp(2.4rem, 4vw, 3.9rem);
-            line-height: 0.98;
+            margin-top: 8px;
+            max-width: 18ch;
+            font-size: clamp(2.1rem, 2.7vw, 3rem);
+            line-height: 1.04;
         }
 
         .hero-copy,
@@ -170,9 +216,10 @@
         }
 
         .hero-copy {
-            margin: 18px 0 0;
+            margin: 12px 0 0;
             max-width: 64ch;
             font-size: 1.04rem;
+            line-height: 1.55;
         }
 
         .cta-primary,
@@ -199,7 +246,7 @@
         }
 
         .summary-grid {
-            display: grid;
+            display: none;
             grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 16px;
             margin-top: 24px;
@@ -218,24 +265,112 @@
             font-size: 1.02rem;
         }
 
-        .workspace-grid {
-            margin-top: 24px;
-            display: grid;
-            grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
-            gap: 22px;
-            align-items: start;
-        }
-
-        .chat-card {
+        .selected-filing-hero {
             display: grid;
             gap: 18px;
+            grid-template-columns: minmax(0, 1.12fr) minmax(300px, 0.88fr);
+            margin-top: 16px;
+            padding: 24px;
+            border-radius: var(--radius-xl);
+            border: 2px solid rgba(33, 77, 60, 0.22);
+            background: rgba(244, 250, 246, 0.98);
+            box-shadow: var(--shadow);
+            order: 1;
         }
+
+        .selected-filing-hero[hidden] {
+            display: none;
+        }
+
+        .selected-filing-copy,
+        .selected-filing-side {
+            display: grid;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .selected-filing-title {
+            margin: 0;
+            color: var(--forest);
+            font: 800 clamp(1.7rem, 2.5vw, 2.45rem)/1.06 "Newsreader", Georgia, serif;
+        }
+
+        .selected-filing-detail,
+        .selected-filing-question {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .selected-filing-question {
+            padding: 12px 14px;
+            border-left: 4px solid rgba(33, 77, 60, 0.44);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--ink);
+            font-weight: 760;
+        }
+
+        .selected-filing-meta {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .selected-filing-meta-item {
+            padding: 12px;
+            border-radius: 14px;
+            border: 1px solid rgba(33, 77, 60, 0.14);
+            background: rgba(255, 255, 255, 0.76);
+        }
+
+        .selected-filing-meta-item b,
+        .selected-filing-meta-item span {
+            display: block;
+        }
+
+        .selected-filing-meta-item b {
+            color: var(--forest);
+            font-size: 0.72rem;
+            font-weight: 900;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .selected-filing-meta-item span {
+            margin-top: 4px;
+            color: var(--ink);
+            font-weight: 760;
+            overflow-wrap: anywhere;
+        }
+
+        .selected-filing-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+	        .workspace-grid {
+	            margin-top: 24px;
+	            display: grid;
+	            grid-template-columns: minmax(720px, 2fr) minmax(320px, 0.72fr);
+	            gap: 24px;
+	            align-items: start;
+                order: 2;
+	        }
+
+	        .chat-card {
+	            display: grid;
+	            gap: 18px;
+	            min-width: 0;
+	        }
 
         .chat-header {
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
             gap: 16px;
+            order: 1;
         }
 
         #profile {
@@ -256,10 +391,11 @@
             background: var(--danger-bg);
             color: var(--danger-ink);
             font-weight: 700;
+            order: 2;
         }
 
         #messages {
-            min-height: 460px;
+            min-height: 300px;
             max-height: 620px;
             overflow: auto;
             padding: 20px;
@@ -267,6 +403,7 @@
             border: 1px solid var(--line);
             background:
                 linear-gradient(180deg, rgba(255, 252, 248, 0.96), rgba(250, 243, 235, 0.96));
+            order: 8;
         }
 
         .chat-message {
@@ -294,6 +431,7 @@
             gap: 12px;
             align-items: center;
             margin: 0;
+            order: 5;
         }
 
         #chat-form .form-control {
@@ -314,6 +452,139 @@
             font-weight: 800;
         }
 
+        #chat-form button:disabled {
+            opacity: 0.58;
+            cursor: not-allowed;
+            filter: saturate(0.75);
+        }
+
+        .chat-composer-readiness {
+            margin: -6px 0 0;
+            color: var(--muted);
+            font-size: 0.92rem;
+            font-weight: 800;
+            order: 6;
+        }
+
+        .chat-composer-readiness.is-ready {
+            color: var(--forest);
+        }
+
+        .chat-composer-readiness.is-warning {
+            color: var(--accent-deep);
+        }
+
+        .grounding-preview {
+            display: grid;
+            gap: 14px;
+            padding: 18px 20px;
+            border-radius: var(--radius-md);
+            border: 2px solid rgba(33, 77, 60, 0.24);
+            background: rgba(244, 250, 246, 0.98);
+            box-shadow: 0 12px 28px rgba(33, 77, 60, 0.08);
+            order: 7;
+        }
+
+        .grounding-preview[hidden] {
+            display: none;
+        }
+
+        .grounding-preview-header {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 12px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .grounding-preview-header strong {
+            color: var(--forest);
+            font-size: 1.08rem;
+        }
+
+        .grounding-preview-route {
+            display: inline-flex;
+            min-height: 28px;
+            align-items: center;
+            border-radius: 999px;
+            padding: 4px 10px;
+            background: rgba(33, 77, 60, 0.12);
+            color: var(--forest);
+            font-size: 0.78rem;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .grounding-preview-body {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .grounding-preview-item {
+            display: grid;
+            gap: 4px;
+            min-width: 0;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: rgba(255, 253, 250, 0.92);
+            border: 1px solid rgba(33, 77, 60, 0.12);
+        }
+
+        .grounding-preview-item b {
+            color: var(--forest);
+            font-size: 0.78rem;
+            text-transform: uppercase;
+        }
+
+        .grounding-preview-item span {
+            color: var(--ink);
+            font-weight: 800;
+            font-size: 0.96rem;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .grounding-preview-details {
+            border-radius: 14px;
+            border: 1px solid rgba(33, 77, 60, 0.12);
+            background: rgba(255, 253, 250, 0.92);
+            padding: 12px 14px;
+        }
+
+        .grounding-preview-details summary {
+            cursor: pointer;
+            color: var(--forest);
+            font-weight: 900;
+        }
+
+        .grounding-preview-excerpt {
+            margin: 8px 0 0;
+            color: var(--muted);
+            font-size: 0.96rem;
+            line-height: 1.55;
+        }
+
+        .grounding-preview-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .grounding-preview-actions a {
+            display: inline-flex;
+            min-height: 40px;
+            align-items: center;
+            border-radius: 999px;
+            padding: 0 14px;
+            background: rgba(33, 77, 60, 0.10);
+            color: var(--forest);
+            font-weight: 900;
+            text-decoration: none;
+        }
+
         .support-card {
             display: grid;
             gap: 18px;
@@ -331,6 +602,134 @@
             padding: 20px 22px;
         }
 
+        .panel-card.is-secondary-context {
+            box-shadow: none;
+            background: rgba(255, 252, 248, 0.76);
+        }
+
+        .panel-card.is-secondary-context h3 {
+            font-size: 1rem;
+        }
+
+        #chat-context-card {
+            order: 4;
+        }
+
+        #chat-intake-denoise-card {
+            order: 7;
+        }
+
+	        .router-status {
+	            display: none;
+	            padding: 14px 16px;
+	            border-radius: var(--radius-md);
+	            border: 1px solid rgba(33, 77, 60, 0.16);
+	            background: rgba(223, 240, 231, 0.82);
+	            color: var(--forest);
+	            font-weight: 800;
+	            line-height: 1.5;
+                order: 3;
+	        }
+
+	        .router-status.is-visible {
+	            display: block;
+	        }
+
+	        .active-context-strip {
+	            display: grid;
+	            grid-template-columns: auto minmax(0, 1fr);
+	            gap: 8px 14px;
+	            align-items: center;
+	            padding: 14px 16px;
+	            border-radius: var(--radius-md);
+	            border: 1px solid rgba(33, 77, 60, 0.18);
+	            background: rgba(255, 253, 250, 0.94);
+                order: 7;
+	        }
+
+	        .active-context-strip[hidden] {
+	            display: none;
+	        }
+
+	        .context-mode-pill {
+	            display: inline-flex;
+	            align-items: center;
+	            justify-content: center;
+	            min-height: 30px;
+	            padding: 0 12px;
+	            border-radius: 999px;
+	            background: rgba(33, 77, 60, 0.1);
+	            color: var(--forest);
+	            font-size: 0.78rem;
+	            font-weight: 900;
+	            text-transform: uppercase;
+	        }
+
+	        .active-context-strip strong,
+	        .active-context-strip span:last-child {
+	            min-width: 0;
+	        }
+
+	        .active-context-strip strong {
+	            overflow: hidden;
+	            text-overflow: ellipsis;
+	            white-space: nowrap;
+	        }
+
+	        .active-context-strip span:last-child {
+	            grid-column: 2;
+	            color: var(--muted);
+	            line-height: 1.45;
+	        }
+
+	        .context-field-grid {
+	            grid-column: 1 / -1;
+	            display: grid;
+	            gap: 8px;
+	            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	            margin-top: 4px;
+	        }
+
+	        .context-field {
+	            display: grid;
+	            gap: 2px;
+	            padding: 10px 12px;
+	            border-radius: 14px;
+	            background: rgba(33, 77, 60, 0.06);
+	            border: 1px solid rgba(33, 77, 60, 0.10);
+	        }
+
+	        .context-field b {
+	            color: var(--forest);
+	            font-size: 0.74rem;
+	            text-transform: uppercase;
+	        }
+
+	        .context-field span {
+	            color: var(--ink);
+	            font-weight: 800;
+	            overflow: hidden;
+	            text-overflow: ellipsis;
+	            white-space: nowrap;
+	        }
+
+	        .prompt-chip-row {
+	            display: flex;
+	            flex-wrap: wrap;
+	            gap: 10px;
+	            margin-top: 12px;
+	        }
+
+	        .prompt-chip-row button {
+	            min-height: 40px;
+	            border-radius: 999px;
+	            border: 1px solid rgba(33, 77, 60, 0.16);
+	            background: rgba(223, 240, 231, 0.78);
+	            color: var(--forest);
+	            font-weight: 800;
+	            padding: 0 14px;
+	        }
+
         .action-stack {
             display: grid;
             gap: 12px;
@@ -346,6 +745,107 @@
             width: fit-content;
         }
 
+        .next-step-card {
+            padding: 20px 22px;
+            border-radius: var(--radius-lg);
+            border: 1px solid rgba(33, 77, 60, 0.18);
+            background: rgba(244, 250, 246, 0.92);
+            box-shadow: 0 16px 34px rgba(64, 35, 15, 0.08);
+        }
+
+        .stage-badge {
+            display: inline-flex;
+            width: fit-content;
+            align-items: center;
+            min-height: 30px;
+            padding: 0 12px;
+            border-radius: 999px;
+            background: rgba(33, 77, 60, 0.12);
+            color: var(--forest);
+            font-size: 0.78rem;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .next-step-card h3 {
+            margin: 12px 0 8px;
+        }
+
+        .stage-primary-action {
+            display: inline-flex;
+            justify-content: center;
+            width: 100%;
+            margin-top: 16px;
+            min-height: 46px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #214d3c, #2e6b54);
+            color: #fffaf5;
+            font-weight: 900;
+            text-decoration: none;
+            align-items: center;
+            box-shadow: 0 14px 28px rgba(33, 77, 60, 0.18);
+        }
+
+        .stage-progress-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .stage-progress-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 6px 12px;
+            padding: 14px 16px;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(116, 40, 9, 0.1);
+            background: rgba(255, 252, 248, 0.9);
+        }
+
+        .stage-progress-item strong {
+            min-width: 0;
+        }
+
+        .stage-progress-item span {
+            grid-column: 1 / -1;
+            color: var(--muted);
+            line-height: 1.4;
+        }
+
+        .stage-status {
+            display: inline-flex;
+            align-items: center;
+            min-height: 26px;
+            padding: 0 10px;
+            border-radius: 999px;
+            background: rgba(116, 40, 9, 0.08);
+            color: var(--accent-deep);
+            font-size: 0.78rem;
+            font-weight: 900;
+        }
+
+        .stage-progress-item.is-current {
+            border-color: rgba(33, 77, 60, 0.28);
+            background: rgba(244, 250, 246, 0.94);
+        }
+
+        .stage-progress-item.is-current .stage-status {
+            background: rgba(33, 77, 60, 0.12);
+            color: var(--forest);
+        }
+
+        .more-actions {
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(116, 40, 9, 0.12);
+            background: rgba(255, 252, 248, 0.84);
+            padding: 14px 16px;
+        }
+
+        .more-actions summary {
+            cursor: pointer;
+            color: var(--accent-deep);
+            font-weight: 900;
+        }
+
         .panel-actions {
             display: flex;
             flex-wrap: wrap;
@@ -355,7 +855,8 @@
 
         @media (max-width: 1120px) {
             .hero,
-            .workspace-grid {
+            .workspace-grid,
+            .selected-filing-hero {
                 grid-template-columns: 1fr;
             }
 
@@ -387,6 +888,19 @@
                 grid-template-columns: 1fr;
             }
 
+            .selected-filing-hero {
+                padding: 18px;
+                border-radius: 18px;
+            }
+
+            .selected-filing-meta {
+                grid-template-columns: 1fr;
+            }
+
+            .selected-filing-actions {
+                flex-direction: column;
+            }
+
             #chat-form {
                 grid-template-columns: 1fr;
             }
@@ -397,6 +911,22 @@
 
             .chat-header {
                 flex-direction: column;
+            }
+
+            .active-context-strip {
+                grid-template-columns: 1fr;
+            }
+
+            .active-context-strip span:last-child {
+                grid-column: auto;
+            }
+
+            .context-field-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .grounding-preview-body {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -427,18 +957,57 @@
 
             <nav class="surface-links" data-surface-nav="primary" aria-label="Complaint Generator Navigation">
                 <a class="surface-link" href="/">Landing</a>
-                <a class="surface-link" href="/home">Account</a>
+                <a class="surface-link" href="/home">Secure Intake</a>
                 <a class="surface-link" id="chat-nav-chat" href="/chat">Chat</a>
-                <a class="surface-link" id="chat-nav-profile" href="/profile">Profile</a>
-                <a class="surface-link" id="chat-nav-results" href="/results">Results</a>
+                <a class="surface-link" id="chat-nav-workspace" href="/workspace">Workspace</a>
                 <a class="surface-link" id="chat-nav-review" href="/claim-support-review">Review</a>
                 <a class="surface-link" id="chat-nav-builder" href="/document">Builder</a>
-                <a class="surface-link" id="chat-nav-trace" href="/document/optimization-trace">Trace</a>
-                <a class="surface-link" href="/mlwysiwyg">Editor</a>
-                <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
-                <a class="surface-link" href="/dashboards">Dashboards</a>
             </nav>
+            <details class="surface-nav-disclosure" id="chat-advanced-nav">
+                <summary class="surface-nav-summary">Advanced tools</summary>
+                <div class="surface-links" aria-label="Advanced tools">
+                    <a class="surface-link" id="chat-nav-profile" href="/profile">Profile</a>
+                    <a class="surface-link" id="chat-nav-results" href="/results">Results</a>
+                    <a class="surface-link" id="chat-nav-trace" href="/document/optimization-trace">Trace</a>
+                    <a class="surface-link" href="/mlwysiwyg">Editor</a>
+                    <a class="surface-link" href="/ipfs-datasets/sdk-playground">SDK</a>
+                    <a class="surface-link" href="/dashboards">Dashboards</a>
+                </div>
+            </details>
         </header>
+
+        <section class="selected-filing-hero" id="chat-selected-filing-hero" hidden aria-label="Selected filing chat context">
+            <div class="selected-filing-copy">
+                <span class="eyebrow" id="chat-selected-filing-badge">Selected filing attached</span>
+                <h1 class="selected-filing-title" id="chat-selected-filing-title">Selected filing attached</h1>
+                <p class="selected-filing-detail" id="chat-selected-filing-detail">This document will stay attached to the next chatbot question.</p>
+                <p class="selected-filing-question" id="chat-selected-filing-question">Prepared question will appear here.</p>
+                <div class="selected-filing-actions">
+                    <a class="cta-primary" href="#chat-form" id="chat-selected-filing-ask-link">Ask About This Filing</a>
+                    <a class="cta-secondary" href="/workspace" id="chat-selected-filing-return-link">Return to workspace</a>
+                </div>
+            </div>
+            <aside class="selected-filing-side" aria-label="Selected filing details">
+                <div class="selected-filing-meta">
+                    <div class="selected-filing-meta-item">
+                        <b>Source</b>
+                        <span id="chat-selected-filing-source">workspace handoff</span>
+                    </div>
+                    <div class="selected-filing-meta-item">
+                        <b>Type</b>
+                        <span id="chat-selected-filing-type">document</span>
+                    </div>
+                    <div class="selected-filing-meta-item">
+                        <b>Scope</b>
+                        <span id="chat-selected-filing-scope">document-aware Q&amp;A</span>
+                    </div>
+                    <div class="selected-filing-meta-item">
+                        <b>Persistence</b>
+                        <span id="chat-selected-filing-persistence">Answer is drafted here only until you explicitly save in Docket.</span>
+                    </div>
+                </div>
+            </aside>
+        </section>
 
         <section class="hero">
             <article class="hero-card">
@@ -494,50 +1063,112 @@
                     <strong id="profile"></strong>
                 </div>
 
-                <div id="Err"></div>
+	                <div id="Err"></div>
 
-                <div class="panel-card" id="chat-context-card" hidden>
-                    <h3>Workspace handoff</h3>
-                    <p id="chat-context-summary">The shared complaint context will appear here when Chat is opened from the workspace.</p>
-                    <p id="chat-context-prefill" class="chat-explanation"></p>
-                    <a class="action-link" id="chat-context-return-link" href="/workspace">Return to workspace</a>
-                </div>
+	                <div class="router-status" id="chat-router-status" role="status">
+	                    Chat is ready. Your complaint context will stay attached as you move between intake, docket review, and drafting.
+	                </div>
 
-                <div id="messages" aria-live="polite"></div>
+	                <div class="panel-card" id="chat-context-card" hidden>
+	                    <h3 id="chat-context-title">Workspace handoff</h3>
+	                    <p id="chat-context-summary">The shared complaint context will appear here when Chat is opened from the workspace.</p>
+	                    <p id="chat-context-prefill" class="chat-explanation"></p>
+	                    <a class="action-link" id="chat-context-return-link" href="/workspace">Return to workspace</a>
+	                </div>
+
+	                <div class="panel-card" id="chat-intake-denoise-card" hidden>
+	                    <h3>Clarify the legal basis</h3>
+	                    <p>The chat can ask targeted questions about people, dates, duties, harms, remedies, and missing proof so the complaint record gets less noisy before review or drafting.</p>
+	                    <div class="prompt-chip-row" aria-label="Intake question prompts">
+	                        <button type="button" data-chat-prompt="Ask me the best next questions to clarify what legal claim my facts may support.">Legal basis</button>
+	                        <button type="button" data-chat-prompt="What dates, deadlines, and sequence details should I clarify next?">Dates</button>
+	                        <button type="button" data-chat-prompt="What evidence should I upload or label to support this story?">Evidence</button>
+	                        <button type="button" data-chat-prompt="What facts are missing before I should move to proof review or drafting?">Missing facts</button>
+	                    </div>
+	                </div>
+
+	                <div id="messages" aria-live="polite"></div>
+
+	                <div class="active-context-strip" id="chat-active-context-strip">
+	                    <span class="context-mode-pill" id="chat-active-context-mode">Intake</span>
+	                    <strong id="chat-active-context-title">No active document selected</strong>
+	                    <span id="chat-active-context-detail">Messages will use the current complaint session and can be carried into review, evidence organization, or drafting.</span>
+	                    <div class="context-field-grid" id="chat-active-context-fields" hidden>
+	                        <div class="context-field"><b>Filing</b><span id="chat-context-field-filing">none selected</span></div>
+	                        <div class="context-field"><b>Date</b><span id="chat-context-field-date">not found</span></div>
+	                        <div class="context-field"><b>Use</b><span id="chat-context-field-use">not classified</span></div>
+	                        <div class="context-field"><b>Router</b><span id="chat-context-field-router">general intake</span></div>
+	                    </div>
+	                </div>
+
+	                <div class="grounding-preview" id="chat-grounding-preview" hidden aria-label="Grounded router context preview">
+	                    <div class="grounding-preview-header">
+	                        <strong>Current grounded context</strong>
+	                        <span class="grounding-preview-route" id="chat-grounding-route">general intake</span>
+	                    </div>
+	                    <div class="grounding-preview-body">
+	                        <div class="grounding-preview-item"><b>Document</b><span id="chat-grounding-document">none selected</span></div>
+	                        <div class="grounding-preview-item"><b>Labels</b><span id="chat-grounding-labels">none</span></div>
+	                        <div class="grounding-preview-item"><b>Route decision</b><span id="chat-grounding-route-rationale">general intake</span></div>
+	                        <div class="grounding-preview-item"><b>Source</b><span id="chat-grounding-source">workspace handoff</span></div>
+	                    </div>
+	                    <details class="grounding-preview-details" open>
+	                        <summary>Passage excerpt</summary>
+	                        <p class="grounding-preview-excerpt" id="chat-grounding-excerpt">Select a filing from the dashboard to preview the passage or summary that will guide the next answer.</p>
+	                    </details>
+	                    <div class="grounding-preview-actions">
+	                        <a id="chat-grounding-change-link" href="/dashboards#docket-dataset-parquet-dashboard">Change selected filing</a>
+	                        <a id="chat-grounding-return-link" href="/dashboards">Back to docket workspace</a>
+	                    </div>
+	                </div>
 
                 <form class="form-inline" id="chat-form">
                     <input type="text" class="form-control" placeholder="Add the next fact, clarification, or supporting detail">
                     <button id="send" type="submit" class="btn btn-primary">Send</button>
                 </form>
+                <p class="chat-composer-readiness is-warning" id="chat-composer-readiness">Type a question or fact to send. General intake context is active.</p>
             </div>
 
             <aside class="support-card">
                 <span class="eyebrow">Next Connected Steps</span>
-                <div class="action-stack" aria-label="Chat next steps">
-                    <div class="panel-card">
-                        <h3>Workspace</h3>
-                        <p>Return to the complaint workspace when the narrative is clear enough to save the shared synopsis, attach evidence, or move into draft generation.</p>
-                        <a class="action-link" id="chat-open-workspace" href="/workspace">Open workspace</a>
+                <div class="next-step-card" aria-live="polite">
+                    <span class="stage-badge" id="chat-stage-label">Current step</span>
+                    <h3 id="chat-stage-title">Continue intake questioning</h3>
+                    <p id="chat-stage-detail">Use the chat to clarify facts, people, dates, harms, and missing proof before moving to review or drafting.</p>
+                    <a class="stage-primary-action" id="chat-primary-next-action" href="#chat-form">Ask the next intake question</a>
+                </div>
+                <div class="stage-progress-list" aria-label="Complaint workflow stages">
+                    <div class="stage-progress-item is-current" id="chat-stage-intake">
+                        <strong>Intake</strong>
+                        <em class="stage-status">Current</em>
+                        <span>Turn plain-language facts into a cleaner legal story.</span>
                     </div>
-                    <div class="panel-card">
-                        <h3>Profile and results</h3>
-                        <p>Use these surfaces to inspect what the intake has already captured and how the complaint record is being structured.</p>
-                        <div class="panel-actions">
-                            <a class="action-link" id="chat-open-profile" href="/profile">Open profile</a>
-                            <a class="action-link" id="chat-open-results" href="/results">Open results</a>
-                        </div>
+                    <div class="stage-progress-item" id="chat-stage-evidence">
+                        <strong>Evidence</strong>
+                        <em class="stage-status">Next</em>
+                        <span>Attach, label, and ask questions about documents or docket filings.</span>
                     </div>
-                    <div class="panel-card">
-                        <h3>Support review</h3>
-                        <p>Move here when you need to see whether the available facts and proof actually support the legal elements.</p>
-                        <a class="action-link" id="chat-open-review" href="/claim-support-review">Open review</a>
+                    <div class="stage-progress-item" id="chat-stage-review">
+                        <strong>Support review</strong>
+                        <em class="stage-status">Later</em>
+                        <span>Check whether facts and proof support the legal elements.</span>
                     </div>
-                    <div class="panel-card">
-                        <h3>Draft builder</h3>
-                        <p>Use the builder once the story is organized enough to justify a formal complaint draft.</p>
-                        <a class="action-link" id="chat-open-builder" href="/document">Open builder</a>
+                    <div class="stage-progress-item" id="chat-stage-draft">
+                        <strong>Draft</strong>
+                        <em class="stage-status">Later</em>
+                        <span>Move organized facts into complaint or response drafting.</span>
                     </div>
                 </div>
+                <details class="more-actions" open>
+                    <summary>Open another surface</summary>
+                    <div class="action-stack" aria-label="Additional chat destinations">
+                        <a class="action-link" id="chat-open-workspace" href="/workspace">Workspace</a>
+                        <a class="action-link" id="chat-open-profile" href="/profile">Profile</a>
+                        <a class="action-link" id="chat-open-results" href="/results">Results</a>
+                        <a class="action-link" id="chat-open-review" href="/claim-support-review">Support review</a>
+                        <a class="action-link" id="chat-open-builder" href="/document">Draft builder</a>
+                    </div>
+                </details>
             </aside>
         </section>
     </div>

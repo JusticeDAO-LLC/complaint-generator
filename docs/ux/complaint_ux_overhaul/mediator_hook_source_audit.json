@@ -1,0 +1,776 @@
+{
+  "schema": "complaint-ux-mediator-integration-plan-input@1",
+  "audited_at": "2026-10-26T04:42:29.476936+00:00",
+  "source_root": ".",
+  "source_head": "6f27c60c3b49b8bad49088bd46e788fa31c646eb",
+  "audit_actions": "Read-only source/docs/test-definition inspection; no test/browser/provider/runtime/Git/SDK/campaign actions. Only this plan-input artifact is written.",
+  "not_new_task_completion_authority": true,
+  "hook_count_initialized_in_mediator_constructor": 13,
+  "hook_matrix": [
+    {
+      "hook": "LegalClassificationHook",
+      "first_party_owner": "mediator/legal_hooks.py",
+      "source_line": 23,
+      "sdk_seams": [
+        "Mediator.query_backend -> integrations.ipfs_datasets.llm.generate_text_with_metadata -> integrations.ipfs_accelerate.routers.load_llm_symbols -> ipfs_accelerate_py.llm_router.generate_text"
+      ],
+      "activation_status_source_observed": "Mediator constructor initializes this hook; legacy query_backend classification is a model proposal and has neutral empty/unknown fallback. It cannot admit law or establish applicability.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_legal_hooks.py",
+        "tests/test_intake_router_semantics.py",
+        "tests/test_intake_router_egress.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Show classifier suggestions with model origin and confirmation control. Never convert model jurisdiction/classification into governing law. Distinguish unavailable from a successful empty classification."
+      ],
+      "runtime_qualified_by_this_audit": false
+    },
+    {
+      "hook": "StatuteRetrievalHook",
+      "first_party_owner": "mediator/legal_hooks.py",
+      "source_line": 121,
+      "sdk_seams": [
+        "IPFSDatasetsAdapter capability/normalization",
+        "RetrievalOrchestrator",
+        "integrations.ipfs_datasets.legal.lookup_bounded_legal_corpus",
+        "integrations.ipfs_datasets.legal.acquire_bounded_canonical_legal_sources"
+      ],
+      "activation_status_source_observed": "Initialized; legacy retrieve_statutes still asks the model for statute suggestions and enhanced normalization is feature-flagged. Suggestions are not admitted source bytes.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_legal_hooks.py",
+        "tests/test_legal_corpus_candidate_contract.py",
+        "tests/test_gui25_26_private_owner_http.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Route selected suggestions to actual bounded corpus acquisition; show candidate vs admitted source and exact edition/hash/span. Never treat citation text or retrieval score as law authority."
+      ],
+      "runtime_qualified_by_this_audit": false
+    },
+    {
+      "hook": "SummaryJudgmentHook",
+      "first_party_owner": "mediator/legal_hooks.py",
+      "source_line": 393,
+      "sdk_seams": [
+        "integrations.ipfs_datasets.legal.adapt_sourced_legal_requirements",
+        "integrations.ipfs_datasets.logic.extract_source_bound_rule_candidates",
+        "integrations.ipfs_datasets.logic.evaluate_temporal_requirement_applicability"
+      ],
+      "activation_status_source_observed": "Initialized; generated string requirements remain unresolved. adapt_requirements_for_dependency_graph explicitly does not promote strings into legal elements.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_tui_legal_requirements.py",
+        "tests/test_legal_requirement_source_versions.py",
+        "tests/test_gui27_private_law_graph.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Populate legal requirements only from host-admitted current sources plus explicit jurisdiction/date/applicability; expose unresolved requirements, conditions and exceptions separately."
+      ],
+      "runtime_qualified_by_this_audit": false
+    },
+    {
+      "hook": "QuestionGenerationHook",
+      "first_party_owner": "mediator/legal_hooks.py",
+      "source_line": 485,
+      "sdk_seams": [
+        "Mediator.inquiries",
+        "Mediator.workflow_actions.transition_interview",
+        "Data-backed graph/support-gap context and source-bound model question proposals"
+      ],
+      "activation_status_source_observed": "Initialized; host question/target remains authoritative, model wording is retained as a proposal. Finite stop and intentional pause semantics already exist.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_intake_router_requests.py",
+        "tests/test_intake_graph_provenance_contract.py",
+        "tests/test_cimp_gui_14.py",
+        "tests/test_cimp_gui_19.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Each displayed question links to a factual or legal gap and explains why. Answer exact inquiry/revision; support unknown/defer/correct/pause/resume; never loop indefinitely or label a question cap as legal sufficiency."
+      ],
+      "runtime_qualified_by_this_audit": false
+    },
+    {
+      "hook": "EvidenceStorageHook",
+      "first_party_owner": "mediator/evidence_hooks.py",
+      "source_line": 932,
+      "sdk_seams": [
+        "integrations.ipfs_datasets.storage.store_private_artifact",
+        "integrations.ipfs_datasets.documents.parse_document",
+        "integrations.ipfs_datasets.graphs.extract_graph_from_text",
+        "ipfs_kit_py encrypted artifact owner via integrations.private_storage"
+      ],
+      "activation_status_source_observed": "Initialized. ComplaintWorkspaceService.activate_private_evidence_hook binds encrypted case context or binds closed on missing keys. Public legal corpus has a separate route; bare legacy hook instances can otherwise use the legacy byte path.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_evidence_hooks.py",
+        "tests/test_private_storage_adapter.py",
+        "tests/test_local_evidence_import.py",
+        "tests/test_gui18_private_publication.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Admit evidence file to an exact case/resource/version, preserve original bytes/hash/source custody, parse under finite capability boundary, and never let metadata relabel private user evidence as public law."
+      ],
+      "runtime_qualified_by_this_audit": false
+    },
+    {
+      "hook": "EvidenceStateHook",
+      "first_party_owner": "mediator/evidence_hooks.py",
+      "source_line": 1558,
+      "sdk_seams": [
+        "EvidenceStateHook upsert_evidence_record/get_evidence_chunks/get_evidence_facts",
+        "PrivateDerivedIndex and integrations.private_storage",
+        "Data parsing/graph lineage"
+      ],
+      "activation_status_source_observed": "Initialized. Workspace activates encrypted derived indexes; path permissions alone explicitly do not count as encryption.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_evidence_hooks.py",
+        "tests/test_private_workspace_isolation.py",
+        "tests/test_gui37_private_boundary.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Evidence list/preview/chunks and revision history come from authenticated encrypted current records, not browser cache. Keys locked/revoked or late context changes clear private previews."
+      ],
+      "runtime_qualified_by_this_audit": false
+    },
+    {
+      "hook": "EvidenceAnalysisHook",
+      "first_party_owner": "mediator/evidence_hooks.py",
+      "source_line": 3675,
+      "sdk_seams": [
+        "EvidenceStateHook evidence records",
+        "ClaimSupportHook coverage/trace context",
+        "Mediator query_backend under the existing pinned-router facade"
+      ],
+      "activation_status_source_observed": "Initialized; relevance/recommendation output is analysis, not proof or user-confirmed fact.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_evidence_relevance.py",
+        "tests/test_claim_support_hooks.py",
+        "tests/test_intake_router_boundary.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Classifier labels and relevance are attributed proposals with confidence/source spans; user/lawyer edits remain versioned and cannot silently alter original evidence or claim truth."
+      ],
+      "runtime_qualified_by_this_audit": false
+    },
+    {
+      "hook": "LegalAuthoritySearchHook",
+      "first_party_owner": "mediator/legal_authority_hooks.py",
+      "source_line": 369,
+      "sdk_seams": [
+        "integrations.ipfs_datasets.legal.lookup_bounded_legal_corpus",
+        "integrations.ipfs_datasets.legal.acquire_bounded_canonical_legal_sources",
+        "ipfs_datasets_py.processors.legal_scrapers.legal_dataset_api"
+      ],
+      "activation_status_source_observed": "Initialized; actual bounded lookup/acquisition owners exist. Source availability and external assets must be measured for the selected pinned checkout.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_legal_authority_hooks.py",
+        "tests/test_legal_corpus_candidate_contract.py",
+        "tests/test_gui25_26_private_owner_http.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Use explicit legal context, purpose-minimized query and finite acquisition; display missing corpus/edition/network capability as unavailable. A source search does not mark source applicability."
+      ],
+      "runtime_qualified_by_this_audit": false
+    },
+    {
+      "hook": "LegalAuthorityStorageHook",
+      "first_party_owner": "mediator/legal_authority_hooks.py",
+      "source_line": 1272,
+      "sdk_seams": [
+        "store_acquired_authority and retained treatment/source records",
+        "PrivateDerivedIndex",
+        "integrations.ipfs_datasets.logic.prepare_acquired_authority_record"
+      ],
+      "activation_status_source_observed": "Initialized; supports exact acquired-source admission and encrypted derived index binding. Source identity, version, span/hash and treatment are separate from legal meaning.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_legal_authority_hooks.py",
+        "tests/test_gui26_source_admission_scope.py",
+        "tests/test_gui28_private_dependency_refresh.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Admit/reject an exact source revision; retain byte span/hash/treatment/current law date; invalidate stale links and approvals while retaining audit history."
+      ],
+      "runtime_qualified_by_this_audit": false
+    },
+    {
+      "hook": "LegalAuthorityAnalysisHook",
+      "first_party_owner": "mediator/legal_authority_hooks.py",
+      "source_line": 3508,
+      "sdk_seams": [
+        "gate_rule_use/analyze_authorities_for_claim",
+        "integrations.ipfs_datasets.logic canonical IR and temporal applicability adapters"
+      ],
+      "activation_status_source_observed": "Initialized; analysis gate is not an automatic semantic or court-sufficiency decision.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_mediator_legal_support_context.py",
+        "tests/test_gui29_private_legal_analysis.py",
+        "tests/test_gui30_private_owner.py",
+        "tests/test_gui31_private_proof_trace.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Separate source custody, temporal applicability, interpretation, human review, IR compilation and executed proof. Unsupported/unexecuted remains unresolved and visible."
+      ],
+      "runtime_qualified_by_this_audit": false
+    },
+    {
+      "hook": "WebEvidenceSearchHook",
+      "first_party_owner": "mediator/web_evidence_hooks.py",
+      "source_line": 49,
+      "sdk_seams": [
+        "integrations.ipfs_datasets.search CommonCrawl/Brave owners",
+        "Data legal corpus/source normalization adapters",
+        "integration feature flags"
+      ],
+      "activation_status_source_observed": "Initialized; optional providers and credentials may be unavailable; ranked public search results do not themselves become evidence or law.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_web_evidence_hooks.py",
+        "tests/test_search_hooks.py",
+        "tests/test_ref_226_web_evidence_validation.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Show real source discovery states and source custody; private complaint text cannot leave the case without case-purpose consent. Do not auto-enable search/scraping/model setup because a module imports."
+      ],
+      "runtime_qualified_by_this_audit": false
+    },
+    {
+      "hook": "WebEvidenceIntegrationHook",
+      "first_party_owner": "mediator/web_evidence_hooks.py",
+      "source_line": 518,
+      "sdk_seams": [
+        "EvidenceStorageHook and EvidenceStateHook",
+        "ClaimSupportHook support links and background enrichment",
+        "Data document parse/graph provenance",
+        "Kit encrypted storage boundary"
+      ],
+      "activation_status_source_observed": "Initialized; discovery/storage/enrichment paths exist with distinct outcomes. Model or retrieval score cannot select authoritative case target or bypass admission.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_web_evidence_hooks.py",
+        "tests/test_agentic_evidence_download.py",
+        "tests/test_gui18_private_publication.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Explicitly review acquired candidate, admit encrypted bytes, associate exact claim element/source span and recheck scope on late completion. Background progress must be bounded and not a success spinner."
+      ],
+      "runtime_qualified_by_this_audit": false
+    },
+    {
+      "hook": "ClaimSupportHook",
+      "first_party_owner": "mediator/claim_support_hooks.py",
+      "source_line": 101,
+      "sdk_seams": [
+        "integrations.ipfs_datasets.graphs Client/GraphTarget persistence and query",
+        "integrations.ipfs_datasets.logic.compile_canonical_legal_ir",
+        "generate_bound_legal_ir_proof_obligations/route_bound_legal_ir_proof",
+        "Data source-definition/correspondence owners",
+        "PrivateDerivedIndex/Kit encrypted artifact facade"
+      ],
+      "activation_status_source_observed": "Initialized. Provides support links, facts, typed graph snapshots, retrieval sessions, question recommendations and proof cards. Display state must reflect actual issued owners rather than caller flags.",
+      "required_case_privacy_bindings": [
+        "server-issued actor principal and tenant/case/resource identity",
+        "current membership and separate case-action/key grant",
+        "session/question/graph/legal-context/draft revisions as applicable",
+        "explicit purpose-scoped persisted egress consent; development model setting is not user consent",
+        "finite deadline, cancellation and late-result readmission",
+        "encrypted artifact and derived-index owner; no plaintext or remote fallback"
+      ],
+      "existing_validation_modules": [
+        "tests/test_claim_support_hooks.py",
+        "tests/test_gui21_factual_graph_http.py",
+        "tests/test_gui29_private_legal_analysis.py",
+        "tests/test_gui31_private_proof_trace.py"
+      ],
+      "new_ui_facing_acceptance": [
+        "Click from evidence annotation to current support path and draft passage; distinguish corroborates/contradicts/unknown, factual assertion/law requirement, machine proof/human review, and reject stale source/graph revisions."
+      ],
+      "runtime_qualified_by_this_audit": false
+    }
+  ],
+  "common_evidence_contract": {
+    "classification": "source_audit_only_not_runtime_qualification",
+    "required_evidence": [
+      "actual imported pinned owner path and commit",
+      "actual case-scoped operation under finite deadline",
+      "actual encrypted read/write or explicit unavailable",
+      "negative wrong-actor/case/source/revision/consent/key tests",
+      "browser DOM action -> server operation -> durable result/cold read"
+    ],
+    "not_proof": [
+      "module source exists",
+      "old inventory says available",
+      "caller verified/satisfied flags",
+      "screenshot of a button",
+      "model confidence",
+      "retrieval rank",
+      "old Native completion checkbox"
+    ]
+  },
+  "additional_exported_hook": {
+    "hook": "LegalCorpusRAGHook",
+    "source": "mediator/legal_corpus_hooks.py:36",
+    "exported_from": "mediator/__init__.py",
+    "constructor_initialized": false,
+    "existing_seams": [
+      "lookup_bounded_authority_candidates",
+      "get_legal_requirements",
+      "suggest_questions"
+    ],
+    "note": "Source presence/export does not establish live invocation; include in extended coverage inventory without pretending it is a fourteenth initialized constructor hook."
+  },
+  "existing_reusable_owners": {
+    "canonical_inquiry": "mediator/workflow_service.py / Mediator.transition_shared_interview; applications/complaint_workspace.py.run_intake_chat_turn",
+    "factual_kg": "mediator/integrations/graph_tools.py.project_authorized_factual_kg; integrations/ipfs_datasets/graphs.py Client/GraphTarget and private graph snapshots",
+    "legal_research": "ComplaintWorkspaceService acquire_case_legal_research/review_case_legal_authority/read_case_legal_analysis/refresh_case_legal_dependency_graph",
+    "formal": "integrations/ipfs_datasets/logic.py canonical compile, bound source obligations, current definition/correspondence owners and actual proof routing",
+    "private_durability": "integrations/private_storage.py UserOwnedKeySession, commit_private_revision/recover_private_revision, encrypted replicas; integrations/ipfs_datasets/storage.py delegates to the Kit owner",
+    "case_collaboration": "CaseMessageStore, CaseReviewStore/service, case assignments/memberships/separate action+key grants, notifications",
+    "admin": "applications/admin_api.py operational account/role/audit/incident metadata; not blanket case decryption",
+    "router": "integrations/ipfs_accelerate/routers.py PINNED_GROK_PROVIDER=grok_cli/PINNED_GROK_MODEL=grok-4.7; canonical ipfs_accelerate_py.llm_router facade"
+  },
+  "concrete_gaps": [
+    {
+      "source": "mediator/hook_runtime.py:1597-1690,2184-2328",
+      "finding": "Generic three-operation registry intentionally binds disabled handlers and dispatch always refuses effects; legacy hooks opt into execution context separately. GUI has distinct bounded live paths.",
+      "required_resolution": "Actual operation-by-operation host activation backed by persisted owners; do not turn booleans true or dispatch arbitrary caller effects."
+    },
+    {
+      "source": "templates/workspace.html:4232-4249",
+      "finding": "Evidence form hard-codes retaliation elements and generic HR guidance.",
+      "required_resolution": "Use case current factual gaps and admitted law-derived requirement IDs; unknown law must not inherit default causation/retaliation."
+    },
+    {
+      "source": "templates/workspace.html:16507-16512",
+      "finding": "Desktop/mobile label/annotation/deadline actions only display next-implementation-slice status.",
+      "required_resolution": "Real versioned encrypted operations with server acknowledgement and cold-read evidence."
+    },
+    {
+      "source": "applications/complaint_workspace.py:11939-12035",
+      "finding": "Legacy document annotation API auto-creates document evidence from notes/tags, defaults causation and accepts user_metadata role/display fields.",
+      "required_resolution": "Do not expose it as the new trusted case annotation contract unchanged. Server-attributed notes/classifier proposals remain distinct from explicit evidence/fact adoption."
+    },
+    {
+      "source": "applications/case_review.py:39-44",
+      "finding": "Review comment targets currently fact/answer/legal_admission/draft_revision, not evidence artifact/span.",
+      "required_resolution": "Introduce measured artifact/version/span target support or separate bounded evidence-annotation owner."
+    },
+    {
+      "source": "applications/case_messages.py:692-725",
+      "finding": "Human conversation records, AI interview turns and machine invocation/proof traces have separate semantics.",
+      "required_resolution": "A unified correspondence UI must compose typed records, not rewrite sender identity or make chat automatically evidence/answers."
+    },
+    {
+      "source": "docs/task_boards/complaint_mediator_grounding_owner_inventory.json",
+      "finding": "Historical inventory has unobserved GitdirPointer pins, optional feature flags false, legal parameter refusal and conditional formal tooling.",
+      "required_resolution": "Create fresh observed ownership/capability inventory for the new campaign; module presence and old available flags do not prove current engine readiness."
+    }
+  ],
+  "preserved_product_invariants": [
+    "User assertions/corroboration/model suggestions/retrieved law/applicable requirements/conditional IR/actual proofs/human reviews remain separate roles.",
+    "Legal authority requires admitted source, exact edition/version/hash/byte span and explicit applicability/context; retrieval confidence and user text do not govern law.",
+    "Human review and proof compilation do not create court-filing or legal-sufficiency claims.",
+    "Operational admin role is not private case-content/key access; granted lawyer context is independent.",
+    "Intentional human waits and finite unresolved outcomes are legitimate; they do not restart development supervision or become false completion.",
+    "No automatic user complaint egress from choosing Grok4.7 for code-generation campaign.",
+    "Local CID/cache is not network durability; only measured encrypted replica/readback observations count.",
+    "Original completed60 campaign and its identities/counters/ledgers remain immutable; new CIMP-UX campaign uses its own state/task IDs."
+  ],
+  "task_proposals": [
+    {
+      "proposal_id": "MI-01",
+      "title": "Refresh actual pinned SDK and mediator ownership/capability matrix",
+      "depends_on_proposals": [],
+      "target_paths": [
+        "docs/task_boards/complaint_ux_overhaul_owner_inventory.json",
+        "tests/test_ux_owner_inventory.py"
+      ],
+      "public_behavior": "Inventory all13 initialized hooks plus exported LegalCorpusRAGHook, actual gitlinks/origins and bounded capability failures; compare selected upstream innovations without changing pins midcampaign.",
+      "validation": [
+        "new tests/test_ux_owner_inventory.py with actual compiled source identities and negative unavailable result"
+      ],
+      "suggested_focused_validation_upper_seconds": 180,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-02",
+      "title": "Define a case-scoped evidence annotation and classifier contract",
+      "depends_on_proposals": [
+        "MI-01"
+      ],
+      "target_paths": [
+        "applications/evidence_annotations.py",
+        "tests/test_ux_evidence_annotations.py"
+      ],
+      "public_behavior": "Create versioned artifact/page/span notes, tags/classifier proposals and dispute state with server actor attribution; comments do not create evidence/facts/answers; exact case/artifact/source version and CAS/idempotency.",
+      "validation": [
+        "new actual encrypted owner/lawyer authorization, stale-revision, malformed-span and locked-key tests"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-03",
+      "title": "Expose evidence annotation APIs under existing case authorization",
+      "depends_on_proposals": [
+        "MI-02"
+      ],
+      "target_paths": [
+        "applications/evidence_annotation_api.py",
+        "applications/case_routes.py",
+        "tests/test_ux_evidence_annotation_http.py"
+      ],
+      "public_behavior": "Authenticated owner and explicitly granted lawyer can add/read/revise annotations; body cannot supply role/owner/key or arbitrary path/CID.",
+      "validation": [
+        "new actual HTTP/MCP cookie+CSRF/case tests; denial leaves ciphertext/head unchanged"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-04",
+      "title": "Populate evidence targets from current factual gaps and admitted legal requirements",
+      "depends_on_proposals": [
+        "MI-01"
+      ],
+      "target_paths": [
+        "applications/complaint_workspace.py",
+        "templates/workspace.html",
+        "tests/test_ux_evidence_target_options.py"
+      ],
+      "public_behavior": "Replace fixed retaliation claim choices with current host-owned requirement IDs and revision; missing law/context remains unknown; client cannot mint a governing element.",
+      "validation": [
+        "new non-employment synthetic case + changed-law/stale-target refusal tests"
+      ],
+      "suggested_focused_validation_upper_seconds": 240,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-05",
+      "title": "Complete real label, annotation and deadline actions in the document workbench",
+      "depends_on_proposals": [
+        "MI-03",
+        "MI-04"
+      ],
+      "target_paths": [
+        "templates/workspace.html",
+        "static/complaint_evidence_workbench.js",
+        "tests/test_ux_evidence_annotation_browser.py"
+      ],
+      "public_behavior": "Replace next-implementation-slice status placeholders with encrypted create/edit/read UI and current source spans; distinguish deadline suggestion from accepted calendar metadata.",
+      "validation": [
+        "new pinned real browser one desktop and one mobile evidence annotation/cold-read flow"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-06",
+      "title": "Connect encrypted original evidence, extraction and classifier proposals",
+      "depends_on_proposals": [
+        "MI-03"
+      ],
+      "target_paths": [
+        "applications/complaint_workspace.py",
+        "mediator/evidence_hooks.py",
+        "tests/test_ux_evidence_ingestion_flow.py"
+      ],
+      "public_behavior": "Upload preserves original bytes/hash and encrypted ownership; document parse/graph extraction is bounded, model classifications are reviewable and cannot overwrite original file or factual assertions.",
+      "validation": [
+        "actual small synthetic document/image capability or unavailable; original-byte retrieval; no-plaintext/late-revocation checks"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-07",
+      "title": "Bind evidence spans to current claim-support paths and draft citations",
+      "depends_on_proposals": [
+        "MI-04",
+        "MI-06"
+      ],
+      "target_paths": [
+        "mediator/claim_support_hooks.py",
+        "applications/evidence_annotations.py",
+        "tests/test_ux_evidence_claim_links.py"
+      ],
+      "public_behavior": "Explicit adoption creates versioned corroborating/contradicting/unknown support references; removing/changing source retires current links and draft citations without erasing history.",
+      "validation": [
+        "actual encrypted artifact -> source span -> support ledger -> draft revision test, stale source/graph rejection"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-08",
+      "title": "Activate one registered mediator operation through measured host prerequisites",
+      "depends_on_proposals": [
+        "MI-01",
+        "MI-06"
+      ],
+      "target_paths": [
+        "mediator/hook_runtime.py",
+        "tests/test_ux_hook_operation_activation.py"
+      ],
+      "public_behavior": "Connect registered ingest_private_evidence first to actual persisted consent, case grant, key/artifact store and derived-index state; never enable by caller bools/effect injection. Keep unsupported operations explicitly disabled.",
+      "validation": [
+        "actual one-operation dispatch and wrong-case/consent/key/late-result negatives; no provider required for local operation"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-09",
+      "title": "Connect bounded legal acquisition and grounding refresh to registered owners",
+      "depends_on_proposals": [
+        "MI-08"
+      ],
+      "target_paths": [
+        "mediator/hook_runtime.py",
+        "mediator/legal_authority_hooks.py",
+        "tests/test_ux_grounding_dispatch.py"
+      ],
+      "public_behavior": "Admit bounded source acquisition and refresh_grounding only against host current source/context/graph revisions; candidates, admitted editions and applicable requirements are independent states.",
+      "validation": [
+        "actual local corpus row path with source bytes/hash/span plus missing asset/edition and changed context negatives"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-10",
+      "title": "Give every initialized hook a truthful typed outcome and coverage witness",
+      "depends_on_proposals": [
+        "MI-08",
+        "MI-09"
+      ],
+      "target_paths": [
+        "mediator/hook_runtime.py",
+        "mediator/mediator.py",
+        "tests/test_ux_hook_coverage.py"
+      ],
+      "public_behavior": "Record sanitized per-hook source-owner/operation/outcome/deadline metadata; preserve legacy neutral returns but surface unavailable/failed/partial explicitly in the GUI; no prompt/response/error-message logs.",
+      "validation": [
+        "parameterized hook-by-hook actual owner or typed refusal; reject fabricated success and undeclared chaining"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-11",
+      "title": "Ground chat questions and evidence actions in the canonical inquiry contract",
+      "depends_on_proposals": [
+        "MI-04",
+        "MI-07"
+      ],
+      "target_paths": [
+        "mediator/workflow_service.py",
+        "static/complaint_mcp_sdk.js",
+        "tests/test_ux_grounded_chat_flow.py"
+      ],
+      "public_behavior": "Chat and rich workbench operate on the same pending inquiry/revision and KG/DG; explain why, support unknown/defer/correct and preserve finite outcomes without legal-sufficiency claims.",
+      "validation": [
+        "actual owner start/answer/evidence-link/stale409/pause/cold-resume flow; no duplicate extraction"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-12",
+      "title": "Unify AI and human correspondence without conflating record types",
+      "depends_on_proposals": [
+        "MI-03",
+        "MI-11"
+      ],
+      "target_paths": [
+        "applications/case_messages.py",
+        "static/complaint_case_messages.js",
+        "tests/test_ux_correspondence_timeline.py"
+      ],
+      "public_behavior": "Render one case timeline with typed AI invocation/mediator turn/human message/review task/system notice, stable source refs and actors; selection/adoption is explicit, messages remain conversations by default.",
+      "validation": [
+        "actual owner/lawyer messages+revision+AI-invocation synthetic typed record, revocation/locked-owner/cold-recipient; no model impersonation"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-13",
+      "title": "Connect reviewer assignments and operational administration to the new workspace",
+      "depends_on_proposals": [
+        "MI-12"
+      ],
+      "target_paths": [
+        "templates/lawyer_workspace.html",
+        "templates/admin.html",
+        "tests/test_ux_role_workspace.py"
+      ],
+      "public_behavior": "Assigned reviewers can analyze granted complaints and message owners; operational admins see accounts/counts/operations until separately authorized case/key access; admin role never supplies decryption.",
+      "validation": [
+        "actual independent owner/lawyer/admin/stranger case list/read/message/browser boundary tests"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-14",
+      "title": "Expose current law, conditional IR, definitions and proof states coherently",
+      "depends_on_proposals": [
+        "MI-07",
+        "MI-09"
+      ],
+      "target_paths": [
+        "static/complaint_graph_view.js",
+        "templates/lawyer_workspace.html",
+        "tests/test_ux_grounding_inspector.py"
+      ],
+      "public_behavior": "Fact/requirement/support/draft inspector uses exact source/version/hash/span and current context; conditional/unexecuted/unavailable proofs stay distinct from actual proof receipts and human review.",
+      "validation": [
+        "actual admitted source -> canonical IR/obligations -> nonproof display, changed source retirement and stale review negatives"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-15",
+      "title": "Use Grok4.7 only through current case-purpose consent and pinned router",
+      "depends_on_proposals": [
+        "MI-11",
+        "MI-12"
+      ],
+      "target_paths": [
+        "integrations/ipfs_datasets/llm.py",
+        "applications/case_consent_api.py",
+        "tests/test_ux_grok_case_consent.py"
+      ],
+      "public_behavior": "Show per-operation egress preview and explicit Grok4.7 choice; minimization, cancellation, quotas and unavailable states are real; source-code campaign settings cannot authorize private complaint egress or fallback providers.",
+      "validation": [
+        "actual dispatcher source-binding/consent/revocation/late-result negatives; optional live synthetic canary separately labelled"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    },
+    {
+      "proposal_id": "MI-16",
+      "title": "Prove complete encrypted workspace durability and screenshot-driven closure",
+      "depends_on_proposals": [
+        "MI-05",
+        "MI-07",
+        "MI-12",
+        "MI-13",
+        "MI-14",
+        "MI-15"
+      ],
+      "target_paths": [
+        "scripts/validate_ux_overhaul.py",
+        "tests/test_ux_case_restore_journey.py"
+      ],
+      "public_behavior": "Cold-restore complaint/chat/facts/law refs/evidence/annotations/classifiers/draft/review/messages with actual keys; user-visible local-vs-pinned-vs-replicated states measured; required new desktop/mobile screenshots and interaction evidence qualify current source only.",
+      "validation": [
+        "bounded separate browser/HTTP/storage groups; exact bytes/key-lock/recipient/revocation/WAL recovery; no whole132insideoneNative900s task"
+      ],
+      "suggested_focused_validation_upper_seconds": 300,
+      "requires_fresh_source_runtime_measurement": true
+    }
+  ],
+  "planning_dependency_order": [
+    "baseline screenshots and actual owners",
+    "typed evidence/annotation/requirement contracts",
+    "case-scoped encrypted handlers and per-hook activation",
+    "chat/workbench/draft/correspondence composition",
+    "role-specific reviewer/admin workspaces",
+    "privacy/durability/accessibility/error-state cross-journeys",
+    "current-source screenshot and interaction acceptance in separate bounded groups"
+  ],
+  "audit_qualification_note": "Source inspection at the baseline only; actual operation activation is a task requirement, not established by this inventory."
+}

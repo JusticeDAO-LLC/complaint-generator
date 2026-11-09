@@ -1,0 +1,377 @@
+{
+  "plan_id": "baguqeeraal5dqwy6oovwusjyem3ut6kl72inutanmavzaa76ceyq22etxl3a",
+  "schema_version": "complaint-generator.alignment_execution_board.v1",
+  "source_fingerprint": "6f79df8e40c0c8a150f2cce129a9cb4192759ba3ff8a54f5fea484b1ed1c8d72",
+  "supervisor": {
+    "blocked_reason": "",
+    "heartbeat_unix": 1792542032,
+    "last_action": "executed",
+    "pid": 0,
+    "stall_receipts": [],
+    "status": "idle"
+  },
+  "tasks": {
+    "task.embedding_router_facade": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [
+        "task.llm_router_facade"
+      ],
+      "heartbeat_unix": 1792542031,
+      "receipts": [
+        {
+          "at_unix": 1792542031,
+          "kind": "dependency_cleared",
+          "task_id": "task.embedding_router_facade"
+        },
+        {
+          "at_unix": 1792542031,
+          "detail": "embedding router facade",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.graph_client_persist": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [],
+      "heartbeat_unix": 1792542031,
+      "receipts": [
+        {
+          "at_unix": 1792542031,
+          "detail": "graph client persist",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.kit_gate_default_off": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [],
+      "heartbeat_unix": 1792542031,
+      "receipts": [
+        {
+          "at_unix": 1792542031,
+          "detail": "kit gate defaults off",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.legal_symbol_loader": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [],
+      "heartbeat_unix": 1792542031,
+      "receipts": [
+        {
+          "at_unix": 1792542031,
+          "detail": "legal symbol loader",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.llm_router_facade": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [],
+      "heartbeat_unix": 1792542031,
+      "receipts": [
+        {
+          "at_unix": 1792542031,
+          "detail": "llm router facade",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.logic_adapter_paths": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542032,
+          "detail": "logic adapter paths",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.mike_compatibility_stamp": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [
+        "task.mike_http_route_gate"
+      ],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542032,
+          "kind": "dependency_cleared",
+          "task_id": "task.mike_compatibility_stamp"
+        },
+        {
+          "at_unix": 1792542032,
+          "detail": "compatibility stamp",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.mike_connector_tools": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [
+        "task.mike_protocol_versions"
+      ],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542032,
+          "kind": "dependency_cleared",
+          "task_id": "task.mike_connector_tools"
+        },
+        {
+          "at_unix": 1792542032,
+          "detail": "four connector tools",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.mike_http_route_gate": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [
+        "task.mike_connector_tools"
+      ],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542032,
+          "kind": "dependency_cleared",
+          "task_id": "task.mike_http_route_gate"
+        },
+        {
+          "at_unix": 1792542032,
+          "detail": "stateless json-rpc route",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.mike_protocol_versions": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542032,
+          "detail": "protocol versions negotiated",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.mike_registration_text": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [
+        "task.mike_compatibility_stamp"
+      ],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542032,
+          "kind": "dependency_cleared",
+          "task_id": "task.mike_registration_text"
+        },
+        {
+          "at_unix": 1792542032,
+          "detail": "registration text",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.multimedia_attachment_adapter": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542032,
+          "detail": "multimedia adapter",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.multimodal_router_facade": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [
+        "task.embedding_router_facade"
+      ],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542032,
+          "kind": "dependency_cleared",
+          "task_id": "task.multimodal_router_facade"
+        },
+        {
+          "at_unix": 1792542032,
+          "detail": "multimodal router facade",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.operator_scripts_use_adapter": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [
+        "task.legal_symbol_loader"
+      ],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542031,
+          "kind": "dependency_cleared",
+          "task_id": "task.operator_scripts_use_adapter"
+        },
+        {
+          "at_unix": 1792542032,
+          "detail": "operator scripts use the legal adapter",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.storage_fallback_order": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [
+        "task.kit_gate_default_off"
+      ],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542031,
+          "kind": "dependency_cleared",
+          "task_id": "task.storage_fallback_order"
+        },
+        {
+          "at_unix": 1792542032,
+          "detail": "storage fallback order",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.supervisor_cli_has_three_operations": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [
+        "task.supervisor_jobs_off_request_path"
+      ],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542032,
+          "kind": "dependency_cleared",
+          "task_id": "task.supervisor_cli_has_three_operations"
+        },
+        {
+          "at_unix": 1792542032,
+          "detail": "supervisor cli",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.supervisor_jobs_off_request_path": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542032,
+          "detail": "supervisor jobs stay off the request path",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.watchdog_cli_off_control_plane": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [
+        "task.watchdog_repairs_board"
+      ],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542032,
+          "kind": "dependency_cleared",
+          "task_id": "task.watchdog_cli_off_control_plane"
+        },
+        {
+          "at_unix": 1792542032,
+          "detail": "watchdog cli stays off the control plane",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    },
+    "task.watchdog_repairs_board": {
+      "attempts": 0,
+      "blocker": "",
+      "claim_pid": 0,
+      "depends_on": [
+        "task.supervisor_cli_has_three_operations"
+      ],
+      "heartbeat_unix": 1792542032,
+      "receipts": [
+        {
+          "at_unix": 1792542032,
+          "kind": "dependency_cleared",
+          "task_id": "task.watchdog_repairs_board"
+        },
+        {
+          "at_unix": 1792542032,
+          "detail": "watchdog repairs the board",
+          "kind": "completed"
+        }
+      ],
+      "status": "completed"
+    }
+  }
+}

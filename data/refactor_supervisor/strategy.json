@@ -1,0 +1,107 @@
+{
+  "blocked_tasks": [],
+  "codebase_scan_seen_fingerprints": [
+    "12fef95f050ba8c928de1f1bda3602b6e553db04",
+    "20594a03322b57b61d101e6bfdc72e380fd85fab",
+    "34e672b9ad65450c7acbf46fb8c0ba7075b0085f",
+    "350c07cde027ae4a52b7fd7b37d6d8edbdc62c9f",
+    "3ab0109997e2f98fdb96cfa278d30968def84742",
+    "3d51a7e8f51f47921adc52d24c191941ac92acc8",
+    "55a0fab86af9f927f901c5811b6adebff2ee2fe9",
+    "6060fa7dd8101ccc299d4527cef5d3f724965ae0",
+    "7272a7e35b1fb333094b377347ce0bff6b02c60d",
+    "8418d6dba6f128ff969b172f047ce1b332353927",
+    "888d7f27e0a0280a1ec3f392970e4a4e22374448",
+    "8a0485e56dc33b2b4f5e2bd6c9803376c049efa3",
+    "8af245b6aa1f9912bf6e3049421b74981f1a433d",
+    "c09886e49ceff0bb016d4a0033dc17178969291d",
+    "c656748a86e6adad06e7dd3fa3e21355e69a9bd4",
+    "fef985c2cd7eb07dc95e5686c211cba0063c9533"
+  ],
+  "last_codebase_scan_at": "2026-07-22T15:15:13.167942+00:00",
+  "last_codebase_scan_findings": [
+    {
+      "bundle_key": "codebase/runtime/adversarial_harness-session",
+      "bundle_shard": "data/refactor_supervisor/objective_bundles/codebase-runtime-adversarial_harness-session.todo.md",
+      "discovery_path": "/home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-22-ref-080-codebase-scan-8af245b6aa1f.md",
+      "fingerprint": "8af245b6aa1f9912bf6e3049421b74981f1a433d",
+      "follow_up_task_id": "REF-080",
+      "kind": "swallowed_exception",
+      "source": "adversarial_harness/session.py:4416"
+    },
+    {
+      "bundle_key": "codebase/runtime/adversarial_harness-session",
+      "bundle_shard": "data/refactor_supervisor/objective_bundles/codebase-runtime-adversarial_harness-session.todo.md",
+      "discovery_path": "/home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-22-ref-081-codebase-scan-34e672b9ad65.md",
+      "fingerprint": "34e672b9ad65450c7acbf46fb8c0ba7075b0085f",
+      "follow_up_task_id": "REF-081",
+      "kind": "swallowed_exception",
+      "source": "adversarial_harness/session.py:4423"
+    },
+    {
+      "bundle_key": "codebase/runtime/adversarial_harness-session",
+      "bundle_shard": "data/refactor_supervisor/objective_bundles/codebase-runtime-adversarial_harness-session.todo.md",
+      "discovery_path": "/home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-22-ref-082-codebase-scan-7272a7e35b1f.md",
+      "fingerprint": "7272a7e35b1fb333094b377347ce0bff6b02c60d",
+      "follow_up_task_id": "REF-082",
+      "kind": "swallowed_exception",
+      "source": "adversarial_harness/session.py:4449"
+    },
+    {
+      "bundle_key": "codebase/runtime/applications-cli",
+      "bundle_shard": "data/refactor_supervisor/objective_bundles/codebase-runtime-applications-cli.todo.md",
+      "discovery_path": "/home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-22-ref-083-codebase-scan-8418d6dba6f1.md",
+      "fingerprint": "8418d6dba6f128ff969b172f047ce1b332353927",
+      "follow_up_task_id": "REF-083",
+      "kind": "swallowed_exception",
+      "source": "applications/cli.py:112"
+    },
+    {
+      "bundle_key": "codebase/runtime/complaint_analysis-indexer",
+      "bundle_shard": "data/refactor_supervisor/objective_bundles/codebase-runtime-complaint_analysis-indexer.todo.md",
+      "discovery_path": "/home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-22-ref-084-codebase-scan-12fef95f050b.md",
+      "fingerprint": "12fef95f050ba8c928de1f1bda3602b6e553db04",
+      "follow_up_task_id": "REF-084",
+      "kind": "placeholder_runtime_path",
+      "source": "complaint_analysis/indexer.py:231"
+    },
+    {
+      "bundle_key": "codebase/runtime/complaint_analysis-research_bootstrap_workflow",
+      "bundle_shard": "data/refactor_supervisor/objective_bundles/codebase-runtime-complaint_analysis-research_bootstrap_workflow.todo.md",
+      "discovery_path": "/home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-22-ref-085-codebase-scan-55a0fab86af9.md",
+      "fingerprint": "55a0fab86af9f927f901c5811b6adebff2ee2fe9",
+      "follow_up_task_id": "REF-085",
+      "kind": "swallowed_exception",
+      "source": "complaint_analysis/research_bootstrap_workflow.py:425"
+    },
+    {
+      "bundle_key": "codebase/runtime/complaint_analysis-research_bootstrap_workflow",
+      "bundle_shard": "data/refactor_supervisor/objective_bundles/codebase-runtime-complaint_analysis-research_bootstrap_workflow.todo.md",
+      "discovery_path": "/home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-22-ref-086-codebase-scan-20594a03322b.md",
+      "fingerprint": "20594a03322b57b61d101e6bfdc72e380fd85fab",
+      "follow_up_task_id": "REF-086",
+      "kind": "swallowed_exception",
+      "source": "complaint_analysis/research_bootstrap_workflow.py:438"
+    },
+    {
+      "bundle_key": "codebase/runtime/complaint_phases-knowledge_graph",
+      "bundle_shard": "data/refactor_supervisor/objective_bundles/codebase-runtime-complaint_phases-knowledge_graph.todo.md",
+      "discovery_path": "/home/barberb/complaint-generator/data/refactor_supervisor/discovery/2026-07-22-ref-087-codebase-scan-fef985c2cd7e.md",
+      "fingerprint": "fef985c2cd7eb07dc95e5686c211cba0063c9533",
+      "follow_up_task_id": "REF-087",
+      "kind": "annotated_followup",
+      "source": "complaint_phases/knowledge_graph.py:2168"
+    }
+  ],
+  "last_codebase_scan_mode": "force",
+  "last_drained_codebase_scan_task_count": 66,
+  "last_objective_goal_scan_at": "2026-07-22T07:49:06.262862+00:00",
+  "last_objective_goal_scan_findings": [],
+  "last_objective_goal_scan_mode": "low_backlog",
+  "last_objective_surplus_findings_per_goal": 2,
+  "last_objective_surplus_min_terms_per_todo": 3,
+  "last_objective_todo_vector_index_path": "/home/barberb/complaint-generator/data/refactor_supervisor/objective_bundles/todo_vector_index.json",
+  "last_strategy_repair_at": "2026-07-22T07:48:14.790457+00:00",
+  "last_strategy_repair_reason": "missing_strategy_file",
+  "objective_goal_seen_fingerprints": []
+}

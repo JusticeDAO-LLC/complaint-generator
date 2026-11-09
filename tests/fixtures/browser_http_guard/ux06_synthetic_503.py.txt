@@ -1,0 +1,13 @@
+def rejected_browser_case(page):
+    page.evaluate("""() => {
+            const original = window.fetch.bind(window);
+            window.fetch = function (input, options) {
+                const raw = typeof input === 'string' ? input : input.url;
+                const path = new URL(raw, location.origin).pathname;
+                if (path === '/api/cases/session') {
+                    return Promise.resolve(new Response(JSON.stringify({error: 'catalog_unavailable'}),
+                        {status: 503, headers: {'content-type': 'application/json'}}));
+                }
+                return original(input, options);
+            };
+        }""")

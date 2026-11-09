@@ -1,17 +1,23 @@
 # Complaint Generator - Modernization Summary
 
+Session reports live in `docs/archive/sessions`. Plans and profiles live in `docs/archive/reports`. The document pipeline, document optimization, intake status, and workflow guidance bodies live in `complaint_phases` with root shims. Claim-support review lives in `mediator/claim_support_review.py`. Tests should import versioned interfaces with `INTERFACE_SCHEMA` `complaint-generator/module-interface@1` and `INTERFACE_VERSION` `1.0.0`. The Git remote is `endomorphosis/complaint-generator`. The extracted modules are listed in [docs/architecture/consolidation_modules.md](docs/architecture/consolidation_modules.md).
+
 ## Changes Made
 
-### 1. Git Submodule Added ✅
-- **Repository**: `endomorphosis/ipfs_datasets_py@main`
-- **Location**: `./ipfs_datasets_py/`
-- **Configuration**: Configured in `.gitmodules`
+### 1. Git Submodules ✅
 
-To initialize the submodule when cloning:
+Current checkouts live under `external/` and track `origin/main`:
+
+- `external/ipfs_datasets_py`
+- `external/ipfs_accelerate_py`
+- `external/ipfs_kit_py`
+- `external/mike`
+
 ```bash
-git submodule init
-git submodule update
+git submodule update --init external/ipfs_accelerate_py external/ipfs_datasets_py external/ipfs_kit_py external/mike
 ```
+
+Do not pass `--recursive` from this repository. Nested submodules pin older commits. Default pytest collects `tests/` only and does not need a live LLM, an IPFS daemon, or the Mike UI. After `git submodule update --remote --merge` on those four paths, rerun `tests/test_upstream_drift_inventory.py`.
 
 Or clone with submodules:
 ```bash

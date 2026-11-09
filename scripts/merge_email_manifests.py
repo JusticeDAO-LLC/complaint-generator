@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
-from ipfs_datasets_py.processors.legal_data.email_corpus import build_email_graphrag_artifacts
-from ipfs_datasets_py.processors.legal_data.email_workspace import merge_email_manifests
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from complaint_generator.email_graphrag import build_email_graphrag_artifacts
+from integrations.ipfs_datasets.legal_data import load_legal_symbol
+
+merge_email_manifests = load_legal_symbol("merge_email_manifests", module="email_workspace")
 
 
 def build_parser() -> argparse.ArgumentParser:

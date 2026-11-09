@@ -9,8 +9,10 @@ EXCLUDED_DIR_NAMES = {
     ".venv",
     "__pycache__",
     "examples",
+    "external",
     "ipfs_datasets_py",
     "tests",
+    "statefiles",
     "tmp",
 }
 EXCLUDED_TOP_LEVEL_FILES = {

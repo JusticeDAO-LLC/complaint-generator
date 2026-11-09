@@ -2381,3 +2381,196 @@ def test_export_formal_complaint_docx_writes_file(tmp_path):
         document_xml = archive.read('word/document.xml').decode('utf-8')
     assert 'Protected Activity and Complaints' in document_xml
     assert 'Adverse Action and Retaliatory Conduct' in document_xml
+
+
+# ---------------------------------------------------------------------------
+# W10.4 – Focused drafting guardrail warning-code tests
+# ---------------------------------------------------------------------------
+
+def _build_mock_mediator_for_drafting_readiness(
+    *,
+    summarize_claim_support: dict | None = None,
+    get_claim_support_gaps: dict | None = None,
+    get_claim_support_validation: dict | None = None,
+    get_claim_overview: dict | None = None,
+):
+    """Return a lightweight Mock mediator pre-wired for _build_drafting_readiness tests."""
+    mediator = Mock()
+    mediator.summarize_claim_support = Mock(
+        return_value=summarize_claim_support or {"available": True, "claims": {}}
+    )
+    mediator.get_claim_support_gaps = Mock(
+        return_value=get_claim_support_gaps or {"available": True, "claims": {}}
+    )
+    mediator.get_claim_support_validation = Mock(
+        return_value=get_claim_support_validation or {"available": True, "claims": {}}
+    )
+    mediator.get_claim_overview = Mock(
+        return_value=get_claim_overview or {"available": True, "claims": {}}
+    )
+    return mediator
+
+
+def _minimal_draft(claim_types: list) -> dict:
+    return {
+        "source_context": {"claim_types": claim_types},
+        "summary_of_facts": ["Fact A.", "Fact B."],
+        "claims_for_relief": [{"claim_type": ct} for ct in claim_types],
+        "requested_relief": ["Compensatory damages."],
+        "exhibits": [],
+    }
+
+
+def test_drafting_readiness_flags_adverse_authority_present_warning():
+    """W10.2 – adverse_authority_present warning is emitted when adverse links exist."""
+    mediator = _build_mock_mediator_for_drafting_readiness(
+        summarize_claim_support={
+            "available": True,
+            "claims": {
+                "retaliation": {
+                    "covered_elements": 2,
+                    "total_elements": 3,
+                    "authority_treatment_summary": {
+                        "adverse_authority_link_count": 2,
+                        "uncertain_authority_link_count": 0,
+                        "treatment_type_counts": {"adverse": 2},
+                    },
+                    "authority_rule_candidate_summary": {},
+                }
+            },
+        },
+    )
+    builder = FormalComplaintDocumentBuilder(mediator)
+    readiness = builder._build_drafting_readiness(
+        user_id="test-user",
+        draft=_minimal_draft(["retaliation"]),
+    )
+    retaliation = next(
+        (c for c in readiness["claims"] if c["claim_type"] == "retaliation"), None
+    )
+    assert retaliation is not None
+    warning_codes = [w["code"] for w in retaliation["warnings"]]
+    assert "adverse_authority_present" in warning_codes
+    assert retaliation["status"] in {"warning", "blocked"}
+    assert "adverse authorities: 2" in retaliation["chip_labels"]
+
+
+def test_drafting_readiness_flags_authority_reliability_uncertain_warning():
+    """W10.2 – authority_reliability_uncertain warning fires for uncertain treatment types."""
+    mediator = _build_mock_mediator_for_drafting_readiness(
+        summarize_claim_support={
+            "available": True,
+            "claims": {
+                "employment_discrimination": {
+                    "covered_elements": 1,
+                    "total_elements": 2,
+                    "authority_treatment_summary": {
+                        "adverse_authority_link_count": 0,
+                        "uncertain_authority_link_count": 1,
+                        "treatment_type_counts": {"good_law_unconfirmed": 1},
+                    },
+                    "authority_rule_candidate_summary": {},
+                }
+            },
+        },
+    )
+    builder = FormalComplaintDocumentBuilder(mediator)
+    readiness = builder._build_drafting_readiness(
+        user_id="test-user",
+        draft=_minimal_draft(["employment_discrimination"]),
+    )
+    claim_entry = next(
+        (c for c in readiness["claims"] if c["claim_type"] == "employment_discrimination"),
+        None,
+    )
+    assert claim_entry is not None
+    warning_codes = [w["code"] for w in claim_entry["warnings"]]
+    assert "authority_reliability_uncertain" in warning_codes
+    assert claim_entry["status"] in {"warning", "blocked"}
+    assert "uncertain authorities: 1" in claim_entry["chip_labels"]
+
+
+def test_drafting_readiness_flags_authority_reliability_uncertain_for_questioned_treatment():
+    """W10.2 – authority_reliability_uncertain fires when treatment_type_counts has 'questioned'."""
+    mediator = _build_mock_mediator_for_drafting_readiness(
+        summarize_claim_support={
+            "available": True,
+            "claims": {
+                "retaliation": {
+                    "covered_elements": 2,
+                    "total_elements": 2,
+                    "authority_treatment_summary": {
+                        "adverse_authority_link_count": 0,
+                        "uncertain_authority_link_count": 0,
+                        "treatment_type_counts": {"questioned": 1, "superseded": 1},
+                    },
+                    "authority_rule_candidate_summary": {},
+                }
+            },
+        },
+    )
+    builder = FormalComplaintDocumentBuilder(mediator)
+    readiness = builder._build_drafting_readiness(
+        user_id="test-user",
+        draft=_minimal_draft(["retaliation"]),
+    )
+    retaliation = next(
+        (c for c in readiness["claims"] if c["claim_type"] == "retaliation"), None
+    )
+    assert retaliation is not None
+    warning_codes = [w["code"] for w in retaliation["warnings"]]
+    assert "authority_reliability_uncertain" in warning_codes
+
+
+def test_drafting_readiness_flags_claim_contradicted_as_blocked():
+    """W10.2 – claim_contradicted produces a blocked severity and elevates overall status."""
+    mediator = _build_mock_mediator_for_drafting_readiness(
+        get_claim_support_validation={
+            "available": True,
+            "claims": {
+                "retaliation": {
+                    "validation_status": "contradicted",
+                    "proof_gap_count": 0,
+                    "contradiction_candidate_count": 1,
+                }
+            },
+        },
+    )
+    builder = FormalComplaintDocumentBuilder(mediator)
+    readiness = builder._build_drafting_readiness(
+        user_id="test-user",
+        draft=_minimal_draft(["retaliation"]),
+    )
+    retaliation = next(
+        (c for c in readiness["claims"] if c["claim_type"] == "retaliation"), None
+    )
+    assert retaliation is not None
+    warning_codes = [w["code"] for w in retaliation["warnings"]]
+    assert "claim_contradicted" in warning_codes
+    contradicted_warning = next((w for w in retaliation["warnings"] if w["code"] == "claim_contradicted"), None)
+    assert contradicted_warning is not None, "expected claim_contradicted warning not found in warnings"
+    assert contradicted_warning["severity"] == "blocked"
+    assert retaliation["status"] == "blocked"
+    assert readiness["status"] == "blocked"
+
+
+def test_drafting_readiness_degraded_mode_returns_empty_warnings_when_mediator_has_no_support():
+    """W10.4 – degraded mode: missing mediator methods yield a ready state with no warnings."""
+    mediator = Mock()
+    # Simulate missing methods (no support hooks available)
+    del mediator.summarize_claim_support
+    del mediator.get_claim_support_gaps
+    del mediator.get_claim_support_validation
+    del mediator.get_claim_overview
+    builder = FormalComplaintDocumentBuilder(mediator)
+    readiness = builder._build_drafting_readiness(
+        user_id="test-user",
+        draft=_minimal_draft(["retaliation"]),
+    )
+    # In degraded mode no warnings should be emitted for support signals
+    assert readiness["status"] in {"ready", "warning"}
+    for claim_entry in readiness.get("claims", []):
+        authority_codes = {w["code"] for w in claim_entry.get("warnings", [])}
+        assert "adverse_authority_present" not in authority_codes
+        assert "authority_reliability_uncertain" not in authority_codes
+        assert "claim_contradicted" not in authority_codes

@@ -1,0 +1,36 @@
+{
+  "skill_asset_id": "complaint-logic",
+  "version": "1.0.0",
+  "name": "Complaint theorem export",
+  "description": "Converts a complaint draft body to First-Order Logic (FOL) predicates, deontic norms, and TDFOL/DCEC temporal formulas, then exports those formulas to Lean 4 and Coq notation for formal theorem checking.",
+  "capability": "formal_logic_review",
+  "adapter": "integrations/ipfs_datasets/logic.py",
+  "entry_point": "prove_claim_elements",
+  "required_for_grounding_modes": ["legal_corpus_only", "strict_legal_containment"],
+  "inputs": {
+    "predicates": {
+      "type": "array",
+      "description": "List of predicate dicts produced by text_to_fol or prove_claim_elements.",
+      "items": {"type": "object"}
+    }
+  },
+  "outputs": {
+    "proof_status": {"type": "string", "enum": ["passed", "needs_review", "error", "failed"]},
+    "contradiction_count": {"type": "integer"},
+    "contradictions": {"type": "array"},
+    "theorem_export": {
+      "type": "object",
+      "description": "Lean 4 and Coq exports of the TDFOL/DCEC formula set.",
+      "properties": {
+        "lean4": {"type": "string"},
+        "coq": {"type": "string"},
+        "export_version": {"type": "string"}
+      }
+    }
+  },
+  "editor_integration": {
+    "panel": "proof_readiness_flags",
+    "displays": ["proof_status", "contradiction_count", "theorem_export"],
+    "block_on_contradiction": true
+  }
+}

@@ -10,12 +10,12 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     duckdb = None
 
-from ipfs_datasets_py.processors.legal_data import (
-    WorkspaceDatasetBuilder,
-    WorkspaceDatasetObject,
-    WorkspaceDatasetPackager,
-    export_workspace_dataset_single_parquet,
-)
+from integrations.ipfs_datasets.legal_data import load_legal_symbol
+
+WorkspaceDatasetBuilder = load_legal_symbol("WorkspaceDatasetBuilder")
+WorkspaceDatasetObject = load_legal_symbol("WorkspaceDatasetObject")
+WorkspaceDatasetPackager = load_legal_symbol("WorkspaceDatasetPackager")
+export_workspace_dataset_single_parquet = load_legal_symbol("export_workspace_dataset_single_parquet")
 
 
 SCHEMA_SNAPSHOT_VERSION = "workspace_data_schema.v1"

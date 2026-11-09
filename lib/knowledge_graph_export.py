@@ -9,21 +9,27 @@ If the submodule is not installed, a standalone implementation is provided so
 the lib module is always importable.
 """
 
+from integrations.ipfs_datasets.loader import import_module_optional
+
 try:
-    from ipfs_datasets_py.knowledge_graphs.migration.neo4j_exporter import (
-        Neo4jExporter,
-        ExportConfig,
-        ExportResult,
-    )
+    _exporter, _exporter_error = import_module_optional("ipfs_datasets_py.knowledge_graphs.migration.neo4j_exporter")
+    if _exporter is None:
+        raise ImportError(str(_exporter_error or "graph migration exporter unavailable"))
+    Neo4jExporter = _exporter.Neo4jExporter
+    ExportConfig = _exporter.ExportConfig
+    ExportResult = _exporter.ExportResult
     try:
-        from ipfs_datasets_py.knowledge_graphs.exceptions import MigrationError
-    except ImportError:
+        _exceptions, _exceptions_error = import_module_optional("ipfs_datasets_py.knowledge_graphs.exceptions")
+        if _exceptions is None:
+            raise ImportError(str(_exceptions_error or "graph exceptions unavailable"))
+        MigrationError = _exceptions.MigrationError
+    except (ImportError, AttributeError):
         class MigrationError(Exception):  # type: ignore[no-redef]
             def __init__(self, message, details=None):
                 super().__init__(message)
                 self.details = details
 
-except ImportError:
+except (ImportError, AttributeError):
     # ---------- Standalone fallback (no submodule required) ----------
     import logging
     from dataclasses import dataclass, field

@@ -6,6 +6,7 @@ ontology extraction to ensure robustness across diverse inputs.
 """
 
 import pytest
+pytest.importorskip("hypothesis")
 from hypothesis import given, strategies as st, assume, settings
 from ipfs_datasets_py.optimizers.graphrag.ontology_generator import (
     OntologyGenerator,
@@ -214,13 +215,11 @@ class TestPropertyBasedSpecialCharacters:
             data_source="test", data_type="text", domain="general"
         )
         generator = OntologyGenerator()
-        
-        try:
-            result = generator.generate_ontology(text, context)
-            assert result is not None
-        except Exception:
-            # Some characters might cause issues, but shouldn't crash
-            pass
+
+        result = generator.generate_ontology(text, context)
+
+        assert isinstance(result, dict)
+        assert {"entities", "relationships", "metadata"} <= result.keys()
 
 
 class TestPropertyBasedMixedContent:

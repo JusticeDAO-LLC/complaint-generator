@@ -73,12 +73,10 @@ class TestInvalidInputHandling:
         generator = OntologyGenerator()
         
         text = "data\x00with\x00nulls"
-        try:
-            result = generator.generate_ontology(text, context)
-            assert result is not None
-        except Exception:
-            # Null bytes might cause issues, but shouldn't crash unpredictably
-            pass
+        result = generator.generate_ontology(text, context)
+
+        assert isinstance(result, dict)
+        assert all(key in result for key in ("entities", "relationships", "metadata"))
 
 
 class TestInvalidContextHandling:
@@ -97,18 +95,17 @@ class TestInvalidContextHandling:
         assert isinstance(result, dict)
     
     def test_domain_case_sensitivity(self):
-        """Test domain case handling."""
-        try:
-            context = OntologyGenerationContext(
-                data_source="test", data_type="text", domain="LEGAL"
-            )
-            generator = OntologyGenerator()
-            
-            result = generator.generate_ontology("test", context)
-            assert result is not None
-        except Exception:
-            # Case sensitivity might be expected, but shouldn't crash
-            pass
+        """Accept and preserve an uppercase domain without raising."""
+        context = OntologyGenerationContext(
+            data_source="test", data_type="text", domain="LEGAL"
+        )
+        generator = OntologyGenerator()
+
+        result = generator.generate_ontology("test", context)
+
+        assert isinstance(result, dict)
+        assert result["domain"] == "LEGAL"
+        assert result["metadata"]["domain"] == "LEGAL"
     
     def test_special_chars_in_source(self):
         """Handle special characters in data_source."""
@@ -126,42 +123,55 @@ class TestInvalidContextHandling:
 class TestRecoveryFromErrors:
     """Test recovery from various error conditions."""
     
-    def test_recovery_after_error(self):
-        """Ensure generator recovers after processing invalid input."""
+    def test_recovery_after_error(self, monkeypatch):
+        """Ensure generator remains usable after an extraction failure."""
         context = OntologyGenerationContext(
             data_source="test", data_type="text", domain="general"
         )
         generator = OntologyGenerator()
-        
-        # Try invalid input
-        try:
-            result1 = generator.generate_ontology("", context)
-        except Exception:
-            pass
-        
-        # Should still work on valid input
-        result2 = generator.generate_ontology("valid test", context)
-        assert result2 is not None
+        original_extract_entities = generator.extract_entities
+        extraction_attempts = 0
+
+        def fail_first_extraction(data, extraction_context):
+            nonlocal extraction_attempts
+            extraction_attempts += 1
+            if extraction_attempts == 1:
+                raise RuntimeError("synthetic extraction failure")
+            return original_extract_entities(data, extraction_context)
+
+        monkeypatch.setattr(generator, "extract_entities", fail_first_extraction)
+
+        with pytest.raises(RuntimeError, match="synthetic extraction failure"):
+            generator.generate_ontology("trigger extraction failure", context)
+
+        result = generator.generate_ontology("valid test", context)
+
+        assert extraction_attempts == 2
+        assert isinstance(result, dict)
+        assert all(key in result for key in ("entities", "relationships", "metadata"))
     
     def test_multiple_sequential_errors(self):
-        """Handle multiple sequential errors gracefully."""
+        """Handle multiple sequential edge-case inputs without corrupting state."""
         context = OntologyGenerationContext(
             data_source="test", data_type="text", domain="general"
         )
         generator = OntologyGenerator()
         
-        invalid_inputs = ["", "!@#", "   ", "\x00"]
+        edge_case_inputs = ["", "!@#", "   ", "\x00"]
         
-        for invalid in invalid_inputs:
-            try:
-                result = generator.generate_ontology(invalid, context)
-                assert result is not None
-            except Exception:
-                pass
+        for text in edge_case_inputs:
+            result = generator.generate_ontology(text, context)
+            assert isinstance(result, dict)
+            assert all(
+                key in result for key in ("entities", "relationships", "metadata")
+            )
         
-        # Should still work after errors
+        # The same instance should still produce a valid ontology afterward.
         valid_result = generator.generate_ontology("test", context)
-        assert valid_result is not None
+        assert isinstance(valid_result, dict)
+        assert all(
+            key in valid_result for key in ("entities", "relationships", "metadata")
+        )
 
 
 class TestBoundaryConditions:
@@ -316,36 +326,32 @@ class TestInvariantMaintenance:
     """Test that invariants are maintained under error conditions."""
     
     def test_entities_always_list(self):
-        """Entities field always remains a list."""
+        """Entities remains a list for every supported edge-case input."""
         context = OntologyGenerationContext(
             data_source="test", data_type="text", domain="general"
         )
         generator = OntologyGenerator()
         
-        invalid_inputs = ["", "!@#", "   "]
+        edge_case_inputs = ["", "!@#", "   "]
         
-        for text in invalid_inputs:
-            try:
-                result = generator.generate_ontology(text, context)
-                assert isinstance(result["entities"], list)
-            except Exception:
-                pass
+        for text in edge_case_inputs:
+            result = generator.generate_ontology(text, context)
+            assert isinstance(result, dict)
+            assert isinstance(result["entities"], list)
     
     def test_relationships_always_list(self):
-        """Relationships field always remains a list."""
+        """Relationships remains a list for every supported edge-case input."""
         context = OntologyGenerationContext(
             data_source="test", data_type="text", domain="general"
         )
         generator = OntologyGenerator()
         
-        invalid_inputs = ["", "!@#", "   "]
+        edge_case_inputs = ["", "!@#", "   "]
         
-        for text in invalid_inputs:
-            try:
-                result = generator.generate_ontology(text, context)
-                assert isinstance(result["relationships"], list)
-            except Exception:
-                pass
+        for text in edge_case_inputs:
+            result = generator.generate_ontology(text, context)
+            assert isinstance(result, dict)
+            assert isinstance(result["relationships"], list)
     
     def test_no_corrupt_output(self):
         """Output never becomes corrupted."""
@@ -378,7 +384,7 @@ class TestGracefulDegradation:
         assert "entities" in result
     
     def test_degradation_with_corrupted_input(self):
-        """Degrade gracefully with corrupted input."""
+        """Return a valid ontology for every supported corrupted-text input."""
         context = OntologyGenerationContext(
             data_source="test", data_type="text", domain="general"
         )
@@ -392,11 +398,14 @@ class TestGracefulDegradation:
         ]
         
         for text in corrupted_texts:
-            try:
-                result = generator.generate_ontology(text, context)
-                assert result is not None
-            except Exception:
-                pass
+            result = generator.generate_ontology(text, context)
+            assert isinstance(result, dict)
+            assert all(
+                key in result for key in ("entities", "relationships", "metadata")
+            )
+            assert isinstance(result["entities"], list)
+            assert isinstance(result["relationships"], list)
+            assert isinstance(result["metadata"], dict)
 
 
 class TestErrorMessages:

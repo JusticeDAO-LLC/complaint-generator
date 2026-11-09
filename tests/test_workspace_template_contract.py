@@ -1,5 +1,194 @@
 from pathlib import Path
 
+import pytest
+
+
+pytestmark = [pytest.mark.no_auto_llm]
+
+
+def test_workspace_template_defines_mobile_docket_shell_contract():
+    content = Path("templates/workspace.html").read_text()
+
+    assert "Current Docket task" in content
+    assert "docket-current-task-title" in content
+    assert "docket-current-task-detail" in content
+    assert "Mobile Docket document actions" in content
+    assert "docket-mobile-action-strip" in content
+    assert "docket-selected-rail" in content
+    assert "docket-selected-rail-label" in content
+    assert "docket-selected-rail-title" in content
+    assert "docket-selected-rail-meta" in content
+    assert "docket-selected-rail-badges" in content
+    assert "docket-mobile-view-switch" in content
+    assert "docket-mobile-show-documents" in content
+    assert "docket-mobile-show-selected" in content
+    assert "docket-mobile-context-status" in content
+    assert "Back to Documents" in content
+    assert "View Selected Document" in content
+    assert "Working on:" in content
+    assert "docket-mobile-document-count" in content
+    assert "Step 1" in content
+    assert "Step 2" in content
+    assert "Step 3" in content
+    assert "Step 4" in content
+    assert "mobile-docket-view-documents" in content
+    assert "mobile-docket-view-selected" in content
+    assert "setMobileDocketView" in content
+    assert "Select or load one docket document before opening the selected-document workbench." in content
+    assert "Selected Docket document" in content
+    assert "No document selected" in content
+    assert "Document-scoped actions stay locked until the active document is clear." in content
+    assert "docket-mobile-primary-action" in content
+    assert "docket-mobile-secondary-action" in content
+    assert "docket-mobile-deadline-action" in content
+    assert "docket-mobile-ask-scope" in content
+    assert "docket-mobile-ask-state" in content
+    assert "docket-mobile-label-state" in content
+    assert "docket-mobile-annotation-state" in content
+    assert "docket-mobile-deadline-state" in content
+    assert "docket-mobile-label-summary" in content
+    assert "docket-mobile-annotation-summary" in content
+    assert "docket-mobile-deadline-summary" in content
+    assert "docket-mobile-action-state" in content
+    assert "docket-mobile-step-ask" in content
+    assert "docket-mobile-step-label" in content
+    assert "docket-mobile-step-annotation" in content
+    assert "docket-mobile-step-deadline" in content
+    assert "aria-current=\"step\"" in content
+    assert "data-step-state" in content
+    assert "currentMobileStep" in content
+    assert 'data-step-state="active"' in content
+    assert 'data-step-state="ready"' in content
+    assert 'data-step-state="waiting"' in content
+    assert 'data-step-state="blocked"' in content
+    assert "<strong>Not started</strong>" in content
+    assert "<strong>Available next</strong>" in content
+    assert "<strong>Locked</strong>" in content
+    assert "<strong>Cannot continue yet</strong>" in content
+    assert "docket-mobile-ask-feedback" in content
+    assert "docket-mobile-ask-persistence" in content
+    assert "docket-mobile-ready-label-button" in content
+    assert "docket-mobile-save-status" in content
+    assert "docket-mobile-step1-checklist" in content
+    assert "docket-mobile-check-question" in content
+    assert "docket-mobile-check-impact" in content
+    assert "docket-mobile-check-ready" in content
+    assert "docket-mobile-ready-disabled-reason" in content
+    assert "Step 1: Start document chat" in content
+    assert "docket-mobile-save-row" in content
+    assert "docket-mobile-step-heading" in content
+    assert "docket-mobile-locked-summary" in content
+    assert "docket-mobile-state-contract" in content
+    assert "docket-mobile-step1-state-contract" in content
+    assert "docket-mobile-step1-current-state" in content
+    assert "docket-mobile-step1-first-unmet" in content
+    assert "docket-mobile-step1-persistence-mode" in content
+    assert "docket-mobile-step1-write-count" in content
+    assert "is-locked-accordion" in content
+    assert "data-save-state=\"idle\"" in content
+    assert "Questions will apply only to this document." in content
+    assert "Chatting about:" in content
+    assert "Questions will apply only to" in content
+    assert "Start Document Chat" in content
+    assert "Ask one question in Document Chat" in content
+    assert "Open Chat" in content
+    assert "Question asked: No" in content
+    assert "Document updates captured: 0" in content
+    assert "Ask your first document-specific question to show Mark Ready To Label" in content
+    assert 'aria-describedby="docket-mobile-ready-disabled-reason"' in content
+    assert "Next After Chat: Mark Ready To Label" in content
+    assert "After you use Open Chat and ask one document question, Mark Ready To Label appears here" in content
+    assert "Waiting for the chat impact summary before Mark Ready To Label can save" in content
+    assert "Review the chat impact summary to turn on Mark Ready To Label" in content
+    assert "data-ready-visibility" in content
+    assert "Source:" in content
+    assert "Type:" in content
+    assert "Create impact summary after the first chat question" in content
+    assert "Confirm ready to label" in content
+    assert "Next: ask at least one document-specific question" in content
+    assert "0 of 3 complete: select one document first" in content
+    assert "Mark Ready To Label is disabled until the first unmet checklist item is complete" in content
+    assert "Persistence mode: local draft only until Mark Ready" in content
+    assert "Persistence mode: chat progress is local; ready confirmation is the first selected-document write" in content
+    assert "buildMobileDocketStep1State" in content
+    assert "selected_document_write_status" in content
+    assert "selected_document_write_count" in content
+    assert "ready_to_label_saved" in content
+    assert "selectedDocumentWriteCount" in content
+    assert "currentState" in content
+    assert "data-check-state" in content
+    assert "data-persistence-mode" in content
+    assert "local_until_ready" in content
+    assert "Mark Ready To Label" in content
+    assert "Persistence: local draft only until Mark Ready" in content
+    assert "Locked: complete Step 1 first" in content
+    assert "Locked: save a Step 2 label first" in content
+    assert "Locked: add a response date in Step 3 first" in content
+    assert 'content: "Locked";' in content
+    assert "pointer-events: none;" in content
+    assert "Unlocks when Step 1 has an impact summary and ready-to-label confirmation" in content
+    assert "Unlocks when Step 2 label is saved" in content
+    assert "Unlocks when Step 3 saves a response date" in content
+    assert "aria-describedby', 'docket-mobile-deadline-state'" in content
+    assert "Selected source summary" in content
+    assert "Step 1: Current" in content
+    assert "Step 2: Locked" in content
+    assert "Step 3: Locked" in content
+    assert "Step 4: Locked" in content
+    assert "docket-mobile-ask-chat-link" in content
+    assert "docket-mobile-label-button" in content
+    assert "docket-mobile-annotation-button" in content
+    assert "docket-mobile-deadline-button" in content
+    assert "docket-mobile-action-note" in content
+    assert "Load a docket manifest or import evidence first. Then select one document to unlock these actions." in content
+    assert "Locked until one document is loaded or selected" in content
+    assert "Locked: Ask About Document" in content
+    assert "docket-loader-card" in content
+    assert "docket-status-card" in content
+    assert ".docket-action-bar.is-empty" in content
+    assert ".docket-loader-card .readiness-list" in content
+    assert "has-docket-items" in content
+    assert '[data-tab-panel="docket"].has-docket-items .docket-loader-card' in content
+    assert ".docket-selected-card .docket-preview" in content
+    assert ".docket-mobile-action-strip:not(.is-empty) .surface-link" in content
+    assert ".docket-selected-card #docket-selected-chips" in content
+    assert "docket-source-summary" in content
+    assert "docket-gate-presenter" in content
+    assert "Selected document gate" in content
+    assert "buildSharedDocketGatePresenter" in content
+    assert "renderDocketGatePresenter" in content
+    assert "Generate Impact Summary" in content
+    assert "Impact summary generated locally. No selected-document write has been sent." in content
+    assert "Ready-to-label persistence is still gated. No selected-document write has been sent." in content
+    assert "data-ready-eligible" in content
+    assert "docket-mobile-technical-details" in content
+    assert "docket-mobile-technical-preview" in content
+    assert "Technical document status" in content
+    assert "Start Document Chat" in content
+    assert "Label Document" in content
+    assert "Add Note or Date" in content
+    assert "Start Document Chat" in content
+    assert "Label Document" in content
+    assert "Add Note or Date" in content
+    assert "Deadline Needs Date" in content
+    assert "Mark Deadline" in content
+    assert "docket-add-annotation-button" in content
+    assert "docket-mark-deadline-button" in content
+    assert "@media (max-width: 720px)" in content
+    assert ".docket-action-bar" in content
+    assert "position: sticky;" in content
+    assert ".docket-command-grid" in content
+    assert "grid-template-columns: 1fr;" in content
+    assert "Mike integration status" in content
+    assert "mike-integration-card" in content
+    assert "/api/complaint-workspace/mike/status" in content
+    assert "Refresh Mike Status" in content
+    assert "Prepare Handoff In Draft" in content
+    assert "Open Sync Workflow" in content
+    assert "deriveMikeIntegrationUiState" in content
+    assert "renderMikeIntegrationPanel" in content
+    assert "refreshMikeIntegrationStatus" in content
+
 
 def test_workspace_template_exposes_gmail_import_browser_session_helpers():
     content = Path("templates/workspace.html").read_text()
@@ -60,6 +249,14 @@ def test_workspace_template_exposes_gmail_import_browser_session_helpers():
     assert "broaden collection beyond a single inbox pass" in content
     assert "resumable mailbox collection" in content
     assert "UID checkpoints" in content
+    assert "Evidence Type" in content
+    assert "Claim Element This Supports" in content
+    assert "Imported Emails Support" in content
+    assert "Imported Items Support" in content
+    assert "Imported Item Type" in content
+    assert "Map this item to one claim element" in content
+    assert "evidence-composer-shell" in content
+    assert "evidence-import-shell" in content
     assert "Describe the dispute in plain language" in content
     assert "Optional keyword phrases, one per line" in content
     assert "local-evidence-paths" in content
@@ -242,8 +439,10 @@ def test_workspace_template_exposes_gmail_import_browser_session_helpers():
     assert "workspace-data-search-query" in content
     assert "workspace-data-search-backend" in content
     assert "workspace-data-search-top-k" in content
+    assert "browse-workspace-data-button" in content
     assert "search-workspace-data-button" in content
     assert "workspace-data-search-results-preview" in content
+    assert "workspace-data-view-results-preview" in content
     assert "Workspace Data Ops" in content
     assert "Inspect and Migrate Workspace Dataset Primitives" in content
     assert "packaged-docket-manifest-path" in content
@@ -316,6 +515,7 @@ def test_workspace_template_exposes_gmail_import_browser_session_helpers():
     assert "client.getWorkspaceDataSchema(workspaceUserId, payload)" in content
     assert "client.migrateLegacyWorkspaceData(workspaceUserId, outputDir, Object.assign({}, payload, {" in content
     assert "client.searchWorkspaceDataset(inputPath, query, Object.assign({" in content
+    assert "client.viewWorkspaceDataset(inputPath, Object.assign({" in content
     assert "Schema-guided recommendation:" in content
     assert "Recommended schema-first workflow:" in content
     assert "These tools inspect the parquet-backed workspace schema" in content
@@ -325,6 +525,10 @@ def test_workspace_template_exposes_gmail_import_browser_session_helpers():
     assert "Searching the packaged workspace dataset through the shared MCP tools…" in content
     assert "Workspace dataset search completed with ${String(((latestWorkspaceDatasetSearch.search_results || {}).result_count) || 0)} hit(s)." in content
     assert "Add a workspace manifest path before searching the packaged workspace dataset." in content
+    assert "Add a workspace manifest path before browsing the packaged workspace dataset." in content
+    assert "Loading a filtered workspace dataset preview through the shared MCP tools…" in content
+    assert "Workspace dataset browse preview loaded with ${String((latestWorkspaceDatasetView.documents || []).length)} document preview(s)." in content
+    assert "document.getElementById('browse-workspace-data-button').addEventListener('click', browseWorkspaceDataPanel);" in content
     assert "Enter a workspace dataset query before searching." in content
     assert "document.getElementById('search-workspace-data-button').addEventListener('click', searchWorkspaceDataPanel);" in content
     assert "client.getPackagedDocketOperatorDashboard(manifestPath)" in content
@@ -345,6 +549,12 @@ def test_workspace_template_exposes_gmail_import_browser_session_helpers():
     assert "async function loadPackagedDocketOperatorDashboardReportPanel()" in content
     assert "async function executePackagedDocketRevalidationPanel()" in content
     assert "async function persistPackagedDocketRevalidationPanel()" in content
+    assert "function publishWorkspaceSyncEvent(detail)" in content
+    assert "complaint-mcp-sync" in content
+    assert "workspace-packaged-docket-dashboard" in content
+    assert "workspace-packaged-docket-report" in content
+    assert "workspace-packaged-docket-revalidation" in content
+    assert "workspace-packaged-docket-persist" in content
     assert "async function copyPackagedDocketPersistManifestPath()" in content
     assert "async function copyPackagedDocketPersistPackageRoot()" in content
     assert "async function useLatestPackagedDocketManifestPreference()" in content
@@ -562,6 +772,32 @@ def test_workspace_template_exposes_gmail_import_browser_session_helpers():
     assert "Pleading form quality:" in content
     assert "Evidence support strength:" in content
     assert "Download complaint files:" in content
+    assert "draft-gate-summary-secondary" in content
+    assert 'data-gate-role="secondary-summary"' in content
+    assert "Same canonical verdict; the filing decision rail below is the authoritative download boundary." in content
+    assert 'id="draft-download-boundary" data-download-state="blocked"' in content
+    assert 'id="draft-download-blocker-note" data-download-state="blocked"' in content
+    assert "Download is blocked until release-gate and record-strength checks are cleared." in content
+    assert 'data-canonical-gate="primary"' in content
+    assert "Canonical filing verdict" in content
+    assert "Downloads stay subordinate until this card says cleared." in content
+    assert "draftDownloadBoundaryNode.dataset.downloadState" in content
+    assert "releaseGateCardNode.dataset.downloadState" in content
+    assert "button.setAttribute('aria-disabled'" in content
+    assert "[data-tab-panel=\"draft\"] .draft-action-rail" in content
+    assert "[data-tab-panel=\"draft\"] .confidence-strip" in content
+    assert "grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));" in content
+    assert "#draft-release-gate-card[data-canonical-gate=\"primary\"] > strong" in content
+    assert "draft-gate-primary-row" in content
+    assert "draft-secondary-action-row" in content
+    assert "Filing verdict: BLOCKED" in content
+    assert "Downloads blocked" in content
+    assert "formalPleadingChecksNode" in content
+    assert "Fix now: ${primaryFixAction.label}" in content
+    assert "Keep packet export secondary until the canonical filing verdict clears download." in content
+    assert "max-height: 70vh;" in content
+    assert "[data-tab-panel=\"draft\"] #draft-body" in content
+    assert content.index('id="draft-release-gate-card"') < content.index('class="draft-layout"')
     assert "activateEvidenceComposer" in content
     assert "screenshot findings:" in content
     assert "optimization targets:" in content

@@ -1,0 +1,121 @@
+{
+  "schema": "screenshot-driven-ux-findings@1",
+  "application_base_commit": "6f27c60c3b49b8bad49088bd46e788fa31c646eb",
+  "screenshot_manifest_sha256": "f94d043ceffa8e5df00aba32daca772423cdb260d27a4589e40162121ad39bb3",
+  "findings": [
+    {
+      "id": "UX-01",
+      "priority": "P0",
+      "screens": [
+        "02-workspace-desktop",
+        "03-mediator-question-desktop",
+        "04-mediator-question-mobile"
+      ],
+      "observed": "Real authenticated owner pending inquiry is active while persistent case header says No case selected and workspace access-denied banner remains.",
+      "plan_requirement": "One authoritative authenticated case/actor/privacy context reconciles the header, navigation, and actions after login and case selection; stale failure UI clears only after verified success."
+    },
+    {
+      "id": "UX-02",
+      "priority": "P0",
+      "screens": [
+        "05-evidence-composer-desktop"
+      ],
+      "observed": "Sidebar says Complete while zero answers are saved and five elements need support.",
+      "plan_requirement": "Distinguish transport/hydration success, saved state, unresolved interview, review readiness, and legal sufficiency; no generic Complete label for an unresolved case."
+    },
+    {
+      "id": "UX-03",
+      "priority": "P1",
+      "screens": [
+        "03-mediator-question-desktop",
+        "04-mediator-question-mobile"
+      ],
+      "observed": "The pending question is a form surrounded by raw inquiry/objective ids, internal target paths and verbose provenance. Mobile answer controls fall below technical explanation text.",
+      "plan_requirement": "Conversation-first current question with compact why/source disclosure; chat and rich modes share one encrypted session and preserve unknown/defer/correct actions."
+    },
+    {
+      "id": "UX-04",
+      "priority": "P1",
+      "screens": [
+        "05-evidence-composer-desktop",
+        "06-evidence-composer-mobile"
+      ],
+      "observed": "Several large guidance panels precede the evidence form; the form exposes one hardcoded claim-element selector and no visible evidence preview/library in this viewport.",
+      "plan_requirement": "Evidence library/master-detail with preview, upload status, user comments, versioned classifier proposals and explicit claim linkage; separate suggestions from adopted facts."
+    },
+    {
+      "id": "UX-05",
+      "priority": "P1",
+      "screens": [
+        "10-correspondence-owner-desktop",
+        "11-correspondence-lawyer-mobile"
+      ],
+      "observed": "Opening a conversation requires raw case/thread/membership ids, versions, and polling interval; senders appear as opaque ids and protocol notes dominate the page.",
+      "plan_requirement": "Case-scoped inbox/timeline with friendly verified actor labels, explicit AI versus human attribution, read/reply states, attachments/context links and hidden transport controls."
+    },
+    {
+      "id": "UX-06",
+      "priority": "P1",
+      "screens": [
+        "12-admin-accounts-desktop",
+        "13-admin-accounts-mobile"
+      ],
+      "observed": "The account table is visibly clipped on mobile; role changes and disable actions sit alongside raw ids. Masked credential remains populated after successful login.",
+      "plan_requirement": "Responsive account summaries/search, contextual detail/action menus, accessible guarded role/status workflows and credential clearing after verification."
+    },
+    {
+      "id": "UX-07",
+      "priority": "P1",
+      "screens": [
+        "09-lawyer-workspace-desktop"
+      ],
+      "observed": "The scoped lawyer page is a sparse repeated authorization form plus raw revision/request/proposal fields; this baseline has not shared a content envelope.",
+      "plan_requirement": "Assigned-case review queue and explicit owner sharing/recipient acceptance workflow with readable revision/status context; preserve content closure until actual grant/key admission."
+    },
+    {
+      "id": "UX-08",
+      "priority": "P2",
+      "screens": [
+        "01-home-desktop",
+        "02-workspace-desktop",
+        "10-correspondence-owner-desktop",
+        "12-admin-accounts-desktop"
+      ],
+      "observed": "Workspace uses a large branded hero/cards while correspondence/admin use largely default HTML forms and unrelated page structures.",
+      "plan_requirement": "One app shell, typography/spacing/token system, consistent navigation, focus/error patterns, empty/loading/locked/unavailable states and responsive layout."
+    }
+  ],
+  "information_architecture": {
+    "entry": "Case list and actionable case status",
+    "workspace_modes": [
+      "AI mediator conversation",
+      "Evidence and complaint workspace"
+    ],
+    "case_navigation": [
+      "Conversation",
+      "Evidence",
+      "Facts and timeline",
+      "Legal requirements",
+      "Draft",
+      "Review",
+      "Correspondence"
+    ],
+    "persistent_context": [
+      "Current case",
+      "Verified actor and role",
+      "Privacy/consent mode",
+      "Saved/sync and unresolved status"
+    ],
+    "role_areas": [
+      "Assigned-lawyer or moderator review queue",
+      "Operational admin account and audit area without case-content bypass"
+    ]
+  },
+  "limitations": [
+    "Lawyer assignment is accepted through real UI; owner review envelope is not shared in this baseline, so closed/unavailable content is not depicted as opened.",
+    "The existing workspace header can still show No case selected/access denied after actual backend authentication and case-context bootstrap; the functional pending inquiry below is real.",
+    "Evidence screenshots show genuine unsaved form, not successful upload, annotation, classifier, or replication.",
+    "Draft view is a real blocked/not-generated state; no generated complaint is fabricated.",
+    "All cases, actors, source text, credentials, keys and messages are newly authored synthetic fixtures."
+  ]
+}

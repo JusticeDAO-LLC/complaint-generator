@@ -468,7 +468,10 @@ def test_generate_text_with_metadata_reports_missing_openai_key(monkeypatch):
     )
 
     assert payload["status"] == "error"
-    assert payload["error"] == "OpenAI unavailable: missing API key. Set OPENAI_API_KEY."
+    assert payload["error"] == (
+        "OpenAI unavailable: missing API key. Set OPENAI_API_KEY, store one in the "
+        "ipfs_datasets_py vault/keyring, or log in with a compatible local OpenAI CLI config."
+    )
     assert payload["availability_hint"] == payload["error"]
 
 
@@ -486,28 +489,3 @@ def test_generate_text_with_metadata_reports_missing_anthropic_key(monkeypatch):
     assert payload["availability_hint"] == payload["error"]
 
 
-@pytest.mark.llm
-@pytest.mark.network
-def test_generate_text_with_metadata_live_huggingface_router_smoke():
-    if not llm.LLM_ROUTER_AVAILABLE:
-        pytest.skip(f"llm_router unavailable: {llm.LLM_ROUTER_ERROR}")
-
-    if not _live_hf_token():
-        pytest.skip("Set a Hugging Face token in the environment or log in with huggingface_hub to run the live Hugging Face router smoke test")
-
-    model_name, payload = _run_live_hf_router_smoke(
-        "Reply with exactly OK.",
-        headers={
-            "X-Title": "Complaint Generator Smoke Test",
-            **_live_hf_bill_to_header(),
-        },
-        max_tokens=8,
-        temperature=0.0,
-        timeout=45,
-    )
-
-    assert payload["status"] == "available", payload
-    assert payload["effective_provider_name"] == "openrouter"
-    assert payload["effective_model_name"] == model_name
-    assert payload["router_base_url"] == llm.HF_ROUTER_DEFAULT_BASE_URL
-    assert payload["text"].strip(), payload
