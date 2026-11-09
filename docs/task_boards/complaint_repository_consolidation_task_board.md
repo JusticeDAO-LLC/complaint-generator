@@ -6,7 +6,7 @@ Implementation tasks begin pending. Completion requires behavioral validation ev
 
 ## CIMP-CON-01 Move session reports group A out of the repository root
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
@@ -41,7 +41,7 @@ Implementation instructions:
 
 ## CIMP-CON-02 Move session reports group B out of the repository root
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
@@ -76,7 +76,7 @@ Implementation instructions:
 
 ## CIMP-CON-03 Move session reports group C out of the repository root
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
@@ -111,7 +111,7 @@ Implementation instructions:
 
 ## CIMP-CON-04 Move stale root plans and profile reports into the report archive
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
@@ -147,7 +147,7 @@ Implementation instructions:
 
 ## CIMP-CON-05 Make archive indexes resolve and retire the weakened archive test
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
@@ -185,7 +185,7 @@ Implementation instructions:
 
 ## CIMP-CON-06 Move root maintenance scripts into scripts/maintenance
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
@@ -219,7 +219,7 @@ Implementation instructions:
 
 ## CIMP-CON-07 Move root-level checks and tracked debug snapshots out of the root
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
@@ -703,7 +703,7 @@ Implementation instructions:
 
 ## CIMP-CON-21 Delegate complaint workspace draft methods to a sibling module
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
@@ -738,7 +738,7 @@ Implementation instructions:
 
 ## CIMP-CON-22 Delegate mediator intake-question methods to a sibling module
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P1
@@ -843,7 +843,7 @@ Implementation instructions:
 
 ## CIMP-CON-25 Rewrite the root docs so they describe the moved tree
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P2
@@ -878,7 +878,7 @@ Implementation instructions:
 
 ## CIMP-CON-26 Enforce the consolidation ratchet independently of earlier helpers
 
-- Status: todo
+- Status: completed
 - Completion: validation
 - No-change completion: allowed
 - Priority: P0
